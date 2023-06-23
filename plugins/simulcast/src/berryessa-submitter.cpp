@@ -3,29 +3,29 @@
 
 #include "copy-from-obs/remote-text.hpp"
 
-
-//struct BerryessaSubmitterItem {
-//	QString eventName;
-//	obs_data_t *properties;
-//};//
-
 BerryessaSubmitter::BerryessaSubmitter(QObject *parent, QString url)
 	: QObject(parent), url_(url)
-{}
+{
+	this->alwaysProperties_ = obs_data_create();
+}
 
 BerryessaSubmitter::~BerryessaSubmitter() {}
 
 void BerryessaSubmitter::submit(QString eventName, obs_data_t* properties) {
-	//BerryessaSubmitterItem item{eventName, properties};
+	// overlay the supplied properties over a copy of the always properties
+	//   (so if there's a conflict, supplied property wins)
+	// and release the original copy
+	obs_data_t *newProperties = obs_data_create();
+	obs_data_apply(newProperties, this->alwaysProperties_);
+	obs_data_apply(newProperties, properties);
+	obs_data_release(properties);
 
-	// XXX do the whole async worker thread thing
-	//std::vector<BerryessaSubmitterItem> tmp;
-	//tmp.push_back(item);
-
+	// create {Name:, Properties:} object that Berryessa expects
 	obs_data_t *toplevel = obs_data_create();
 	obs_data_set_string(toplevel, "Name", eventName.toUtf8());
-	obs_data_set_obj(toplevel, "Properties", properties);
+	obs_data_set_obj(toplevel, "Properties", newProperties);
 
+	// XXX do the whole async worker thread thing
 	std::vector<obs_data_t *> tmp;
 	tmp.push_back(toplevel);
 	obs_data_t *error = syncSubmitAndReleaseItemsReturningError(tmp);
@@ -42,8 +42,7 @@ obs_data_t* BerryessaSubmitter::syncSubmitAndReleaseItemsReturningError(
 	// Berryessa documentation:
 	// https://docs.google.com/document/d/1dB1fOgGQxu05ljqVVoX1jcjImzlcwcm9QKFZ2IDeuo0/edit#heading=h.yjke1ko59g7n
 	
-	// build up json, obs_data_release'ing as we go
-	// 
+	// Build up JSON, releasing supplied obs_data_t*'s as we go
 	QByteArray postJson;
 	for (obs_data_t *it : items) {
 		postJson += postJson.isEmpty() ? "[" : ",";
@@ -74,8 +73,9 @@ obs_data_t* BerryessaSubmitter::syncSubmitAndReleaseItemsReturningError(
 		nullptr, // signature
 		5);      // timeout in seconds
 
-	// log and return http error information, if any
 	// XXX parse response from berryessa, check response code?
+
+	// log and return http error information, if any
 	obs_data_t *error = nullptr;
 	if (!ok) {
 		error = obs_data_create();
@@ -89,3 +89,13 @@ obs_data_t* BerryessaSubmitter::syncSubmitAndReleaseItemsReturningError(
 	return error;
 }
 
+void BerryessaSubmitter::setAlwaysString(QString propertyKey, QString propertyValue)
+{
+	obs_data_set_string(this->alwaysProperties_, propertyKey.toUtf8(),
+			    propertyValue.toUtf8());
+}
+
+
+void BerryessaSubmitter::unsetAlways(QString propertyKey) {
+	obs_data_unset_user_value(this->alwaysProperties_, propertyKey.toUtf8());
+}

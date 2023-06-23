@@ -22,6 +22,7 @@
 #include <QCheckBox>
 #include <QGroupBox>
 #include <QAction>
+#include <QUuid>
 
 #include <obs.hpp>
 #include <obs-module.h>
@@ -35,9 +36,48 @@
 #include "goliveapi-postdata.hpp"
 #include "berryessa-submitter.hpp"
 
+obs_data_t* MakeEvent_ivs_obs_stream_start(obs_data_t* postData, obs_data_t* goLiveConfig)
+{
+	obs_data_t *event = obs_data_create();
+
+	// include the entire capabilities API request/response
+	obs_data_set_string(event, "capabilities_api_request",
+			    obs_data_get_json(postData));
+
+	obs_data_set_string(event, "capabilities_api_response",
+			    obs_data_get_json(goLiveConfig));
+
+	// extract specific items of interest from the capabilities API response
+	obs_data_t *goLiveMeta = obs_data_get_obj(goLiveConfig, "meta");
+	if (goLiveMeta) {
+		const char *s = obs_data_get_string(goLiveMeta, "config_id");
+		if (s && *s) {
+			obs_data_set_string(event, "config_id", s);
+		}
+	}
+
+	obs_data_array_t *goLiveEncoderConfigurations =
+		obs_data_get_array(goLiveConfig, "encoder_configurations");
+	if (goLiveEncoderConfigurations) {
+		obs_data_set_int(
+			event, "encoder_count",
+			obs_data_array_count(goLiveEncoderConfigurations));
+	}
+
+	return event;
+}
+
+
 SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 {
 	berryessa_ = new BerryessaSubmitter(this, "http://127.0.0.1:8787/");
+
+	// XXX: should be created once per device and persisted on disk
+	berryessa_->setAlwaysString("device_id",
+				     "bf655dd3-8346-4c1c-a7c8-bb7d9ca6091a");
+
+	berryessa_->setAlwaysString("obs_session_id",
+				    QUuid::createUuid().toString(QUuid::WithoutBraces));
 
 	QGridLayout *dockLayout = new QGridLayout(this);
 	dockLayout->setAlignment(Qt::AlignmentFlag::AlignTop);
@@ -62,6 +102,8 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 				this->berryessa_->submit("ivs_obs_stream_stop",
 							 event);
 
+				this->berryessa_->unsetAlways("config_id");
+
 				streamingButton->setText(
 					obs_module_text("Btn.StartStreaming"));
 
@@ -76,9 +118,18 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 					this->Output().StartStreaming(
 						goLiveConfig);
 
-					obs_data_t *event = obs_data_create();
-					obs_data_set_int(event, "encoder_count",
-							 1); // XXX hardcoded value
+					obs_data_t *event =
+						MakeEvent_ivs_obs_stream_start(
+							postData, goLiveConfig);
+					const char* configId = obs_data_get_string(
+							event, "config_id");
+					if (configId)
+					{
+						// put the config_id on all events until the stream ends
+						this->berryessa_
+							->setAlwaysString(
+								"config_id", configId);
+					}
 					this->berryessa_->submit(
 						"ivs_obs_stream_start", event);
 
