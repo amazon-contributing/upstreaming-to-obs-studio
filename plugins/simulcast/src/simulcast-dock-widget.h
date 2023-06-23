@@ -4,6 +4,8 @@
 
 #include <QWidget>
 
+class BerryessaSubmitter;
+
 struct LocalConfig {
 	QString goLiveApiUrl;
 	QString streamKey;
@@ -21,4 +23,5 @@ public:
 private:
 	SimulcastOutput output_;
 	LocalConfig localConfig_;
+	BerryessaSubmitter* berryessa_;
 };

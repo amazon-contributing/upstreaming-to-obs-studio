@@ -27,16 +27,18 @@
 #include <obs-module.h>
 #include <util/config-file.h>
 #include <obs-frontend-api.h>
-#include "copy-from-obs/remote-text.hpp"
 
 
 #define ConfigSection "simulcast"
 
 #include "goliveapi-network.hpp"
 #include "goliveapi-postdata.hpp"
+#include "berryessa-submitter.hpp"
 
 SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 {
+	berryessa_ = new BerryessaSubmitter(this, "http://127.0.0.1:8787/");
+
 	QGridLayout *dockLayout = new QGridLayout(this);
 	dockLayout->setAlignment(Qt::AlignmentFlag::AlignTop);
 
@@ -54,8 +56,16 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 		[this, streamingButton]() {
 			if (this->Output().IsStreaming()) {
 				this->Output().StopStreaming();
+				obs_data_t *event = obs_data_create();
+				obs_data_set_string(event, "client_error", "");
+				obs_data_set_string(event, "server_error", "");
+				this->berryessa_->submit("ivs_obs_stream_stop",
+							 event);
+
 				streamingButton->setText(
 					obs_module_text("Btn.StartStreaming"));
+
+
 			} else {
 				OBSDataAutoRelease postData =
 					constructGoLivePost();
@@ -65,6 +75,13 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 				if (goLiveConfig) {
 					this->Output().StartStreaming(
 						goLiveConfig);
+
+					obs_data_t *event = obs_data_create();
+					obs_data_set_int(event, "encoder_count",
+							 1); // XXX hardcoded value
+					this->berryessa_->submit(
+						"ivs_obs_stream_start", event);
+
 					streamingButton->setText(
 						obs_module_text(
 							"Btn.StopStreaming"));
