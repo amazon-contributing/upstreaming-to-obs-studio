@@ -4,19 +4,21 @@ set(PROJECT_NAME simulcast)
 
 find_qt(COMPONENTS Core Widgets Svg Network)
 
+find_package(CURL REQUIRED)
+
 add_library(${PROJECT_NAME} MODULE)
 add_library(OBS::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
 target_sources(${PROJECT_NAME} PRIVATE)
 
 target_sources(${PROJECT_NAME} PRIVATE src/global-service.cpp src/simulcast-dock-widget.cpp src/simulcast-plugin.cpp
-                                       src/simulcast-output.cpp)
+                                       src/simulcast-output.cpp src/remote-text.cpp)
 
 configure_file(src/plugin-macros.h.in plugin-macros.generated.h)
 
 target_sources(${PROJECT_NAME} PRIVATE plugin-macros.generated.h)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE OBS::libobs OBS::frontend-api Qt::Core Qt::Widgets Qt::Svg Qt::Network)
+target_link_libraries(${PROJECT_NAME} PRIVATE OBS::libobs OBS::frontend-api Qt::Core Qt::Widgets Qt::Svg Qt::Network CURL::libcurl)
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 

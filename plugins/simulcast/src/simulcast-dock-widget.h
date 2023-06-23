@@ -4,6 +4,11 @@
 
 #include <QWidget>
 
+struct LocalConfig {
+	QString goLiveApiUrl;
+	QString streamKey;
+};
+
 class SimulcastDockWidget : public QWidget {
 public:
 	SimulcastDockWidget(QWidget *parent = 0);
@@ -15,4 +20,5 @@ public:
 
 private:
 	SimulcastOutput output_;
+	LocalConfig localConfig_;
 };
