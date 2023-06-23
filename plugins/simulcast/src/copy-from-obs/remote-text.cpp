@@ -21,6 +21,7 @@
 #include <util/curl/curl-helper.h>
 //#include "qt-wrappers.hpp"
 #include "remote-text.hpp"
+#include <memory>
 
 using namespace std;
 

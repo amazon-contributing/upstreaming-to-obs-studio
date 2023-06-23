@@ -27,12 +27,12 @@
 #include <obs-module.h>
 #include <util/config-file.h>
 #include <obs-frontend-api.h>
-#include "remote-text.hpp"
+#include "copy-from-obs/remote-text.hpp"
 
 
 #define ConfigSection "simulcast"
 
-#include "goliveapi-request.h"
+#include "goliveapi-network.hpp"
 
 static obs_data_t *constructGoLivePost(/* config_t *config, uint32_t fpsNum,
 				       uint32_t fpsDen*/)

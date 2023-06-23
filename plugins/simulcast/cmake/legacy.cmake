@@ -12,7 +12,10 @@ add_library(OBS::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_sources(${PROJECT_NAME} PRIVATE)
 
 target_sources(${PROJECT_NAME} PRIVATE src/global-service.cpp src/simulcast-dock-widget.cpp src/simulcast-plugin.cpp
-                                       src/simulcast-output.cpp src/remote-text.cpp)
+                                       src/simulcast-output.cpp
+				       src/copy-from-obs/remote-text.cpp
+				       src/goliveapi-network.cpp
+				       src/goliveapi-postdata.cpp)
 
 configure_file(src/plugin-macros.h.in plugin-macros.generated.h)
 
