@@ -70,7 +70,8 @@ obs_data_t* MakeEvent_ivs_obs_stream_start(obs_data_t* postData, obs_data_t* goL
 
 SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 {
-	berryessa_ = new BerryessaSubmitter(this, "http://127.0.0.1:8787/");
+	//berryessa_ = new BerryessaSubmitter(this, "http://127.0.0.1:8787/");
+	berryessa_ = new BerryessaSubmitter(this, "https://data-staging.stats.live-video.net/");
 
 	// XXX: should be created once per device and persisted on disk
 	berryessa_->setAlwaysString("device_id",

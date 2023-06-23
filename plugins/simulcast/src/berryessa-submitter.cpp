@@ -45,6 +45,7 @@ obs_data_t* BerryessaSubmitter::syncSubmitAndReleaseItemsReturningError(
 	// Build up JSON, releasing supplied obs_data_t*'s as we go
 	QByteArray postJson;
 	for (obs_data_t *it : items) {
+		blog(LOG_INFO, "Berryessa: %s", obs_data_get_json(it));
 		postJson += postJson.isEmpty() ? "[" : ",";
 		postJson += obs_data_get_json(it);
 		obs_data_release(it);
@@ -84,7 +85,8 @@ obs_data_t* BerryessaSubmitter::syncSubmitAndReleaseItemsReturningError(
 		obs_data_set_int(error, "response_code", httpResponseCode);
 		blog(LOG_WARNING,
 		     "Could not submit %d bytes to metrics backend: %s",
-		     postEncoded.size(), obs_data_get_json(error));
+		     postEncoded.size(),
+		     obs_data_get_json(error));
 	}
 	return error;
 }
