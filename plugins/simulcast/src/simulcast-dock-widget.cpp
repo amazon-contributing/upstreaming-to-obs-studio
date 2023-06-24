@@ -149,27 +149,6 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 	LoadConfig();
 
 	
-#if 0
-	// frame stuff
-	// XXX where to put this?
-	QProcess* process = new QProcess(this);
-	bool alreadyErrored = false;
-	QObject::connect(process, &QProcess::readyReadStandardOutput,
-			 [process]() {
-				 char buf[1024];
-				if (!alreadyErrored) {
-					while (process.canReadLine()) {
-						 qint64 n = process->readLine(
-							 buf, sizeof(buf));
-						 // XXX emit error and stop reading if too long
-						 if (n >= sizeof(buf) - 1) {
-							//emit FramePipeline
-						 }
-					 }
-				 }
-			 });
-#endif
-
 	setLayout(dockLayout);
 
 	resize(200, 400);
@@ -190,7 +169,7 @@ void SimulcastDockWidget::LoadConfig()
 }
 
 /**
- * Replaces ',' separators in `csvRow` with '\0' string terminators,
+ * Mutates `csvRow`, replacing ',' separators with null terminators,
  * and appends a pointer to the beginning of every column to `columns`.
  */
 void SplitCsvRow(std::vector<const char*>& columns, char* csvRow) {
@@ -205,6 +184,7 @@ void SplitCsvRow(std::vector<const char*>& columns, char* csvRow) {
 		}
 	}
 }
+
 struct ParsedCsvRow {
 	const char *Application;
 	uint64_t ProcessID;
@@ -215,8 +195,27 @@ struct ParsedCsvRow {
 class CsvRowParser {
 public:
 	CsvRowParser();
+
+	/**
+	 * Call this first with the CSV's header row. On error this returns false,
+	 * and will change the result of lastError().
+	 * Behavior undefined if called twice.
+	 *
+	 * If a CSV file is missing a header row, or it is missing an expected column, this
+	 * will be detected as an error.
+	 */
 	bool headerRow(const std::vector<const char *> &columns);
+
+	/**
+	 * Call this with CSV data rows. On error this returns false, and
+	 * will change the result of lastError().
+	 * Behavior undefined if headerRow() was not called exactly once, or returned an error.
+	 *
+	 * If a valid CSV file is missing required columns in any row, or they fail to
+	 * parse as ints/floats, this will be detected as an error.
+	 */
 	bool dataRow(const std::vector<const char *> &columns, ParsedCsvRow* dest);
+
 	QString lastError() const;
 
 private:
@@ -231,7 +230,7 @@ private:
 
 	QString lastError_;
 
-	void emitError(QString s);
+	void setError(QString s);
 };
 
 CsvRowParser::CsvRowParser()
@@ -247,46 +246,44 @@ QString CsvRowParser::lastError() const
 	return lastError_;
 }
 
-void CsvRowParser::emitError(QString s)
+void CsvRowParser::setError(QString s)
 {
-	// XXX emit the error!
-	// XXX swallow all but the first error?
 	lastError_ = s;
-	blog(LOG_ERROR, "CsvRowParser::emitError: %s", s.toUtf8());
+	blog(LOG_ERROR, "CsvRowParser::setError: %s", s.toUtf8().constData());
 }
 
 bool CsvRowParser::headerRow(const std::vector<const char*>& columns) {
 	for (int i = 0; i < columns.size(); i++) {
 		if (0 == strcmp("Application", columns[i])) {
 			if (colApplication_ >= 0)
-				emitError("Duplicate column Application");
+				setError("Duplicate column Application");
 			colApplication_ = i;
 		}
 		if (0 == strcmp("ProcessID", columns[i])) {
 			if (colProcessID_ >= 0)
-				emitError("Duplicate column ProcessID");
+				setError("Duplicate column ProcessID");
 			colProcessID_ = i;
 		}
 		if (0 == strcmp("TimeInSeconds", columns[i])) {
 			if (colTimeInSeconds_ >= 0)
-				emitError("Duplicate column TimeInSeconds");
+				setError("Duplicate column TimeInSeconds");
 			colTimeInSeconds_ = i;
 		}
 		if (0 == strcmp("msBetweenPresents", columns[i])) {
 			if (colMsBetweenPresents_ >= 0)
-				emitError("Duplicate column msBetweenPresents");
+				setError("Duplicate column msBetweenPresents");
 			colMsBetweenPresents_ = i;
 		}
 	}
 
 	if (colApplication_ == -1)
-		emitError("Header missing column Application");
+		setError("Header missing column Application");
 	if (colProcessID_ == -1)
-		emitError("Header missing column ProcessID");
+		setError("Header missing column ProcessID");
 	if (colTimeInSeconds_ == -1)
-		emitError("Header missing column TimeInSeconds");
+		setError("Header missing column TimeInSeconds");
 	if (colMsBetweenPresents_ == -1)
-		emitError("Header missing column msBetweenPresents");
+		setError("Header missing column msBetweenPresents");
 
 	return lastError_.isEmpty();
 }
@@ -295,13 +292,13 @@ bool CsvRowParser::dataRow(const std::vector<const char *> &columns,
 			   ParsedCsvRow *dest)
 {
 	if (colApplication_ >= columns.size())
-		emitError("Data row missing column Application");
+		setError("Data row missing column Application");
 	if (colProcessID_ >= columns.size())
-		emitError("Data row missing column ProcessID");
+		setError("Data row missing column ProcessID");
 	if (colTimeInSeconds_ >= columns.size())
-		emitError("Data row missing column TimeInSeconds");
+		setError("Data row missing column TimeInSeconds");
 	if (colMsBetweenPresents_ >= columns.size())
-		emitError("Data row missing column msBetweenPresents");
+		setError("Data row missing column msBetweenPresents");
 
 	char *endptr;
 
@@ -309,29 +306,21 @@ bool CsvRowParser::dataRow(const std::vector<const char *> &columns,
 
 	dest->ProcessID = strtol(columns[colProcessID_], &endptr, 10);
 	if (*endptr != '\0')
-		emitError("Data row ProcessID not an int");
+		setError("Data row ProcessID not an int");
 
 	dest->TimeInSeconds = strtod(columns[colTimeInSeconds_], &endptr);
 	if (*endptr != '\0')
-		emitError("Data row TimeInSeconds not a float");
+		setError("Data row TimeInSeconds not a float");
 
 	dest->msBetweenPresents =
 		strtod(columns[colMsBetweenPresents_], &endptr);
 	if (*endptr != '\0')
-		emitError("Data row msBetweenPresents not a float");
+		setError("Data row msBetweenPresents not a float");
 
 	return lastError_.isEmpty();
 }
 
-void afTest() {
-	char *x = strdup("hello,world,123546,3234234234,e,f,g,h,99");
-	std::vector<const char *> v;
-	SplitCsvRow(v, x);
-	blog(LOG_INFO, "afTest starting");
-	for (auto column : v) {
-		blog(LOG_INFO, "afTest: %s", column);
-	}
-
+void afTestCsvParser() {
 	const char *csvLines[] = {
 		"Application,ProcessID,SwapChainAddress,Runtime,SyncInterval,PresentFlags,Dropped,TimeInSeconds,msInPresentAPI,msBetweenPresents,AllowsTearing,PresentMode,msUntilRenderComplete,msUntilDisplayed,msBetweenDisplayChange",
 		"MassEffect3.exe,18580,0x00000194515FA9C0,DXGI,1,0,0,32.34646610000000,2.79980000000000,33.59020000000000,0,Composed: Flip,68.39570000000001,117.88900000000000,16.61390000000000",
@@ -339,6 +328,7 @@ void afTest() {
 		"MassEffect3.exe,18580,0x00000194515FA9C0,DXGI,1,0,0,32.42390420000000,53.39470000000000,55.96930000000000,0,Composed: Flip,105.70290000000000,140.43780000000001,49.99870000000000",
 		nullptr};
 
+	std::vector<const char *> v;
 	ParsedCsvRow row;
 	CsvRowParser parser;
 	for (int i = 0; csvLines[i]; i++) {
@@ -349,11 +339,10 @@ void afTest() {
 
 		if (i == 0) {
 			bool ok = parser.headerRow(v);
-			blog(LOG_INFO,
-			     QString("afTest: csv line %1 ok = %2")
-				     .arg(i)
-				     .arg(ok)
-				     .toUtf8());
+			blog(LOG_INFO, QString("afTest: csv line %1 ok = %2")
+					       .arg(i)
+					       .arg(ok)
+					       .toUtf8());
 		} else {
 			bool ok = parser.dataRow(v, &row);
 			blog(LOG_INFO,
@@ -369,4 +358,128 @@ void afTest() {
 
 		free(s);
 	}
+}
+
+
+void afTest()
+{
+	afTestCsvParser();
+
+	// frame stuff
+	// XXX where to put this?
+	QProcess* process = new QProcess();
+
+	// Log a bunch of QProcess signals
+	QObject::connect(process, &QProcess::started, []() {
+		blog(LOG_INFO, "QProcess::started received");
+	});
+	QObject::connect(process, &QProcess::errorOccurred, [](QProcess::ProcessError error) {
+		blog(LOG_INFO, QString("QProcess::errorOccurred(error=%1) received").arg(error).toUtf8());
+	});
+	QObject::connect(
+		process, &QProcess::stateChanged,
+		[](QProcess::ProcessState newState) {
+			blog(LOG_INFO,
+			     QString("QProcess::stateChanged(newState=%1) received")
+				     .arg(newState)
+				     .toUtf8());
+	});
+	QObject::connect(
+		process, &QProcess::finished,
+		[](int exitCode, QProcess::ExitStatus exitStatus) {
+			blog(LOG_INFO,
+			     QString("QProcess::finished(exitCode=%1, exitStatus=%2) received")
+				     .arg(exitCode)
+				     .arg(exitStatus)
+				     .toUtf8());
+		});
+
+	QObject::connect(process, &QProcess::readyReadStandardError, [process]() {
+			QByteArray data;
+			while ((data = process->readAllStandardError()).size()) {
+				blog(LOG_INFO, "StdErr: %s", data.constData());
+			}
+		});
+
+	// Process the CSV as it appears on stdout
+	// This will be better as a class member than a closure, because we have
+	// state, and autoformat at 80 columns with size-8 tabs is really yucking
+	// things up!
+	struct state_t {
+		state_t() : alreadyErrored(false), lineNumber(0) {}
+
+		bool alreadyErrored;
+		uint64_t lineNumber;
+		std::vector<const char *> v;
+		ParsedCsvRow row;
+		CsvRowParser parser;
+	};
+	state_t *state = new state_t;
+	QObject::
+		connect(process, &QProcess::readyReadStandardOutput,
+			 [state, process]() {
+				char buf[1024];
+			if (state->alreadyErrored) {
+					qint64 n = process->readLine(
+						buf, sizeof(buf));
+					blog(LOG_INFO, "POST-ERROR line %d: %s",
+					     state->lineNumber, buf);
+				state->lineNumber++;
+				}
+				while (!state->alreadyErrored && process->canReadLine()) {
+					qint64 n = process->readLine(
+							buf, sizeof(buf));
+
+					if (n < 1 || n >= sizeof(buf) - 1) {
+						// XXX emit error
+						state->alreadyErrored = true;
+					} else {
+						if (buf[n - 1] == '\n') {
+							//blog(LOG_INFO,
+							//"REPLACING NEWLINE WITH NEW NULL");
+							buf[n - 1] = '\0';
+						}
+
+						if (state->lineNumber < 10) {
+							blog(LOG_INFO,
+							     "Got line %d: %s",
+							     state->lineNumber,
+							     buf);
+						}
+
+						state->v.clear();
+						SplitCsvRow(state->v, buf);
+
+						if (state->lineNumber == 0) {
+							state->alreadyErrored =
+								!state->parser.headerRow(
+									state->v);
+						} else {
+							state->alreadyErrored =
+								!state->parser.dataRow(
+									state->v, &state->row);
+
+							if (!state->alreadyErrored &&
+							    state->lineNumber < 10) {
+							blog(LOG_INFO,
+							     QString("afTest: csv line %1 Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
+								     .arg(state->lineNumber)
+								     .arg(state->row.Application)
+								     .arg(state->row.ProcessID)
+								     .arg(state->row.TimeInSeconds)
+								     .arg(state->row.msBetweenPresents)
+								     .toUtf8());
+							}
+						}
+						state->lineNumber++;
+					}
+				}
+			 });
+
+
+	// Start the process
+	QStringList args({"-output_stdout", "-stop_existing_session"});
+	process->start(
+		"c:\\obsdev\\PresentMon\\build\\Release\\PresentMon-dev-x64.exe",
+		args, QIODeviceBase::ReadWrite);
 }
