@@ -38,7 +38,7 @@ private:
 
 	/**
 	 * Attempts to submit the passed items to Berryessa in a single HTTP request.
-	 * May retry once or more.
+	 * May retry once or more. (XXX: does not currently retry)
 	 * Calls obs_data_release() on passed items before returning.
 	 *
 	 * On success: returns NULL.
