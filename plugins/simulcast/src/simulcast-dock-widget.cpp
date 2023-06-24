@@ -23,12 +23,14 @@
 #include <QGroupBox>
 #include <QAction>
 #include <QUuid>
+#include <qprocess.h>
 
 #include <obs.hpp>
 #include <obs-module.h>
 #include <util/config-file.h>
 #include <obs-frontend-api.h>
 
+void afTest();
 
 #define ConfigSection "simulcast"
 
@@ -134,6 +136,8 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 					this->berryessa_->submit(
 						"ivs_obs_stream_start", event);
 
+					afTest(); // XXX
+
 					streamingButton->setText(
 						obs_module_text(
 							"Btn.StopStreaming"));
@@ -143,6 +147,28 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 
 	// load config
 	LoadConfig();
+
+	
+#if 0
+	// frame stuff
+	// XXX where to put this?
+	QProcess* process = new QProcess(this);
+	bool alreadyErrored = false;
+	QObject::connect(process, &QProcess::readyReadStandardOutput,
+			 [process]() {
+				 char buf[1024];
+				if (!alreadyErrored) {
+					while (process.canReadLine()) {
+						 qint64 n = process->readLine(
+							 buf, sizeof(buf));
+						 // XXX emit error and stop reading if too long
+						 if (n >= sizeof(buf) - 1) {
+							//emit FramePipeline
+						 }
+					 }
+				 }
+			 });
+#endif
 
 	setLayout(dockLayout);
 
@@ -161,4 +187,186 @@ void SimulcastDockWidget::LoadConfig()
 	localConfig_.goLiveApiUrl =
 		"https://ingest.twitch.tv/api/v3/GetClientConfiguration";
 	localConfig_.streamKey = "";
+}
+
+/**
+ * Replaces ',' separators in `csvRow` with '\0' string terminators,
+ * and appends a pointer to the beginning of every column to `columns`.
+ */
+void SplitCsvRow(std::vector<const char*>& columns, char* csvRow) {
+	while (*csvRow != '\0') {
+		columns.push_back(csvRow);
+		do {
+			csvRow++;
+		} while (*csvRow != '\0' && *csvRow != ',');
+		if (*csvRow != '\0') {
+			*csvRow = '\0';
+			csvRow++;
+		}
+	}
+}
+struct ParsedCsvRow {
+	const char *Application;
+	uint64_t ProcessID;
+	float TimeInSeconds;
+	float msBetweenPresents;
+};
+
+class CsvRowParser {
+public:
+	CsvRowParser();
+	bool headerRow(const std::vector<const char *> &columns);
+	bool dataRow(const std::vector<const char *> &columns, ParsedCsvRow* dest);
+	QString lastError() const;
+
+private:
+	// Lots of repetition in the code; given a couple more columns
+	// it will be worth using a slightly more complicated generic data structure
+	// we can loop over. Something like
+	//   struct ColumnFloatTarget { const char* name; int index; float ParsedCsvRow::*destMemberPtr; }
+	//   floatTargets.push_back(ColumnFloatTarget("timeInSeconds", n, &ParsedCsvRow::timeInSeconds));
+	//   floatTargets.push_back(ColumnFloatTarget("msBetweenPresents", n, &ParsedCsvRow::msBetweenPresents));
+	int colApplication_, colProcessID_, colTimeInSeconds_,
+		colMsBetweenPresents_;
+
+	QString lastError_;
+
+	void emitError(QString s);
+};
+
+CsvRowParser::CsvRowParser()
+	: colApplication_(-1),
+	  colProcessID_(-1),
+	  colTimeInSeconds_(-1),
+	  colMsBetweenPresents_(-1)
+{
+}
+
+QString CsvRowParser::lastError() const
+{
+	return lastError_;
+}
+
+void CsvRowParser::emitError(QString s)
+{
+	// XXX emit the error!
+	// XXX swallow all but the first error?
+	lastError_ = s;
+	blog(LOG_ERROR, "CsvRowParser::emitError: %s", s.toUtf8());
+}
+
+bool CsvRowParser::headerRow(const std::vector<const char*>& columns) {
+	for (int i = 0; i < columns.size(); i++) {
+		if (0 == strcmp("Application", columns[i])) {
+			if (colApplication_ >= 0)
+				emitError("Duplicate column Application");
+			colApplication_ = i;
+		}
+		if (0 == strcmp("ProcessID", columns[i])) {
+			if (colProcessID_ >= 0)
+				emitError("Duplicate column ProcessID");
+			colProcessID_ = i;
+		}
+		if (0 == strcmp("TimeInSeconds", columns[i])) {
+			if (colTimeInSeconds_ >= 0)
+				emitError("Duplicate column TimeInSeconds");
+			colTimeInSeconds_ = i;
+		}
+		if (0 == strcmp("msBetweenPresents", columns[i])) {
+			if (colMsBetweenPresents_ >= 0)
+				emitError("Duplicate column msBetweenPresents");
+			colMsBetweenPresents_ = i;
+		}
+	}
+
+	if (colApplication_ == -1)
+		emitError("Header missing column Application");
+	if (colProcessID_ == -1)
+		emitError("Header missing column ProcessID");
+	if (colTimeInSeconds_ == -1)
+		emitError("Header missing column TimeInSeconds");
+	if (colMsBetweenPresents_ == -1)
+		emitError("Header missing column msBetweenPresents");
+
+	return lastError_.isEmpty();
+}
+
+bool CsvRowParser::dataRow(const std::vector<const char *> &columns,
+			   ParsedCsvRow *dest)
+{
+	if (colApplication_ >= columns.size())
+		emitError("Data row missing column Application");
+	if (colProcessID_ >= columns.size())
+		emitError("Data row missing column ProcessID");
+	if (colTimeInSeconds_ >= columns.size())
+		emitError("Data row missing column TimeInSeconds");
+	if (colMsBetweenPresents_ >= columns.size())
+		emitError("Data row missing column msBetweenPresents");
+
+	char *endptr;
+
+	dest->Application = columns[colApplication_];
+
+	dest->ProcessID = strtol(columns[colProcessID_], &endptr, 10);
+	if (*endptr != '\0')
+		emitError("Data row ProcessID not an int");
+
+	dest->TimeInSeconds = strtod(columns[colTimeInSeconds_], &endptr);
+	if (*endptr != '\0')
+		emitError("Data row TimeInSeconds not a float");
+
+	dest->msBetweenPresents =
+		strtod(columns[colMsBetweenPresents_], &endptr);
+	if (*endptr != '\0')
+		emitError("Data row msBetweenPresents not a float");
+
+	return lastError_.isEmpty();
+}
+
+void afTest() {
+	char *x = strdup("hello,world,123546,3234234234,e,f,g,h,99");
+	std::vector<const char *> v;
+	SplitCsvRow(v, x);
+	blog(LOG_INFO, "afTest starting");
+	for (auto column : v) {
+		blog(LOG_INFO, "afTest: %s", column);
+	}
+
+	const char *csvLines[] = {
+		"Application,ProcessID,SwapChainAddress,Runtime,SyncInterval,PresentFlags,Dropped,TimeInSeconds,msInPresentAPI,msBetweenPresents,AllowsTearing,PresentMode,msUntilRenderComplete,msUntilDisplayed,msBetweenDisplayChange",
+		"MassEffect3.exe,18580,0x00000194515FA9C0,DXGI,1,0,0,32.34646610000000,2.79980000000000,33.59020000000000,0,Composed: Flip,68.39570000000001,117.88900000000000,16.61390000000000",
+		"MassEffect3.exe,18580,0x00000194515FA9C0,DXGI,1,0,0,32.36793490000000,47.12030000000000,21.46880000000000,0,Composed: Flip,109.20750000000000,146.40840000000000,49.98820000000001",
+		"MassEffect3.exe,18580,0x00000194515FA9C0,DXGI,1,0,0,32.42390420000000,53.39470000000000,55.96930000000000,0,Composed: Flip,105.70290000000000,140.43780000000001,49.99870000000000",
+		nullptr};
+
+	ParsedCsvRow row;
+	CsvRowParser parser;
+	for (int i = 0; csvLines[i]; i++) {
+		char *s = strdup(csvLines[i]);
+
+		v.clear();
+		SplitCsvRow(v, s);
+
+		if (i == 0) {
+			bool ok = parser.headerRow(v);
+			blog(LOG_INFO,
+			     QString("afTest: csv line %1 ok = %2")
+				     .arg(i)
+				     .arg(ok)
+				     .toUtf8());
+		} else {
+			bool ok = parser.dataRow(v, &row);
+			blog(LOG_INFO,
+			     QString("afTest: csv line %1 ok = %2, Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
+				     .arg(i)
+				     .arg(ok)
+				     .arg(row.Application)
+				     .arg(row.ProcessID)
+				     .arg(row.TimeInSeconds)
+				     .arg(row.msBetweenPresents)
+				     .toUtf8());
+		}
+
+		free(s);
+	}
 }
