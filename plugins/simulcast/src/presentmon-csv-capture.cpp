@@ -23,6 +23,10 @@ public:
 	std::vector<ParsedCsvRow> rows_;
 
 	void frame(const ParsedCsvRow& row) {
+		// XXX big hack
+		if (0 != strcmp(row.Application, "chrome.exe"))
+			return;
+
 		mutex.lock();
 
 		// don't do this every time, it'll be slow
@@ -35,12 +39,28 @@ public:
 	}
 
 	void summarizeAndReset(obs_data_t* dest) {
+		double fps = -1;
+
 		mutex.lock();
-		trimRows();
+		if (rows_.size() >= 2) {
+			trimRows();
+			const size_t n = rows_.size();
 
-		double fps = 10.0; // XXX actually calculate
+			double totalBetweenPresents = 0.0;
+			for (const auto &p : rows_)
+				totalBetweenPresents += p.msBetweenPresents;
+			totalBetweenPresents /= 1000.0;
 
-		if (rows_.size() > 0) {
+			blog(LOG_INFO,
+			     "frame timing, accumulated msBetweenPresents: %f",
+			     totalBetweenPresents);
+			blog(LOG_INFO,
+			     "frame timing, time from first to last: %f",
+			     rows_[n - 1].TimeInSeconds -
+				     rows_[0].TimeInSeconds);
+
+			fps = (rows_[n - 1].TimeInSeconds - rows_[0].TimeInSeconds) / (n - 1);
+
 			// delete all but the most recently received data point
 			// XXX is this just a very convoluated rows_.erase(rows_.begin(), rows_.end()-1) ?
 			*rows_.begin() = *rows_.rbegin();
@@ -48,7 +68,8 @@ public:
 		}
 		mutex.unlock();
 
-		obs_data_set_double(dest, "fps", fps);
+		if(fps >= 0.0)
+			obs_data_set_double(dest, "fps", fps);
 	}
 
 private:
@@ -60,6 +81,7 @@ private:
 				    rows_.begin() + (rows_.size() - DISCARD_SAMPLES_BEYOND));
 		}
 	}
+
 };
 
 
