@@ -17,6 +17,7 @@ target_sources(${PROJECT_NAME} PRIVATE src/global-service.cpp src/simulcast-dock
 				       src/berryessa-submitter.cpp
 				       src/goliveapi-network.cpp
 				       src/goliveapi-postdata.cpp
+				       src/presentmon-csv-capture.cpp
 				       src/presentmon-csv-parser.cpp)
 
 configure_file(src/plugin-macros.h.in plugin-macros.generated.h)

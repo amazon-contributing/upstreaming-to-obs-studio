@@ -23,7 +23,6 @@
 #include <QGroupBox>
 #include <QAction>
 #include <QUuid>
-#include <qprocess.h>
 
 #include <obs.hpp>
 #include <obs-module.h>
@@ -32,14 +31,12 @@
 
 
 
-void afTest();
-
 #define ConfigSection "simulcast"
 
 #include "berryessa-submitter.hpp"
 #include "goliveapi-network.hpp"
 #include "goliveapi-postdata.hpp"
-#include "presentmon-csv-parser.hpp"
+#include "presentmon-csv-capture.hpp"
 
 obs_data_t* MakeEvent_ivs_obs_stream_start(obs_data_t* postData, obs_data_t* goLiveConfig)
 {
@@ -139,7 +136,7 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 					this->berryessa_->submit(
 						"ivs_obs_stream_start", event);
 
-					afTest(); // XXX
+					StartPresentMon();
 
 					streamingButton->setText(
 						obs_module_text(
@@ -172,125 +169,3 @@ void SimulcastDockWidget::LoadConfig()
 }
 
 
-void afTest()
-{
-	testCsvParser();
-
-	// frame stuff
-	// XXX where to put this?
-	QProcess* process = new QProcess();
-
-	// Log a bunch of QProcess signals
-	QObject::connect(process, &QProcess::started, []() {
-		blog(LOG_INFO, "QProcess::started received");
-	});
-	QObject::connect(process, &QProcess::errorOccurred, [](QProcess::ProcessError error) {
-		blog(LOG_INFO, QString("QProcess::errorOccurred(error=%1) received").arg(error).toUtf8());
-	});
-	QObject::connect(
-		process, &QProcess::stateChanged,
-		[](QProcess::ProcessState newState) {
-			blog(LOG_INFO,
-			     QString("QProcess::stateChanged(newState=%1) received")
-				     .arg(newState)
-				     .toUtf8());
-	});
-	QObject::connect(
-		process, &QProcess::finished,
-		[](int exitCode, QProcess::ExitStatus exitStatus) {
-			blog(LOG_INFO,
-			     QString("QProcess::finished(exitCode=%1, exitStatus=%2) received")
-				     .arg(exitCode)
-				     .arg(exitStatus)
-				     .toUtf8());
-		});
-
-	QObject::connect(process, &QProcess::readyReadStandardError, [process]() {
-			QByteArray data;
-			while ((data = process->readAllStandardError()).size()) {
-				blog(LOG_INFO, "StdErr: %s", data.constData());
-			}
-		});
-
-	// Process the CSV as it appears on stdout
-	// This will be better as a class member than a closure, because we have
-	// state, and autoformat at 80 columns with size-8 tabs is really yucking
-	// things up!
-	struct state_t {
-		state_t() : alreadyErrored(false), lineNumber(0) {}
-
-		bool alreadyErrored;
-		uint64_t lineNumber;
-		std::vector<const char *> v;
-		ParsedCsvRow row;
-		CsvRowParser parser;
-	};
-	state_t *state = new state_t;
-	QObject::
-		connect(process, &QProcess::readyReadStandardOutput,
-			 [state, process]() {
-				char buf[1024];
-			if (state->alreadyErrored) {
-					qint64 n = process->readLine(
-						buf, sizeof(buf));
-					blog(LOG_INFO, "POST-ERROR line %d: %s",
-					     state->lineNumber, buf);
-				state->lineNumber++;
-				}
-				while (!state->alreadyErrored && process->canReadLine()) {
-					qint64 n = process->readLine(
-							buf, sizeof(buf));
-
-					if (n < 1 || n >= sizeof(buf) - 1) {
-						// XXX emit error
-						state->alreadyErrored = true;
-					} else {
-						if (buf[n - 1] == '\n') {
-							//blog(LOG_INFO,
-							//"REPLACING NEWLINE WITH NEW NULL");
-							buf[n - 1] = '\0';
-						}
-
-						if (state->lineNumber < 10) {
-							blog(LOG_INFO,
-							     "Got line %d: %s",
-							     state->lineNumber,
-							     buf);
-						}
-
-						state->v.clear();
-						SplitCsvRow(state->v, buf);
-
-						if (state->lineNumber == 0) {
-							state->alreadyErrored =
-								!state->parser.headerRow(
-									state->v);
-						} else {
-							state->alreadyErrored =
-								!state->parser.dataRow(
-									state->v, &state->row);
-
-							if (!state->alreadyErrored &&
-							    state->lineNumber < 10) {
-							blog(LOG_INFO,
-							     QString("afTest: csv line %1 Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
-								     .arg(state->lineNumber)
-								     .arg(state->row.Application)
-								     .arg(state->row.ProcessID)
-								     .arg(state->row.TimeInSeconds)
-								     .arg(state->row.msBetweenPresents)
-								     .toUtf8());
-							}
-						}
-						state->lineNumber++;
-					}
-				}
-			 });
-
-
-	// Start the process
-	QStringList args({"-output_stdout", "-stop_existing_session"});
-	process->start(
-		"c:\\obsdev\\PresentMon\\build\\Release\\PresentMon-dev-x64.exe",
-		args, QIODeviceBase::ReadWrite);
-}
