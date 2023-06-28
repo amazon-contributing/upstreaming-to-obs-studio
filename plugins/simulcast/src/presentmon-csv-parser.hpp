@@ -10,7 +10,7 @@
 void SplitCsvRow(std::vector<const char *> &columns, char *csvRow);
 
 struct ParsedCsvRow {
-	const char *Application;
+	char Application[56];
 	uint64_t ProcessID;
 	float TimeInSeconds;
 	float msBetweenPresents;

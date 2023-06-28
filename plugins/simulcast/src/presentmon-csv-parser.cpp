@@ -86,7 +86,10 @@ bool CsvRowParser::dataRow(const std::vector<const char *> &columns,
 
 	char *endptr;
 
-	dest->Application = columns[colApplication_];
+	// We truncate application name if necessary for it to fit
+	strncpy(dest->Application, columns[colApplication_],
+	       sizeof(dest->Application) - 1);
+	dest->Application[sizeof(dest->Application) - 1] = '\0';
 
 	dest->ProcessID = strtol(columns[colProcessID_], &endptr, 10);
 	if (*endptr != '\0')

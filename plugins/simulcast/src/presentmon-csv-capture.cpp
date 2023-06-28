@@ -1,24 +1,22 @@
 #include "presentmon-csv-capture.hpp"
-#include "presentmon-csv-parser.hpp"
 
 #include <obs.hpp>   // logging
 
 #include <QProcess>
 
-void StartPresentMon()
+PresentMonCapture::PresentMonCapture(QObject* parent) : QObject(parent)
 {
 	testCsvParser();
 
-	// frame stuff
-	// XXX where to put this?
-	QProcess *process = new QProcess();
+	process_ = new QProcess(this);
+	state_ = new state_t;
 
 	// Log a bunch of QProcess signals
-	QObject::connect(process, &QProcess::started, []() {
+	QObject::connect(process_, &QProcess::started, []() {
 		blog(LOG_INFO, "QProcess::started received");
 	});
 	QObject::connect(
-		process, &QProcess::errorOccurred,
+		process_, &QProcess::errorOccurred,
 		[](QProcess::ProcessError error) {
 			blog(LOG_INFO,
 			     QString("QProcess::errorOccurred(error=%1) received")
@@ -26,7 +24,7 @@ void StartPresentMon()
 				     .toUtf8());
 		});
 	QObject::connect(
-		process, &QProcess::stateChanged,
+		process_, &QProcess::stateChanged,
 		[](QProcess::ProcessState newState) {
 			blog(LOG_INFO,
 			     QString("QProcess::stateChanged(newState=%1) received")
@@ -34,7 +32,7 @@ void StartPresentMon()
 				     .toUtf8());
 		});
 	QObject::connect(
-		process, &QProcess::finished,
+		process_, &QProcess::finished,
 		[](int exitCode, QProcess::ExitStatus exitStatus) {
 			blog(LOG_INFO,
 			     QString("QProcess::finished(exitCode=%1, exitStatus=%2) received")
@@ -44,9 +42,9 @@ void StartPresentMon()
 		});
 
 	QObject::connect(
-		process, &QProcess::readyReadStandardError, [process]() {
+		process_, &QProcess::readyReadStandardError, [this]() {
 			QByteArray data;
-			while ((data = process->readAllStandardError()).size()) {
+			while ((data = this->process_->readAllStandardError()).size()) {
 				blog(LOG_INFO, "StdErr: %s", data.constData());
 			}
 		});
@@ -55,79 +53,75 @@ void StartPresentMon()
 	// This will be better as a class member than a closure, because we have
 	// state, and autoformat at 80 columns with size-8 tabs is really yucking
 	// things up!
-	struct state_t {
-		state_t() : alreadyErrored_(false), lineNumber_(0) {}
 
-		bool alreadyErrored_;
-		uint64_t lineNumber_;
-		std::vector<const char *> v_;
-		ParsedCsvRow row_;
-		CsvRowParser parser_;
-	};
-	state_t *state = new state_t;
-	QObject::connect(process, &QProcess::readyReadStandardOutput, [state, process]() {
-		char buf[1024];
-		if (state->alreadyErrored_) {
-			qint64 n = process->readLine(buf, sizeof(buf));
-			blog(LOG_INFO, "POST-ERROR line %d: %s",
-			     state->lineNumber_, buf);
-			state->lineNumber_++;
-		}
-		while (!state->alreadyErrored_ && process->canReadLine()) {
-			qint64 n = process->readLine(buf, sizeof(buf));
-
-			if (n < 1 || n >= sizeof(buf) - 1) {
-				// XXX emit error
-				state->alreadyErrored_ = true;
-			} else {
-				if (buf[n - 1] == '\n') {
-					//blog(LOG_INFO,
-					//"REPLACING NEWLINE WITH NEW NULL");
-					buf[n - 1] = '\0';
-				}
-
-				if (state->lineNumber_ < 10) {
-					blog(LOG_INFO, "Got line %d: %s",
-					     state->lineNumber_, buf);
-				}
-
-				state->v_.clear();
-				SplitCsvRow(state->v_, buf);
-
-				if (state->lineNumber_ == 0) {
-					state->alreadyErrored_ =
-						!state->parser_.headerRow(
-							state->v_);
-				} else {
-					state->alreadyErrored_ =
-						!state->parser_.dataRow(
-							state->v_,
-							&state->row_);
-
-					if (!state->alreadyErrored_ &&
-					    state->lineNumber_ < 10) {
-						blog(LOG_INFO,
-						     QString("afTest: csv line %1 Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
-							     .arg(state->lineNumber_)
-							     .arg(state->row_
-									  .Application)
-							     .arg(state->row_
-									  .ProcessID)
-							     .arg(state->row_
-									  .TimeInSeconds)
-							     .arg(state->row_
-									  .msBetweenPresents)
-							     .toUtf8());
-					}
-				}
-				state->lineNumber_++;
-			}
-		}
-	});
+	QObject::connect(process_, &QProcess::readyReadStandardOutput, this,
+			 &PresentMonCapture::readProcessOutput_);
 
 	// Start the process
 	QStringList args({"-output_stdout", "-stop_existing_session"});
-	process->start(
+	process_->start(
 		"c:\\obsdev\\PresentMon\\build\\Release\\PresentMon-dev-x64.exe",
 		args, QIODeviceBase::ReadWrite);
+}
+
+PresentMonCapture::~PresentMonCapture()
+{}
+
+void PresentMonCapture::readProcessOutput_()
+{
+	char buf[1024];
+	if (state_->alreadyErrored_) {
+		qint64 n = process_->readLine(buf, sizeof(buf));
+		blog(LOG_INFO, "POST-ERROR line %d: %s", state_->lineNumber_,
+		     buf);
+		state_->lineNumber_++;
+	}
+
+	while (!state_->alreadyErrored_ && process_->canReadLine()) {
+		qint64 n = process_->readLine(buf, sizeof(buf));
+
+		if (n < 1 || n >= sizeof(buf) - 1) {
+			// XXX emit error
+			state_->alreadyErrored_ = true;
+		} else {
+			if (buf[n - 1] == '\n') {
+				//blog(LOG_INFO,
+				//"REPLACING NEWLINE WITH NEW NULL");
+				buf[n - 1] = '\0';
+			}
+
+			if (state_->lineNumber_ < 10) {
+				blog(LOG_INFO, "Got line %d: %s",
+				     state_->lineNumber_, buf);
+			}
+
+			state_->v_.clear();
+			SplitCsvRow(state_->v_, buf);
+
+			if (state_->lineNumber_ == 0) {
+				state_->alreadyErrored_ =
+					!state_->parser_.headerRow(state_->v_);
+			} else {
+				state_->alreadyErrored_ =
+					!state_->parser_.dataRow(state_->v_,
+								 &state_->row_);
+
+				if (!state_->alreadyErrored_ &&
+				    state_->lineNumber_ < 10) {
+					blog(LOG_INFO,
+					     QString("afTest: csv line %1 Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
+					     .arg(state_->lineNumber_)
+					     .arg(state_->row_
+							  .Application)
+					     .arg(state_->row_.ProcessID)
+					     .arg(state_->row_
+							  .TimeInSeconds)
+					     .arg(state_->row_
+							  .msBetweenPresents)
+					     .toUtf8());
+				}
+			}
+			state_->lineNumber_++;
+		}
+	}
 }

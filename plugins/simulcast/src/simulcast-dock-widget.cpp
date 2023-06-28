@@ -136,7 +136,7 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 					this->berryessa_->submit(
 						"ivs_obs_stream_start", event);
 
-					StartPresentMon();
+					new PresentMonCapture(this);
 
 					streamingButton->setText(
 						obs_module_text(
