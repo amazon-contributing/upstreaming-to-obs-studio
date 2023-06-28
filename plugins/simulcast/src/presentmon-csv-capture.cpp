@@ -1,15 +1,75 @@
 #include "presentmon-csv-capture.hpp"
 
-#include <obs.hpp>   // logging
-
 #include <QProcess>
+#include <QMutex>
+
+#define DISCARD_SAMPLES_BEYOND \
+	144 * 60 * 2 // 144fps, one minute, times two for safety
+
+class PresentMonCapture_state {
+public:
+	PresentMonCapture_state() : alreadyErrored_(false), lineNumber_(0) {}
+
+	bool alreadyErrored_;
+	uint64_t lineNumber_;
+	std::vector<const char *> v_;
+	ParsedCsvRow row_;
+	CsvRowParser parser_;
+};
+
+class PresentMonCapture_accumulator {
+public:
+	QMutex mutex; // XXX I have not thought out the concurrency here
+	std::vector<ParsedCsvRow> rows_;
+
+	void frame(const ParsedCsvRow& row) {
+		mutex.lock();
+
+		// don't do this every time, it'll be slow
+		// this is just a safety check so we don't allocate memory forever
+		if (rows_.size() > 3 * DISCARD_SAMPLES_BEYOND)
+			trimRows();
+
+		rows_.push_back(row);
+		mutex.unlock();
+	}
+
+	void summarizeAndReset(obs_data_t* dest) {
+		mutex.lock();
+		trimRows();
+
+		double fps = 10.0; // XXX actually calculate
+
+		if (rows_.size() > 0) {
+			// delete all but the most recently received data point
+			// XXX is this just a very convoluated rows_.erase(rows_.begin(), rows_.end()-1) ?
+			*rows_.begin() = *rows_.rbegin();
+			rows_.erase(rows_.begin() + 1, rows_.end());
+		}
+		mutex.unlock();
+
+		obs_data_set_double(dest, "fps", fps);
+	}
+
+private:
+	// You need to hold the mutex before calling this
+	void trimRows()
+	{
+		if (rows_.size() > DISCARD_SAMPLES_BEYOND) {
+			rows_.erase(rows_.begin(),
+				    rows_.begin() + (rows_.size() - DISCARD_SAMPLES_BEYOND));
+		}
+	}
+};
+
 
 PresentMonCapture::PresentMonCapture(QObject* parent) : QObject(parent)
 {
 	testCsvParser();
 
 	process_ = new QProcess(this);
-	state_ = new state_t;
+	state_ = new PresentMonCapture_state;
+	accumulator_ = new PresentMonCapture_accumulator;
 
 	// Log a bunch of QProcess signals
 	QObject::connect(process_, &QProcess::started, []() {
@@ -65,7 +125,14 @@ PresentMonCapture::PresentMonCapture(QObject* parent) : QObject(parent)
 }
 
 PresentMonCapture::~PresentMonCapture()
-{}
+{
+	delete accumulator_;
+	delete state_;
+}
+
+void PresentMonCapture::summarizeAndReset(obs_data_t* dest) {
+	accumulator_->summarizeAndReset(dest);
+}
 
 void PresentMonCapture::readProcessOutput_()
 {
@@ -108,6 +175,7 @@ void PresentMonCapture::readProcessOutput_()
 
 				if (!state_->alreadyErrored_ &&
 				    state_->lineNumber_ < 10) {
+					accumulator_->frame(state_->row_);
 					blog(LOG_INFO,
 					     QString("afTest: csv line %1 Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
 					     .arg(state_->lineNumber_)
