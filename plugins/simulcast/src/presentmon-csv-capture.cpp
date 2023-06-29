@@ -91,7 +91,7 @@ public:
 
 		if(fps >= 0.0)
 			obs_data_set_double(dest, "fps", fps);
-		if (game)
+		if (*game)
 			obs_data_set_string(dest, "game", game);
 	}
 
