@@ -11,21 +11,34 @@ add_library(OBS::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 
 target_sources(${PROJECT_NAME} PRIVATE)
 
-target_sources(${PROJECT_NAME} PRIVATE src/global-service.cpp src/simulcast-dock-widget.cpp src/simulcast-plugin.cpp
-                                       src/simulcast-output.cpp
-				       src/copy-from-obs/remote-text.cpp
-				       src/berryessa-submitter.cpp
-				       src/berryessa-every-minute.cpp
-				       src/goliveapi-network.cpp
-				       src/goliveapi-postdata.cpp
-				       src/presentmon-csv-capture.cpp
-				       src/presentmon-csv-parser.cpp)
+target_sources(
+  ${PROJECT_NAME}
+  PRIVATE # cmake-format: sortable
+          src/berryessa-every-minute.cpp
+          src/berryessa-submitter.cpp
+          src/copy-from-obs/remote-text.cpp
+          src/global-service.cpp
+          src/goliveapi-network.cpp
+          src/goliveapi-postdata.cpp
+          src/presentmon-csv-capture.cpp
+          src/presentmon-csv-parser.cpp
+          src/simulcast-dock-widget.cpp
+          src/simulcast-output.cpp
+          src/simulcast-plugin.cpp)
 
 configure_file(src/plugin-macros.h.in plugin-macros.generated.h)
 
 target_sources(${PROJECT_NAME} PRIVATE plugin-macros.generated.h)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE OBS::libobs OBS::frontend-api Qt::Core Qt::Widgets Qt::Svg Qt::Network CURL::libcurl)
+target_link_libraries(
+  ${PROJECT_NAME}
+  PRIVATE OBS::libobs
+          OBS::frontend-api
+          Qt::Core
+          Qt::Widgets
+          Qt::Svg
+          Qt::Network
+          CURL::libcurl)
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
