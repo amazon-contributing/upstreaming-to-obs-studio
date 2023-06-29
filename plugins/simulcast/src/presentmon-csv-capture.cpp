@@ -38,6 +38,10 @@ public:
 
 		mutex.lock();
 
+		// reset everything if we started capturing a different game
+		if (rows_.size() && 0 != strcmp(row.Application, rows_[0].Application))
+			rows_.clear();
+
 		// don't do this every time, it'll be slow
 		// this is just a safety check so we don't allocate memory forever
 		if (rows_.size() > 3 * DISCARD_SAMPLES_BEYOND)
@@ -49,14 +53,17 @@ public:
 
 	void summarizeAndReset(obs_data_t* dest) {
 		double fps = -1;
+		char game[PRESENTMON_APPNAME_LEN] = {0};
 
 		mutex.lock();
+#if 1
 		blog(LOG_INFO,
 		     "PresentMonCapture_accumulator::summarizeAndReset has %d samples", rows_.size());
+#endif
 		if (rows_.size() >= 2 && rows_.rbegin()->TimeInSeconds > rows_[0].TimeInSeconds) {
 			trimRows();
 			const size_t n = rows_.size();
-
+#if 1
 			double allButFirstBetweenPresents = -rows_[0].msBetweenPresents;
 			for (const auto &p : rows_)
 				allButFirstBetweenPresents +=
@@ -70,7 +77,7 @@ public:
 			     "frame timing, time from first to last: %f",
 			     rows_[n - 1].TimeInSeconds -
 				     rows_[0].TimeInSeconds);
-
+#endif
 			fps = (n - 1) / (rows_[n - 1].TimeInSeconds -
 					 rows_[0].TimeInSeconds);
 
@@ -78,11 +85,14 @@ public:
 			// XXX is this just a very convoluated rows_.erase(rows_.begin(), rows_.end()-1) ?
 			*rows_.begin() = *rows_.rbegin();
 			rows_.erase(rows_.begin() + 1, rows_.end());
+			strncpy(game, rows_[0].Application, PRESENTMON_APPNAME_LEN-1);
 		}
 		mutex.unlock();
 
 		if(fps >= 0.0)
 			obs_data_set_double(dest, "fps", fps);
+		if (game)
+			obs_data_set_string(dest, "game", game);
 	}
 
 private:
@@ -172,12 +182,14 @@ void PresentMonCapture::readProcessOutput_()
 {
 	char buf[1024];
 	char bufCsvCopy[1024];
+#if 0
 	if (state_->alreadyErrored_) {
 		qint64 n = process_->readLine(buf, sizeof(buf));
 		blog(LOG_INFO, "POST-ERROR line %d: %s", state_->lineNumber_,
 		     buf);
 		state_->lineNumber_++;
 	}
+#endif
 
 	while (!state_->alreadyErrored_ && process_->canReadLine()) {
 		qint64 n = process_->readLine(buf, sizeof(buf));

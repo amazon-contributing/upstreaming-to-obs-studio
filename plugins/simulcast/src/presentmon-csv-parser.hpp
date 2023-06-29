@@ -9,8 +9,10 @@
  */
 void SplitCsvRow(std::vector<const char *> &columns, char *csvRow);
 
+#define PRESENTMON_APPNAME_LEN 56
+
 struct ParsedCsvRow {
-	char Application[56];
+	char Application[PRESENTMON_APPNAME_LEN];
 	uint64_t ProcessID;
 	float TimeInSeconds;
 	float msBetweenPresents;

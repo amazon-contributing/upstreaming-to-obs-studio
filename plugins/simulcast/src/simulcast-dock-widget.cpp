@@ -82,6 +82,7 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 	berryessa_->setAlwaysString("obs_session_id",
 				    QUuid::createUuid().toString(QUuid::WithoutBraces));
 
+	
 	QGridLayout *dockLayout = new QGridLayout(this);
 	dockLayout->setAlignment(Qt::AlignmentFlag::AlignTop);
 
@@ -136,6 +137,15 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 							->setAlwaysString(
 								"config_id", configId);
 					}
+
+
+					QString t = QDateTime::currentDateTimeUtc().toString(
+						Qt::ISODate);
+					this->berryessa_->setAlwaysString(
+						"start_broadcast_time",
+						t.toUtf8().constData());
+
+
 					this->berryessa_->submit(
 						"ivs_obs_stream_start", event);
 
