@@ -11,7 +11,8 @@ BerryessaSubmitter::BerryessaSubmitter(QObject *parent, QString url)
 
 BerryessaSubmitter::~BerryessaSubmitter() {}
 
-void BerryessaSubmitter::submit(QString eventName, obs_data_t* properties) {
+void BerryessaSubmitter::submit(QString eventName, obs_data_t *properties)
+{
 	// overlay the supplied properties over a copy of the always properties
 	//   (so if there's a conflict, supplied property wins)
 	// and release the original copy
@@ -36,12 +37,12 @@ void BerryessaSubmitter::submit(QString eventName, obs_data_t* properties) {
 	//}
 }
 
-obs_data_t* BerryessaSubmitter::syncSubmitAndReleaseItemsReturningError(
-	const std::vector<obs_data_t*> &items)
+obs_data_t *BerryessaSubmitter::syncSubmitAndReleaseItemsReturningError(
+	const std::vector<obs_data_t *> &items)
 {
 	// Berryessa documentation:
 	// https://docs.google.com/document/d/1dB1fOgGQxu05ljqVVoX1jcjImzlcwcm9QKFZ2IDeuo0/edit#heading=h.yjke1ko59g7n
-	
+
 	// Build up JSON, releasing supplied obs_data_t*'s as we go
 	QByteArray postJson;
 	for (obs_data_t *it : items) {
@@ -58,8 +59,7 @@ obs_data_t* BerryessaSubmitter::syncSubmitAndReleaseItemsReturningError(
 
 	// http post to berryessa
 	std::vector<std::string> headers;
-	headers.push_back(
-		"User-Agent: obs-simulcast-plugin-tech-preview");
+	headers.push_back("User-Agent: obs-simulcast-plugin-tech-preview");
 	headers.push_back(
 		"Content-Type: application/x-www-form-urlencoded; charset=UTF-8");
 
@@ -67,9 +67,9 @@ obs_data_t* BerryessaSubmitter::syncSubmitAndReleaseItemsReturningError(
 	long httpResponseCode;
 
 	bool ok = GetRemoteFile(
-		url_.toUtf8(),
-		httpResponse, httpError, // out params
-		&httpResponseCode, nullptr, // out params (response code and content type)
+		url_.toUtf8(), httpResponse, httpError, // out params
+		&httpResponseCode,
+		nullptr, // out params (response code and content type)
 		"POST", postEncoded.constData(), headers,
 		nullptr, // signature
 		5);      // timeout in seconds
@@ -85,19 +85,20 @@ obs_data_t* BerryessaSubmitter::syncSubmitAndReleaseItemsReturningError(
 		obs_data_set_int(error, "response_code", httpResponseCode);
 		blog(LOG_WARNING,
 		     "Could not submit %d bytes to metrics backend: %s",
-		     postEncoded.size(),
-		     obs_data_get_json(error));
+		     postEncoded.size(), obs_data_get_json(error));
 	}
 	return error;
 }
 
-void BerryessaSubmitter::setAlwaysString(QString propertyKey, QString propertyValue)
+void BerryessaSubmitter::setAlwaysString(QString propertyKey,
+					 QString propertyValue)
 {
 	obs_data_set_string(this->alwaysProperties_, propertyKey.toUtf8(),
 			    propertyValue.toUtf8());
 }
 
-
-void BerryessaSubmitter::unsetAlways(QString propertyKey) {
-	obs_data_unset_user_value(this->alwaysProperties_, propertyKey.toUtf8());
+void BerryessaSubmitter::unsetAlways(QString propertyKey)
+{
+	obs_data_unset_user_value(this->alwaysProperties_,
+				  propertyKey.toUtf8());
 }

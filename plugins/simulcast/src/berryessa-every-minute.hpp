@@ -19,7 +19,7 @@ private slots:
 
 private:
 	BerryessaSubmitter *berryessa_;
-	PresentMonCapture* presentmon_;
-	QTimer* timer_;
+	PresentMonCapture *presentmon_;
+	QTimer *timer_;
 	QDateTime startTime_;
 };

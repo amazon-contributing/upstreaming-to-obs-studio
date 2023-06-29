@@ -29,7 +29,8 @@ public:
 	QMutex mutex; // XXX I have not thought out the concurrency here
 	std::vector<ParsedCsvRow> rows_;
 
-	void frame(const ParsedCsvRow& row) {
+	void frame(const ParsedCsvRow &row)
+	{
 		// XXX big hack
 		if (0 != strcmp(row.Application, GAME1) &&
 		    0 != strcmp(row.Application, GAME2) &&
@@ -39,7 +40,8 @@ public:
 		mutex.lock();
 
 		// reset everything if we started capturing a different game
-		if (rows_.size() && 0 != strcmp(row.Application, rows_[0].Application))
+		if (rows_.size() &&
+		    0 != strcmp(row.Application, rows_[0].Application))
 			rows_.clear();
 
 		// don't do this every time, it'll be slow
@@ -51,20 +53,24 @@ public:
 		mutex.unlock();
 	}
 
-	void summarizeAndReset(obs_data_t* dest) {
+	void summarizeAndReset(obs_data_t *dest)
+	{
 		double fps = -1;
 		char game[PRESENTMON_APPNAME_LEN] = {0};
 
 		mutex.lock();
 #if 1
 		blog(LOG_INFO,
-		     "PresentMonCapture_accumulator::summarizeAndReset has %d samples", rows_.size());
+		     "PresentMonCapture_accumulator::summarizeAndReset has %d samples",
+		     rows_.size());
 #endif
-		if (rows_.size() >= 2 && rows_.rbegin()->TimeInSeconds > rows_[0].TimeInSeconds) {
+		if (rows_.size() >= 2 &&
+		    rows_.rbegin()->TimeInSeconds > rows_[0].TimeInSeconds) {
 			trimRows();
 			const size_t n = rows_.size();
 #if 1
-			double allButFirstBetweenPresents = -rows_[0].msBetweenPresents;
+			double allButFirstBetweenPresents =
+				-rows_[0].msBetweenPresents;
 			for (const auto &p : rows_)
 				allButFirstBetweenPresents +=
 					p.msBetweenPresents;
@@ -85,11 +91,12 @@ public:
 			// XXX is this just a very convoluated rows_.erase(rows_.begin(), rows_.end()-1) ?
 			*rows_.begin() = *rows_.rbegin();
 			rows_.erase(rows_.begin() + 1, rows_.end());
-			strncpy(game, rows_[0].Application, PRESENTMON_APPNAME_LEN-1);
+			strncpy(game, rows_[0].Application,
+				PRESENTMON_APPNAME_LEN - 1);
 		}
 		mutex.unlock();
 
-		if(fps >= 0.0)
+		if (fps >= 0.0)
 			obs_data_set_double(dest, "fps", fps);
 		if (*game)
 			obs_data_set_string(dest, "game", game);
@@ -101,14 +108,13 @@ private:
 	{
 		if (rows_.size() > DISCARD_SAMPLES_BEYOND) {
 			rows_.erase(rows_.begin(),
-				    rows_.begin() + (rows_.size() - DISCARD_SAMPLES_BEYOND));
+				    rows_.begin() + (rows_.size() -
+						     DISCARD_SAMPLES_BEYOND));
 		}
 	}
-
 };
 
-
-PresentMonCapture::PresentMonCapture(QObject* parent) : QObject(parent)
+PresentMonCapture::PresentMonCapture(QObject *parent) : QObject(parent)
 {
 	testCsvParser();
 
@@ -146,13 +152,12 @@ PresentMonCapture::PresentMonCapture(QObject* parent) : QObject(parent)
 				     .toUtf8());
 		});
 
-	QObject::connect(
-		process_, &QProcess::readyReadStandardError, [this]() {
-			QByteArray data;
-			while ((data = this->process_->readAllStandardError()).size()) {
-				blog(LOG_INFO, "StdErr: %s", data.constData());
-			}
-		});
+	QObject::connect(process_, &QProcess::readyReadStandardError, [this]() {
+		QByteArray data;
+		while ((data = this->process_->readAllStandardError()).size()) {
+			blog(LOG_INFO, "StdErr: %s", data.constData());
+		}
+	});
 
 	// Process the CSV as it appears on stdout
 	// This will be better as a class member than a closure, because we have
@@ -164,7 +169,8 @@ PresentMonCapture::PresentMonCapture(QObject* parent) : QObject(parent)
 
 	// Start the proces
 	QStringList args({"-output_stdout", "-stop_existing_session",
-			  "-session_name", "PresentMon_OBS_Twitch_Simulcast_Tech_Preview"});
+			  "-session_name",
+			  "PresentMon_OBS_Twitch_Simulcast_Tech_Preview"});
 	process_->start(PRESENTMON_PATH, args, QIODeviceBase::ReadWrite);
 }
 
@@ -174,7 +180,8 @@ PresentMonCapture::~PresentMonCapture()
 	delete state_;
 }
 
-void PresentMonCapture::summarizeAndReset(obs_data_t* dest) {
+void PresentMonCapture::summarizeAndReset(obs_data_t *dest)
+{
 	accumulator_->summarizeAndReset(dest);
 }
 

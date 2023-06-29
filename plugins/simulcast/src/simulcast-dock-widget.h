@@ -3,7 +3,6 @@
 #include "simulcast-output.h"
 #include "berryessa-every-minute.hpp"
 
-
 #include <QWidget>
 
 class BerryessaSubmitter;
@@ -25,6 +24,6 @@ public:
 private:
 	SimulcastOutput output_;
 	LocalConfig localConfig_;
-	BerryessaSubmitter* berryessa_;
+	BerryessaSubmitter *berryessa_;
 	BerryessaEveryMinute *berryessaEveryMinute_;
 };

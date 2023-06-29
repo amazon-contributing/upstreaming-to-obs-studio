@@ -7,7 +7,8 @@
 #include <string>
 #include <QMessageBox>
 
-obs_data_t *DownloadGoLiveConfig(QWidget* parent, QString url, obs_data_t* postData)
+obs_data_t *DownloadGoLiveConfig(QWidget *parent, QString url,
+				 obs_data_t *postData)
 {
 #if 0
 	uint32_t fpsNum, fpsDen;

@@ -60,6 +60,5 @@ private:
 	void setError(QString s);
 };
 
-
 /** XXX turn this into a unit test which can fail */
 void testCsvParser();

@@ -19,15 +19,16 @@ BerryessaEveryMinute::BerryessaEveryMinute(QObject *parent,
 	connect(timer_, &QTimer::timeout, this, &BerryessaEveryMinute::fire);
 
 	timer_->setSingleShot(true);
-	quint64 msecs = QRandomGenerator::global()->generate64() % 60000; 
-	blog(LOG_INFO, "BerryessaEveryMinute - first invocation in %d ms", (int) msecs);
+	quint64 msecs = QRandomGenerator::global()->generate64() % 60000;
+	blog(LOG_INFO, "BerryessaEveryMinute - first invocation in %d ms",
+	     (int)msecs);
 	timer_->start(msecs);
 }
 
-
 BerryessaEveryMinute::~BerryessaEveryMinute() {}
 
-void BerryessaEveryMinute::fire() {
+void BerryessaEveryMinute::fire()
+{
 	blog(LOG_INFO, "BerryessaEveryMinute::fire called");
 
 	obs_data_t *event = obs_data_create();
@@ -40,4 +41,3 @@ void BerryessaEveryMinute::fire() {
 	// every 60 seconds after that correcting for drift
 	timer_->start(60000);
 }
-

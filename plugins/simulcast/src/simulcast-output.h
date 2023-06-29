@@ -7,7 +7,7 @@ public:
 	/** 
 	 * Starts streaming with the given config. Takes ownership of goLiveConfig.
 	 */
-	void StartStreaming(obs_data_t* goLiveConfig);
+	void StartStreaming(obs_data_t *goLiveConfig);
 	void StopStreaming();
 	bool IsStreaming() const;
 

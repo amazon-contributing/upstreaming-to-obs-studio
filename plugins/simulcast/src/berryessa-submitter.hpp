@@ -8,7 +8,7 @@ class BerryessaSubmitter : public QObject {
 	Q_OBJECT
 
 public:
-	BerryessaSubmitter(QObject* parent, QString url);
+	BerryessaSubmitter(QObject *parent, QString url);
 	~BerryessaSubmitter();
 
 	/**
@@ -46,6 +46,5 @@ private:
 	 *          for submission as an ivs_obs_http_client_error event :)
 	 */
 	obs_data_t *syncSubmitAndReleaseItemsReturningError(
-		const std::vector<obs_data_t*> &items);
+		const std::vector<obs_data_t *> &items);
 };
-

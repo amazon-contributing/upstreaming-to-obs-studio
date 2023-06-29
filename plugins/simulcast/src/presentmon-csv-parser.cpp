@@ -1,6 +1,6 @@
 #include "presentmon-csv-parser.hpp"
 
-#include <obs.hpp>   // logging
+#include <obs.hpp> // logging
 
 void SplitCsvRow(std::vector<const char *> &columns, char *csvRow)
 {
@@ -91,7 +91,7 @@ bool CsvRowParser::dataRow(const std::vector<const char *> &columns,
 
 	// We truncate application name if necessary for it to fit
 	strncpy(dest->Application, columns[colApplication_],
-	       sizeof(dest->Application) - 1);
+		sizeof(dest->Application) - 1);
 	dest->Application[sizeof(dest->Application) - 1] = '\0';
 
 	dest->ProcessID = strtol(columns[colProcessID_], &endptr, 10);
@@ -109,7 +109,6 @@ bool CsvRowParser::dataRow(const std::vector<const char *> &columns,
 
 	return lastError_.isEmpty();
 }
-
 
 void testCsvParser()
 {
@@ -131,15 +130,16 @@ void testCsvParser()
 
 		if (i == 0) {
 			bool ok = parser.headerRow(v);
-			blog(LOG_INFO, QString("HARDCODED UNIT TEST LINE: csv line %1 ok = %2")
-					       .arg(i+1)
-					       .arg(ok)
-					       .toUtf8());
+			blog(LOG_INFO,
+			     QString("HARDCODED UNIT TEST LINE: csv line %1 ok = %2")
+				     .arg(i + 1)
+				     .arg(ok)
+				     .toUtf8());
 		} else {
 			bool ok = parser.dataRow(v, &row);
 			blog(LOG_INFO,
 			     QString("HARDCODED UNIT TEST LINE: csv line %1 ok = %2, Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
-				     .arg(i+1)
+				     .arg(i + 1)
 				     .arg(ok)
 				     .arg(row.Application)
 				     .arg(row.ProcessID)

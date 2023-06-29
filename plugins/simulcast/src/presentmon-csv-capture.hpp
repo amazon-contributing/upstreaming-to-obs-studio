@@ -26,8 +26,7 @@ private slots:
 	void readProcessOutput_();
 
 private:
-	QProcess* process_;
+	QProcess *process_;
 	PresentMonCapture_state *state_;
 	PresentMonCapture_accumulator *accumulator_;
 };
-

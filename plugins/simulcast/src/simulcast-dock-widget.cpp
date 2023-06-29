@@ -29,8 +29,6 @@
 #include <util/config-file.h>
 #include <obs-frontend-api.h>
 
-
-
 #define ConfigSection "simulcast"
 
 #include "berryessa-submitter.hpp"
@@ -38,7 +36,8 @@
 #include "goliveapi-postdata.hpp"
 #include "presentmon-csv-capture.hpp"
 
-obs_data_t* MakeEvent_ivs_obs_stream_start(obs_data_t* postData, obs_data_t* goLiveConfig)
+obs_data_t *MakeEvent_ivs_obs_stream_start(obs_data_t *postData,
+					   obs_data_t *goLiveConfig)
 {
 	obs_data_t *event = obs_data_create();
 
@@ -69,20 +68,20 @@ obs_data_t* MakeEvent_ivs_obs_stream_start(obs_data_t* postData, obs_data_t* goL
 	return event;
 }
 
-
 SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 {
 	//berryessa_ = new BerryessaSubmitter(this, "http://127.0.0.1:8787/");
-	berryessa_ = new BerryessaSubmitter(this, "https://data-staging.stats.live-video.net/");
+	berryessa_ = new BerryessaSubmitter(
+		this, "https://data-staging.stats.live-video.net/");
 
 	// XXX: should be created once per device and persisted on disk
 	berryessa_->setAlwaysString("device_id",
-				     "bf655dd3-8346-4c1c-a7c8-bb7d9ca6091a");
+				    "bf655dd3-8346-4c1c-a7c8-bb7d9ca6091a");
 
-	berryessa_->setAlwaysString("obs_session_id",
-				    QUuid::createUuid().toString(QUuid::WithoutBraces));
+	berryessa_->setAlwaysString(
+		"obs_session_id",
+		QUuid::createUuid().toString(QUuid::WithoutBraces));
 
-	
 	QGridLayout *dockLayout = new QGridLayout(this);
 	dockLayout->setAlignment(Qt::AlignmentFlag::AlignTop);
 
@@ -114,12 +113,12 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 				streamingButton->setText(
 					obs_module_text("Btn.StartStreaming"));
 
-
 			} else {
 				OBSDataAutoRelease postData =
 					constructGoLivePost();
-				obs_data_t *goLiveConfig =
-					DownloadGoLiveConfig(this, localConfig_.goLiveApiUrl, postData);
+				obs_data_t *goLiveConfig = DownloadGoLiveConfig(
+					this, localConfig_.goLiveApiUrl,
+					postData);
 
 				if (goLiveConfig) {
 					this->Output().StartStreaming(
@@ -128,29 +127,30 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 					obs_data_t *event =
 						MakeEvent_ivs_obs_stream_start(
 							postData, goLiveConfig);
-					const char* configId = obs_data_get_string(
+					const char *configId =
+						obs_data_get_string(
 							event, "config_id");
-					if (configId)
-					{
+					if (configId) {
 						// put the config_id on all events until the stream ends
 						this->berryessa_
 							->setAlwaysString(
-								"config_id", configId);
+								"config_id",
+								configId);
 					}
 
-
-					QString t = QDateTime::currentDateTimeUtc().toString(
-						Qt::ISODate);
+					QString t =
+						QDateTime::currentDateTimeUtc()
+							.toString(Qt::ISODate);
 					this->berryessa_->setAlwaysString(
 						"start_broadcast_time",
 						t.toUtf8().constData());
-
 
 					this->berryessa_->submit(
 						"ivs_obs_stream_start", event);
 
 					this->berryessaEveryMinute_ =
-						new BerryessaEveryMinute(this, berryessa_);
+						new BerryessaEveryMinute(
+							this, berryessa_);
 
 					streamingButton->setText(
 						obs_module_text(
@@ -162,7 +162,6 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 	// load config
 	LoadConfig();
 
-	
 	setLayout(dockLayout);
 
 	resize(200, 400);
@@ -181,5 +180,3 @@ void SimulcastDockWidget::LoadConfig()
 		"https://ingest.twitch.tv/api/v3/GetClientConfiguration";
 	localConfig_.streamKey = "";
 }
-
-
