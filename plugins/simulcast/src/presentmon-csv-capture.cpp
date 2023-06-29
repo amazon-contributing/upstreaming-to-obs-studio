@@ -118,16 +118,16 @@ PresentMonCapture::PresentMonCapture(QObject *parent) : QObject(parent)
 {
 	testCsvParser();
 
-	process_ = new QProcess(this);
-	state_ = new PresentMonCapture_state;
-	accumulator_ = new PresentMonCapture_accumulator;
+	process_.reset(new QProcess(this));
+	state_.reset(new PresentMonCapture_state);
+	accumulator_.reset(new PresentMonCapture_accumulator);
 
 	// Log a bunch of QProcess signals
-	QObject::connect(process_, &QProcess::started, []() {
+	QObject::connect(process_.get(), &QProcess::started, []() {
 		blog(LOG_INFO, "QProcess::started received");
 	});
 	QObject::connect(
-		process_, &QProcess::errorOccurred,
+		process_.get(), &QProcess::errorOccurred,
 		[](QProcess::ProcessError error) {
 			blog(LOG_INFO,
 			     QString("QProcess::errorOccurred(error=%1) received")
@@ -135,7 +135,7 @@ PresentMonCapture::PresentMonCapture(QObject *parent) : QObject(parent)
 				     .toUtf8());
 		});
 	QObject::connect(
-		process_, &QProcess::stateChanged,
+		process_.get(), &QProcess::stateChanged,
 		[](QProcess::ProcessState newState) {
 			blog(LOG_INFO,
 			     QString("QProcess::stateChanged(newState=%1) received")
@@ -143,7 +143,7 @@ PresentMonCapture::PresentMonCapture(QObject *parent) : QObject(parent)
 				     .toUtf8());
 		});
 	QObject::connect(
-		process_, &QProcess::finished,
+		process_.get(), &QProcess::finished,
 		[](int exitCode, QProcess::ExitStatus exitStatus) {
 			blog(LOG_INFO,
 			     QString("QProcess::finished(exitCode=%1, exitStatus=%2) received")
@@ -152,7 +152,9 @@ PresentMonCapture::PresentMonCapture(QObject *parent) : QObject(parent)
 				     .toUtf8());
 		});
 
-	QObject::connect(process_, &QProcess::readyReadStandardError, [this]() {
+	QObject::connect(
+		process_.get(), &QProcess::readyReadStandardError,
+		[this]() {
 		QByteArray data;
 		while ((data = this->process_->readAllStandardError()).size()) {
 			blog(LOG_INFO, "StdErr: %s", data.constData());
@@ -164,7 +166,8 @@ PresentMonCapture::PresentMonCapture(QObject *parent) : QObject(parent)
 	// state, and autoformat at 80 columns with size-8 tabs is really yucking
 	// things up!
 
-	QObject::connect(process_, &QProcess::readyReadStandardOutput, this,
+	QObject::connect(process_.get(), &QProcess::readyReadStandardOutput,
+			 this,
 			 &PresentMonCapture::readProcessOutput_);
 
 	// Start the proces
@@ -172,12 +175,6 @@ PresentMonCapture::PresentMonCapture(QObject *parent) : QObject(parent)
 			  "-session_name",
 			  "PresentMon_OBS_Twitch_Simulcast_Tech_Preview"});
 	process_->start(PRESENTMON_PATH, args, QIODeviceBase::ReadWrite);
-}
-
-PresentMonCapture::~PresentMonCapture()
-{
-	delete accumulator_;
-	delete state_;
 }
 
 void PresentMonCapture::summarizeAndReset(obs_data_t *dest)

@@ -7,6 +7,8 @@
 
 #include <QProcess>
 
+#include <memory>
+
 class PresentMonCapture_accumulator;
 class PresentMonCapture_state;
 
@@ -14,7 +16,6 @@ class PresentMonCapture : public QObject {
 	Q_OBJECT
 public:
 	PresentMonCapture(QObject *parent);
-	~PresentMonCapture();
 
 	// Calling this will:
 	//   - calculate summary statistics about data received so far,
@@ -26,7 +27,7 @@ private slots:
 	void readProcessOutput_();
 
 private:
-	QProcess *process_;
-	PresentMonCapture_state *state_;
-	PresentMonCapture_accumulator *accumulator_;
+	std::unique_ptr<QProcess> process_;
+	std::unique_ptr<PresentMonCapture_state> state_;
+	std::unique_ptr<PresentMonCapture_accumulator> accumulator_;
 };
