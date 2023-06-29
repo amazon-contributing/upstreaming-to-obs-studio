@@ -15,16 +15,28 @@ target_sources(
   ${PROJECT_NAME}
   PRIVATE # cmake-format: sortable
           src/berryessa-every-minute.cpp
+          src/berryessa-every-minute.hpp
           src/berryessa-submitter.cpp
+          src/berryessa-submitter.hpp
+          src/common.h
           src/copy-from-obs/remote-text.cpp
+          src/copy-from-obs/remote-text.hpp
           src/global-service.cpp
+          src/global-service.h
           src/goliveapi-network.cpp
+          src/goliveapi-network.hpp
           src/goliveapi-postdata.cpp
+          src/goliveapi-postdata.hpp
           src/presentmon-csv-capture.cpp
+          src/presentmon-csv-capture.hpp
           src/presentmon-csv-parser.cpp
+          src/presentmon-csv-parser.hpp
           src/simulcast-dock-widget.cpp
+          src/simulcast-dock-widget.h
           src/simulcast-output.cpp
-          src/simulcast-plugin.cpp)
+          src/simulcast-output.h
+          src/simulcast-plugin.cpp
+          src/simulcast-plugin.h)
 
 configure_file(src/plugin-macros.h.in plugin-macros.generated.h)
 
