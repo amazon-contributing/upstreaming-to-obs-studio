@@ -24,7 +24,8 @@ public:
 
 	void frame(const ParsedCsvRow& row) {
 		// XXX big hack
-		if (0 != strcmp(row.Application, "chrome.exe"))
+		if (0 != strcmp(row.Application, "MassEffect3.exe")
+		 && 0 != strcmp(row.Application, "MassEffectLauncher.exe"))
 			return;
 
 		mutex.lock();
@@ -42,7 +43,9 @@ public:
 		double fps = -1;
 
 		mutex.lock();
-		if (rows_.size() >= 2) {
+		blog(LOG_INFO,
+		     "PresentMonCapture_accumulator::summarizeAndReset has %d samples", rows_.size());
+		if (rows_.size() >= 2 && rows_.rbegin()->TimeInSeconds > rows_[0].TimeInSeconds) {
 			trimRows();
 			const size_t n = rows_.size();
 
@@ -59,7 +62,8 @@ public:
 			     rows_[n - 1].TimeInSeconds -
 				     rows_[0].TimeInSeconds);
 
-			fps = (rows_[n - 1].TimeInSeconds - rows_[0].TimeInSeconds) / (n - 1);
+			fps = (n - 1) / (rows_[n - 1].TimeInSeconds -
+					 rows_[0].TimeInSeconds);
 
 			// delete all but the most recently received data point
 			// XXX is this just a very convoluated rows_.erase(rows_.begin(), rows_.end()-1) ?
@@ -140,7 +144,8 @@ PresentMonCapture::PresentMonCapture(QObject* parent) : QObject(parent)
 			 &PresentMonCapture::readProcessOutput_);
 
 	// Start the process
-	QStringList args({"-output_stdout", "-stop_existing_session"});
+	QStringList args({"-output_stdout", "-stop_existing_session",
+			  "-session_name", "PresentMon_OBS_Twitch_Simulcast_Tech_Preview"});
 	process_->start(
 		"c:\\obsdev\\PresentMon\\build\\Release\\PresentMon-dev-x64.exe",
 		args, QIODeviceBase::ReadWrite);
@@ -194,10 +199,9 @@ void PresentMonCapture::readProcessOutput_()
 				state_->alreadyErrored_ =
 					!state_->parser_.dataRow(state_->v_,
 								 &state_->row_);
-
-				if (!state_->alreadyErrored_ &&
-				    state_->lineNumber_ < 10) {
+				if (!state_->alreadyErrored_) {
 					accumulator_->frame(state_->row_);
+#if 0
 					blog(LOG_INFO,
 					     QString("afTest: csv line %1 Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
 					     .arg(state_->lineNumber_)
@@ -209,6 +213,7 @@ void PresentMonCapture::readProcessOutput_()
 					     .arg(state_->row_
 							  .msBetweenPresents)
 					     .toUtf8());
+#endif
 				}
 			}
 			state_->lineNumber_++;

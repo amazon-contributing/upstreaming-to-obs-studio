@@ -105,6 +105,9 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 				this->berryessa_->submit("ivs_obs_stream_stop",
 							 event);
 
+				delete this->berryessaEveryMinute_;
+				this->berryessaEveryMinute_ = nullptr;
+
 				this->berryessa_->unsetAlways("config_id");
 
 				streamingButton->setText(
@@ -136,7 +139,8 @@ SimulcastDockWidget::SimulcastDockWidget(QWidget *parent)
 					this->berryessa_->submit(
 						"ivs_obs_stream_start", event);
 
-					new PresentMonCapture(this);
+					this->berryessaEveryMinute_ =
+						new BerryessaEveryMinute(this, berryessa_);
 
 					streamingButton->setText(
 						obs_module_text(

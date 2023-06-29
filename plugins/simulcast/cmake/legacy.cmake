@@ -15,6 +15,7 @@ target_sources(${PROJECT_NAME} PRIVATE src/global-service.cpp src/simulcast-dock
                                        src/simulcast-output.cpp
 				       src/copy-from-obs/remote-text.cpp
 				       src/berryessa-submitter.cpp
+				       src/berryessa-every-minute.cpp
 				       src/goliveapi-network.cpp
 				       src/goliveapi-postdata.cpp
 				       src/presentmon-csv-capture.cpp
