@@ -3,6 +3,13 @@
 #include <QProcess>
 #include <QMutex>
 
+#define GAME1 "MassEffectLauncher.exe"
+#define GAME2 "MassEffect3.exe"
+#define GAME3 "Cyberpunk2077.exe"
+
+#define PRESENTMON_PATH \
+	"c:\\obsdev\\PresentMon\\build\\Release\\PresentMon-dev-x64.exe"
+
 #define DISCARD_SAMPLES_BEYOND \
 	144 * 60 * 2 // 144fps, one minute, times two for safety
 
@@ -24,8 +31,9 @@ public:
 
 	void frame(const ParsedCsvRow& row) {
 		// XXX big hack
-		if (0 != strcmp(row.Application, "MassEffect3.exe")
-		 && 0 != strcmp(row.Application, "MassEffectLauncher.exe"))
+		if (0 != strcmp(row.Application, GAME1) &&
+		    0 != strcmp(row.Application, GAME2) &&
+		    0 != strcmp(row.Application, GAME3))
 			return;
 
 		mutex.lock();
@@ -49,14 +57,15 @@ public:
 			trimRows();
 			const size_t n = rows_.size();
 
-			double totalBetweenPresents = 0.0;
+			double allButFirstBetweenPresents = -rows_[0].msBetweenPresents;
 			for (const auto &p : rows_)
-				totalBetweenPresents += p.msBetweenPresents;
-			totalBetweenPresents /= 1000.0;
+				allButFirstBetweenPresents +=
+					p.msBetweenPresents;
+			allButFirstBetweenPresents /= 1000.0;
 
 			blog(LOG_INFO,
-			     "frame timing, accumulated msBetweenPresents: %f",
-			     totalBetweenPresents);
+			     "frame timing, all but first msBetweenPresents: %f",
+			     allButFirstBetweenPresents);
 			blog(LOG_INFO,
 			     "frame timing, time from first to last: %f",
 			     rows_[n - 1].TimeInSeconds -
@@ -143,12 +152,10 @@ PresentMonCapture::PresentMonCapture(QObject* parent) : QObject(parent)
 	QObject::connect(process_, &QProcess::readyReadStandardOutput, this,
 			 &PresentMonCapture::readProcessOutput_);
 
-	// Start the process
+	// Start the proces
 	QStringList args({"-output_stdout", "-stop_existing_session",
 			  "-session_name", "PresentMon_OBS_Twitch_Simulcast_Tech_Preview"});
-	process_->start(
-		"c:\\obsdev\\PresentMon\\build\\Release\\PresentMon-dev-x64.exe",
-		args, QIODeviceBase::ReadWrite);
+	process_->start(PRESENTMON_PATH, args, QIODeviceBase::ReadWrite);
 }
 
 PresentMonCapture::~PresentMonCapture()
@@ -164,6 +171,7 @@ void PresentMonCapture::summarizeAndReset(obs_data_t* dest) {
 void PresentMonCapture::readProcessOutput_()
 {
 	char buf[1024];
+	char bufCsvCopy[1024];
 	if (state_->alreadyErrored_) {
 		qint64 n = process_->readLine(buf, sizeof(buf));
 		blog(LOG_INFO, "POST-ERROR line %d: %s", state_->lineNumber_,
@@ -173,6 +181,7 @@ void PresentMonCapture::readProcessOutput_()
 
 	while (!state_->alreadyErrored_ && process_->canReadLine()) {
 		qint64 n = process_->readLine(buf, sizeof(buf));
+		state_->lineNumber_++; // start on line number 1
 
 		if (n < 1 || n >= sizeof(buf) - 1) {
 			// XXX emit error
@@ -190,9 +199,10 @@ void PresentMonCapture::readProcessOutput_()
 			}
 
 			state_->v_.clear();
-			SplitCsvRow(state_->v_, buf);
+			memcpy(bufCsvCopy, buf, sizeof(bufCsvCopy));
+			SplitCsvRow(state_->v_, bufCsvCopy);
 
-			if (state_->lineNumber_ == 0) {
+			if (state_->lineNumber_ == 1) {
 				state_->alreadyErrored_ =
 					!state_->parser_.headerRow(state_->v_);
 			} else {
@@ -203,7 +213,7 @@ void PresentMonCapture::readProcessOutput_()
 					accumulator_->frame(state_->row_);
 #if 0
 					blog(LOG_INFO,
-					     QString("afTest: csv line %1 Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
+					     QString("real line received: csv line %1 Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
 					     .arg(state_->lineNumber_)
 					     .arg(state_->row_
 							  .Application)
@@ -216,7 +226,11 @@ void PresentMonCapture::readProcessOutput_()
 #endif
 				}
 			}
-			state_->lineNumber_++;
+			if (state_->alreadyErrored_) {
+				blog(LOG_INFO,
+				     "PresentMon CSV parser failed on line %d: %s",
+				     state_->lineNumber_, buf);
+			}
 		}
 	}
 }

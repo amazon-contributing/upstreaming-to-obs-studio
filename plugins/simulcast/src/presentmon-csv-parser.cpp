@@ -84,6 +84,9 @@ bool CsvRowParser::dataRow(const std::vector<const char *> &columns,
 	if (colMsBetweenPresents_ >= columns.size())
 		setError("Data row missing column msBetweenPresents");
 
+	if (!lastError_.isEmpty())
+		return false; // avoid read overflow below
+
 	char *endptr;
 
 	// We truncate application name if necessary for it to fit
@@ -128,15 +131,15 @@ void testCsvParser()
 
 		if (i == 0) {
 			bool ok = parser.headerRow(v);
-			blog(LOG_INFO, QString("afTest: csv line %1 ok = %2")
-					       .arg(i)
+			blog(LOG_INFO, QString("HARDCODED UNIT TEST LINE: csv line %1 ok = %2")
+					       .arg(i+1)
 					       .arg(ok)
 					       .toUtf8());
 		} else {
 			bool ok = parser.dataRow(v, &row);
 			blog(LOG_INFO,
-			     QString("afTest: csv line %1 ok = %2, Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
-				     .arg(i)
+			     QString("HARDCODED UNIT TEST LINE: csv line %1 ok = %2, Application=%3, ProcessID=%4, TimeInSeconds=%5, msBetweenPresents=%6")
+				     .arg(i+1)
 				     .arg(ok)
 				     .arg(row.Application)
 				     .arg(row.ProcessID)

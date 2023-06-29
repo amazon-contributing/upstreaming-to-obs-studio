@@ -22,8 +22,8 @@ void BerryessaSubmitter::submit(QString eventName, obs_data_t* properties) {
 
 	// create {Name:, Properties:} object that Berryessa expects
 	obs_data_t *toplevel = obs_data_create();
-	obs_data_set_string(toplevel, "Name", eventName.toUtf8());
-	obs_data_set_obj(toplevel, "Properties", newProperties);
+	obs_data_set_string(toplevel, "event", eventName.toUtf8());
+	obs_data_set_obj(toplevel, "properties", newProperties);
 
 	// XXX do the whole async worker thread thing
 	std::vector<obs_data_t *> tmp;
