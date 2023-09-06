@@ -452,6 +452,7 @@ static bool init_encoder_base(struct nvenc_data *enc, obs_data_t *settings,
 	bool vbr = astrcmpi(rc, "VBR") == 0;
 	bool psycho_aq = !compatibility &&
 			 obs_data_get_bool(settings, "psycho_aq");
+	bool disable_scenecut = obs_data_get_bool(settings, "disable_scenecut");
 	NVENCSTATUS err;
 
 	video_t *video = obs_encoder_video(enc->encoder);
@@ -459,8 +460,6 @@ static bool init_encoder_base(struct nvenc_data *enc, obs_data_t *settings,
 
 	enc->cx = obs_encoder_get_width(enc->encoder);
 	enc->cy = obs_encoder_get_height(enc->encoder);
-
-	bool disable_scenecut = obs_data_get_bool(settings, "disable_scenecut");
 
 	/* -------------------------- */
 	/* get preset                 */
