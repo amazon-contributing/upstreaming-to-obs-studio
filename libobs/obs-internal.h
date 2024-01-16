@@ -105,6 +105,7 @@ struct obs_module {
 	const char *file;
 	char *bin_path;
 	char *data_path;
+	char *hash_sha256;
 	void *module;
 	bool loaded;
 

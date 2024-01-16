@@ -125,6 +125,7 @@ int obs_open_module(obs_module_t **module, const char *path, const char *data_pa
 		return errorcode;
 
 	mod.bin_path = bstrdup(path);
+	mod.hash_sha256 = os_hash_file_sha256(path);
 	mod.file = strrchr(mod.bin_path, '/');
 	mod.file = (!mod.file) ? mod.bin_path : (mod.file + 1);
 	mod.mod_name = get_module_name(mod.file);
@@ -168,8 +169,10 @@ void obs_log_loaded_modules(void)
 {
 	blog(LOG_INFO, "  Loaded Modules:");
 
-	for (obs_module_t *mod = obs->first_module; !!mod; mod = mod->next)
-		blog(LOG_INFO, "    %s", mod->file);
+	for (obs_module_t *mod = obs->first_module; !!mod; mod = mod->next) {
+		blog(LOG_INFO, "    %s%s%s%s", mod->file, mod->hash_sha256 ? " (sha256: " : "",
+		     mod->hash_sha256 ? mod->hash_sha256 : "", mod->hash_sha256 ? ")" : "");
+	}
 }
 
 const char *obs_get_module_file_name(obs_module_t *module)
@@ -200,6 +203,11 @@ const char *obs_get_module_binary_path(obs_module_t *module)
 const char *obs_get_module_data_path(obs_module_t *module)
 {
 	return module ? module->data_path : NULL;
+}
+
+const char *obs_get_module_hash_sha256(obs_module_t *module)
+{
+	return module ? module->hash_sha256 : NULL;
 }
 
 obs_module_t *obs_get_module(const char *name)

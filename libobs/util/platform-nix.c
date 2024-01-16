@@ -1147,3 +1147,11 @@ char *os_generate_uuid(void)
 	uuid_unparse_lower(uuid, out);
 	return out;
 }
+
+char *os_hash_sha256(void *data, size_t data_size)
+{
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(data_size);
+
+	return NULL;
+}

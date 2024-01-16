@@ -22,6 +22,7 @@
 #include <psapi.h>
 #include <math.h>
 #include <rpc.h>
+#include <bcrypt.h>
 
 #include "base.h"
 #include "platform.h"
@@ -1425,4 +1426,54 @@ char *os_generate_uuid(void)
 		    uuid.Data4[6], uuid.Data4[7]);
 
 	return uuid_str.array;
+}
+
+static bool nt_success(NTSTATUS status)
+{
+	return status >= 0;
+}
+
+char *os_hash_sha256(void *data, size_t data_size)
+{
+	BCRYPT_ALG_HANDLE algorithm_handle = NULL;
+
+	DWORD copied_bytes = 0;
+
+	DWORD hash_size = 0;
+
+	BYTE *hash = NULL;
+
+	if (!nt_success(BCryptOpenAlgorithmProvider(&algorithm_handle, BCRYPT_SHA256_ALGORITHM, NULL, 0)))
+		return NULL;
+
+	if (!nt_success(BCryptGetProperty(algorithm_handle, BCRYPT_HASH_LENGTH, (PBYTE)&hash_size, sizeof(hash_size),
+					  &copied_bytes, 0)))
+		goto cleanup;
+
+	// leave room to convert from binary to hex string
+	hash = bzalloc(hash_size * 2 + 1);
+	if (!hash)
+		goto cleanup;
+
+	if (!nt_success(BCryptHash(algorithm_handle, NULL, 0, data, (ULONG)data_size, hash, hash_size)))
+		goto cleanup;
+
+	hash[hash_size * 2] = 0;
+	for (size_t i = 0; i < hash_size; i++) {
+		static const char *hex_chars = "0123456789abcdef";
+		BYTE byte = hash[hash_size - i - 1];
+		size_t hex_position = (hash_size - i) * 2;
+		hash[hex_position - 1] = hex_chars[byte & 15];
+		hash[hex_position - 2] = hex_chars[(byte >> 4) & 15];
+	}
+
+	return hash;
+
+cleanup:
+	if (algorithm_handle)
+		BCryptCloseAlgorithmProvider(algorithm_handle, 0);
+	if (hash)
+		bfree(hash);
+
+	return NULL;
 }
