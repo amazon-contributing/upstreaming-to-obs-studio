@@ -745,18 +745,16 @@ void AutoConfigStreamPage::ServiceChanged()
 					   service_settings, nullptr);
 
 		if (obs_data_has_user_value(service_settings,
-					    "ertmp_multitrack_video_name")) {
+					    "multitrack_video_name")) {
 			multitrack_video_name = obs_data_get_string(
-				service_settings,
-				"ertmp_multitrack_video_name");
+				service_settings, "multitrack_video_name");
 		}
 
-		if (obs_data_has_user_value(
-			    service_settings,
-			    "ertmp_multitrack_video_disclaimer")) {
+		if (obs_data_has_user_value(service_settings,
+					    "multitrack_video_disclaimer")) {
 			ui->multitrackVideoInfo->setText(obs_data_get_string(
 				service_settings,
-				"ertmp_multitrack_video_disclaimer"));
+				"multitrack_video_disclaimer"));
 			custom_disclaimer = true;
 		}
 	}

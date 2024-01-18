@@ -684,9 +684,9 @@ void MultitrackVideoOutput::PrepareStreaming(
 	auto multitrack_video_name =
 		QTStr("Basic.Settings.Stream.MultitrackVideoLabel");
 	if (obs_data_has_user_value(service_settings,
-				    "ertmp_multitrack_video_name")) {
+				    "multitrack_video_name")) {
 		multitrack_video_name = obs_data_get_string(
-			service_settings, "ertmp_multitrack_video_name");
+			service_settings, "multitrack_video_name");
 	}
 
 	auto auto_config_url_data = auto_config_url.toUtf8();
@@ -1109,15 +1109,14 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 	QMessageBox mb(parent);
 	mb.setIcon(QMessageBox::Critical);
 	mb.setWindowTitle("Incompatible Settings");
-	mb.setText(
-		QString("%1 is not currently compatible with:\n\n%2\n"
-			"To continue streaming with %1, disable "
-			"incompatible settings:\n\n%3\n"
-			"and Start Streaming again.")
-			.arg(obs_data_get_string(service_settings,
-						 "ertmp_multitrack_video_name"))
-			.arg(incompatible_settings)
-			.arg(where_to_disable));
+	mb.setText(QString("%1 is not currently compatible with:\n\n%2\n"
+			   "To continue streaming with %1, disable "
+			   "incompatible settings:\n\n%3\n"
+			   "and Start Streaming again.")
+			   .arg(obs_data_get_string(service_settings,
+						    "multitrack_video_name"))
+			   .arg(incompatible_settings)
+			   .arg(where_to_disable));
 	auto this_stream =
 		mb.addButton("Disable for this stream and Start Streaming",
 			     QMessageBox::AcceptRole);

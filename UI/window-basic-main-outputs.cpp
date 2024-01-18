@@ -2763,10 +2763,11 @@ FutureHolder<std::optional<bool>> BasicOutputHandler::SetupMultitrackVideo(
 					"Basic.Settings.Stream.MultitrackVideoLabel");
 				if (obs_data_has_user_value(
 					    service_settings,
-					    "ertmp_multitrack_video_name")) {
-					multitrack_video_name = obs_data_get_string(
-						service_settings,
-						"ertmp_multitrack_video_name");
+					    "multitrack_video_name")) {
+					multitrack_video_name =
+						obs_data_get_string(
+							service_settings,
+							"multitrack_video_name");
 				}
 
 				multitrackVideoActive = false;

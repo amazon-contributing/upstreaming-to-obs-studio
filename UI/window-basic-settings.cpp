@@ -6306,10 +6306,9 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 				    QT_TO_UTF8(ui->service->currentText()));
 		OBSServiceAutoRelease temp_service = obs_service_create_private(
 			"rtmp_common", "auto config query service", settings);
-		available = obs_service_get_connect_info(
-				    temp_service,
-				    OBS_SERVICE_CONNECT_INFO_CONFIG_URL) !=
-			    nullptr;
+		settings = obs_service_get_settings(temp_service);
+		available = obs_data_has_user_value(
+			settings, "multitrack_video_configuration_url");
 		if (!available && ui->enableMultitrackVideo->isChecked())
 			ui->enableMultitrackVideo->setChecked(false);
 	}
@@ -6484,20 +6483,19 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto multitrack_video_name =
 			QTStr("Basic.Settings.Stream.MultitrackVideoLabel");
-		if (obs_data_has_user_value(settings,
-					    "ertmp_multitrack_video_name"))
+		if (obs_data_has_user_value(settings, "multitrack_video_name"))
 			multitrack_video_name = obs_data_get_string(
-				settings, "ertmp_multitrack_video_name");
+				settings, "multitrack_video_name");
 
 		ui->enableMultitrackVideo->setText(
 			QTStr("Basic.Settings.Stream.EnableMultitrackVideo")
 				.arg(multitrack_video_name));
 
-		if (obs_data_has_user_value(
-			    settings, "ertmp_multitrack_video_disclaimer")) {
+		if (obs_data_has_user_value(settings,
+					    "multitrack_video_disclaimer")) {
 			ui->multitrackVideoInfo->setVisible(true);
 			ui->multitrackVideoInfo->setText(obs_data_get_string(
-				settings, "ertmp_multitrack_video_disclaimer"));
+				settings, "multitrack_video_disclaimer"));
 		} else {
 			ui->multitrackVideoInfo->setText(
 				QTStr("MultitrackVideo.InfoTest")
