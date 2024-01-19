@@ -612,6 +612,7 @@ void free_module(struct obs_module *mod)
 	if (obs->first_module == mod)
 		obs->first_module = mod->next;
 
+	bfree(mod->hash_sha256);
 	bfree(mod->mod_name);
 	bfree(mod->bin_path);
 	bfree(mod->data_path);
