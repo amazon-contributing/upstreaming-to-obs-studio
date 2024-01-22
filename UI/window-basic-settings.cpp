@@ -6219,7 +6219,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 	// FIXME: protocol is not updated properly for WHIP; what do?
 	auto available = protocol.startsWith("RTMP");
 
-	ui->multitrackVideoInfo->setVisible(available);
+	ui->multitrackVideoInfo->setVisible(false);
 	ui->enableMultitrackVideo->setVisible(available);
 
 	ui->enableMultitrackVideo->setEnabled(toggle_available);
@@ -6297,22 +6297,12 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 			QTStr("Basic.Settings.Stream.EnableMultitrackVideo")
 				.arg(multitrack_video_name));
 
-		QString info_link_text;
-		if (obs_data_has_user_value(settings,
-					    "ertmp_configuration_info_link")) {
-
-			info_link_text =
-				QTStr("MultitrackVideo.InfoLink")
-					.arg(obs_data_get_string(
-						settings,
-						"ertmp_configuration_info_link"));
+		if (obs_data_has_user_value(
+			    settings, "ertmp_multitrack_video_disclaimer")) {
+			ui->multitrackVideoInfo->setVisible(true);
+			ui->multitrackVideoInfo->setText(obs_data_get_string(
+				settings, "ertmp_multitrack_video_disclaimer"));
 		}
-
-		ui->multitrackVideoInfo->setText(
-			QTStr("MultitrackVideo.InfoTest")
-				.arg(multitrack_video_name,
-				     ui->service->currentText(),
-				     info_link_text));
 	}
 }
 
