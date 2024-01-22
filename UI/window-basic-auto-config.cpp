@@ -727,7 +727,7 @@ void AutoConfigStreamPage::ServiceChanged()
 	bool testBandwidth = ui->doBandwidthTest->isChecked();
 	bool custom = IsCustomService();
 
-	ui->multitrackVideoInfo->setVisible(false);
+	bool ertmp_multitrack_video_available = service == "Twitch";
 
 	auto multitrack_video_name =
 		QTStr("Basic.Settings.Stream.MultitrackVideoLabel");
@@ -749,14 +749,14 @@ void AutoConfigStreamPage::ServiceChanged()
 		if (obs_data_has_user_value(
 			    service_settings,
 			    "ertmp_multitrack_video_disclaimer")) {
-			ui->multitrackVideoInfo->setVisible(true);
 			ui->multitrackVideoInfo->setText(obs_data_get_string(
 				service_settings,
 				"ertmp_multitrack_video_disclaimer"));
 		}
 	}
 
-	ui->useMultitrackVideo->setVisible(service == "Twitch");
+	ui->multitrackVideoInfo->setVisible(ertmp_multitrack_video_available);
+	ui->useMultitrackVideo->setVisible(ertmp_multitrack_video_available);
 	ui->useMultitrackVideo->setText(
 		QTStr("Basic.AutoConfig.StreamPage.UseMultitrackVideo")
 			.arg(multitrack_video_name));
