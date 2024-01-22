@@ -729,6 +729,7 @@ void AutoConfigStreamPage::ServiceChanged()
 
 	bool ertmp_multitrack_video_available = service == "Twitch";
 
+	bool custom_disclaimer = false;
 	auto multitrack_video_name =
 		QTStr("Basic.Settings.Stream.MultitrackVideoLabel");
 	if (!custom) {
@@ -752,7 +753,14 @@ void AutoConfigStreamPage::ServiceChanged()
 			ui->multitrackVideoInfo->setText(obs_data_get_string(
 				service_settings,
 				"ertmp_multitrack_video_disclaimer"));
+			custom_disclaimer = true;
 		}
+	}
+
+	if (!custom_disclaimer) {
+		ui->multitrackVideoInfo->setText(
+			QTStr("MultitrackVideo.InfoTest")
+				.arg(multitrack_video_name, service.c_str()));
 	}
 
 	ui->multitrackVideoInfo->setVisible(ertmp_multitrack_video_available);
