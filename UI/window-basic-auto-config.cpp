@@ -418,11 +418,11 @@ bool AutoConfigStreamPage::validatePage()
 
 	if (wiz->service == AutoConfig::Service::Twitch) {
 		wiz->testMultitrackVideo = ui->useMultitrackVideo->isChecked();
-
-		auto postData =
-			constructGoLivePost(ImmutableDateTime::CurrentTimeUtc(),
-					    QString::fromStdString(wiz->key),
-					    std::nullopt, std::nullopt);
+		std::map<std::string, video_t *> extra_views;
+		auto postData = constructGoLivePost(
+			ImmutableDateTime::CurrentTimeUtc(),
+			QString::fromStdString(wiz->key), std::nullopt,
+			std::nullopt, extra_views);
 
 		try {
 			auto config = DownloadGoLiveConfig(

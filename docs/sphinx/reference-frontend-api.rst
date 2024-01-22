@@ -193,6 +193,12 @@ Structures/Enumerations
 
      .. versionadded:: 29.0.0
 
+   - **OBS_FRONTEND_EVENT_STREAMING_PREPARING**
+
+     Triggered when streaming is preparing
+
+     .. versionadded:: 30.1.0
+
 .. struct:: obs_frontend_source_list
 
    - DARRAY(obs_source_t*) **sources**
@@ -238,6 +244,14 @@ Structures/Enumerations
 .. type::  void (*undo_redo_cb)(const char *data)
 
    Undo redo callback
+
+.. type:: video_t *(*multitrack_video_start_cb)(void *param)
+
+   Multitrack video start callback
+
+.. type:: void (*multitrack_video_stop_cb)(video_t *video, void *param)
+
+   Multitrack video stop callback
 
 
 Functions
@@ -932,3 +946,52 @@ Functions
                       This uses the undo action from the first and the redo action from the last action.
 
    .. versionadded:: 29.1
+
+---------------------------------------
+
+.. function:: void obs_frontend_external_stream_started(obs_output_t *output)
+
+   Adds the output to the status bar and the statistics dock and window.
+   Must be called on the UI thread, otherwise Qt will trigger assertions.
+
+   :param output: Output to add
+
+   .. versionadded:: 30.1.0
+
+---------------------------------------
+
+.. function:: void obs_frontend_external_stream_stopped(obs_output_t *output)
+
+   Removes the output from the status bar and the statistics dock and window.
+   Must be called on the UI thread, otherwise Qt will trigger assertions.
+
+   :param output: Output to remove
+
+   .. versionadded:: 30.1.0
+
+---------------------------------------
+
+.. function:: char *obs_frontend_get_version_string(void)
+
+   :return: the obs version including platform. Free with :c:func:`bfree()`
+
+   .. versionadded:: 30.1.0
+
+---------------------------------------
+
+.. function:: void obs_frontend_multitrack_video_register(const char *name, multitrack_video_start_cb start_video, multitrack_video_stop_cb stop_video, void *param)
+
+   :param name: Name to register
+   :param start_video: Callback to get video to use
+   :param stop_video: Callback to stop usage of video
+   :param param: Param for the start video and stop video callbacks
+
+   .. versionadded:: 30.1.0
+
+---------------------------------------
+
+.. function:: void obs_frontend_multitrack_video_unregister(const char *name)
+
+   :param name: name to unregister
+
+   .. versionadded:: 30.1.0

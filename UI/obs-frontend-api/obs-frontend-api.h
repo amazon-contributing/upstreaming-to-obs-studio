@@ -260,6 +260,13 @@ EXPORT void obs_frontend_external_stream_stopped(obs_weak_output_t *output);
 
 EXPORT char *obs_frontend_get_version_string(void);
 
+typedef video_t *(*multitrack_video_start_cb)(void *param);
+typedef void (*multitrack_video_stop_cb)(video_t *video, void *param);
+EXPORT void obs_frontend_multitrack_video_register(
+	const char *name, multitrack_video_start_cb start_video,
+	multitrack_video_stop_cb stop_video, void *param);
+EXPORT void obs_frontend_multitrack_video_unregister(const char *name);
+
 /* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus

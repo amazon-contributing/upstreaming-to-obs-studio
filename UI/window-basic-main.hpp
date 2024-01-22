@@ -85,6 +85,7 @@ class OBSBasicVCamConfig;
 #define PREVIEW_EDGE_SIZE 10
 
 struct BasicOutputHandler;
+struct MultitrackVideoViewInfo;
 
 enum class QtDataRole {
 	OBSRef = Qt::UserRole,
@@ -198,6 +199,7 @@ class OBSBasic : public OBSMainWindow {
 	friend class OBSYoutubeActions;
 	friend class OBSPermissions;
 	friend struct BasicOutputHandler;
+	friend struct MultitrackVideoOutput;
 	friend struct OBSStudioAPI;
 	friend class ScreenshotObj;
 
@@ -234,6 +236,8 @@ private:
 	std::vector<OBSSignal> signalHandlers;
 
 	std::vector<OBSWeakOutputAutoRelease> additionalStreamingOutputs;
+
+	std::vector<MultitrackVideoViewInfo> multitrackVideoViews;
 
 	QList<QPointer<QDockWidget>> oldExtraDocks;
 	QStringList oldExtraDockNames;
@@ -1241,6 +1245,12 @@ private slots:
 
 	void RepairOldExtraDockName();
 	void RepairCustomExtraDockName();
+
+	void MultitrackVideoRegister(const char *name,
+				     multitrack_video_start_cb start_video,
+				     multitrack_video_stop_cb stop_video,
+				     void *param);
+	void MultitrackVideoUnregister(const char *name);
 
 public slots:
 	void on_actionResetTransform_triggered();
