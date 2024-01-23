@@ -727,7 +727,9 @@ void AutoConfigStreamPage::ServiceChanged()
 	bool testBandwidth = ui->doBandwidthTest->isChecked();
 	bool custom = IsCustomService();
 
-	QString info_link_text;
+	bool ertmp_multitrack_video_available = service == "Twitch";
+
+	bool custom_disclaimer = false;
 	auto multitrack_video_name =
 		QTStr("Basic.Settings.Stream.MultitrackVideoLabel");
 	if (!custom) {
@@ -745,23 +747,24 @@ void AutoConfigStreamPage::ServiceChanged()
 				"ertmp_multitrack_video_name");
 		}
 
-		if (obs_data_has_user_value(service_settings,
-					    "ertmp_configuration_info_link")) {
-
-			info_link_text =
-				QTStr("MultitrackVideo.InfoLink")
-					.arg(obs_data_get_string(
-						service_settings,
-						"ertmp_configuration_info_link"));
+		if (obs_data_has_user_value(
+			    service_settings,
+			    "ertmp_multitrack_video_disclaimer")) {
+			ui->multitrackVideoInfo->setText(obs_data_get_string(
+				service_settings,
+				"ertmp_multitrack_video_disclaimer"));
+			custom_disclaimer = true;
 		}
 	}
 
-	ui->multitrackVideoInfo->setVisible(service == "Twitch");
-	ui->multitrackVideoInfo->setText(QTStr("MultitrackVideo.InfoTest")
-						 .arg(multitrack_video_name,
-						      service.c_str(),
-						      info_link_text));
-	ui->useMultitrackVideo->setVisible(service == "Twitch");
+	if (!custom_disclaimer) {
+		ui->multitrackVideoInfo->setText(
+			QTStr("MultitrackVideo.InfoTest")
+				.arg(multitrack_video_name, service.c_str()));
+	}
+
+	ui->multitrackVideoInfo->setVisible(ertmp_multitrack_video_available);
+	ui->useMultitrackVideo->setVisible(ertmp_multitrack_video_available);
 	ui->useMultitrackVideo->setText(
 		QTStr("Basic.AutoConfig.StreamPage.UseMultitrackVideo")
 			.arg(multitrack_video_name));

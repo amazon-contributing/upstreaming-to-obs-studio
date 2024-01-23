@@ -202,9 +202,8 @@
                         "$ref": "#/definitions/saneUrl",
                         "description": "Accessed for multitrack video auto configuration"
                     },
-                    "ertmp_configuration_info_link": {
-                        "$ref": "#/definitions/saneUrl",
-                        "description": "Link that provides additional info about using ertmp multitrack auto configuration"
+                    "ertmp_multitrack_video_disclaimer": {
+                        "description": "Inform user about data usage and similar when using multitrack video"
                     },
                     "ertmp_configuration_name": {
                         "type": "string",

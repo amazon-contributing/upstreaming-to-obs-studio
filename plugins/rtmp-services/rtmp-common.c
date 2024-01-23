@@ -563,15 +563,15 @@ static void copy_info_to_settings(json_t *service, obs_data_t *settings)
 
 	if (strncmp(name, "Twitch", 7) == 0) {
 		obs_data_set_string(
-			settings, "ertmp_configuration_info_link",
-			"https://help.twitch.tv/s/article/multiple-encodes");
+			settings, "ertmp_multitrack_video_disclaimer",
+			obs_module_text("MultitrackVideo.TwitchDisclaimer"));
 		obs_data_set_string(settings, "ertmp_multitrack_video_name",
 				    "Enhanced Broadcasting");
 	}
 	fill_more_info_link(service, settings);
 	fill_stream_key_link(service, settings);
 	copy_string_from_json_if_available(service, settings,
-					   "ertmp_configuration_info_link");
+					   "ertmp_multitrack_video_disclaimer");
 	copy_string_from_json_if_available(service, settings,
 					   "ertmp_multitrack_video_name");
 	update_protocol(service, settings);
