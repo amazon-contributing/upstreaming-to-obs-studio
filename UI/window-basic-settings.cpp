@@ -6284,6 +6284,8 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 			obs_data_set_string(settings, "service",
 					    QT_TO_UTF8(service_name));
 			obs_property_modified(service, settings);
+
+			obs_properties_destroy(props);
 		}
 
 		auto multitrack_video_name =
