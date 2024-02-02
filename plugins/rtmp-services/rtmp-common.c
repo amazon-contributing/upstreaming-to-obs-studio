@@ -161,6 +161,7 @@ static void rtmp_common_update(void *data, obs_data_t *settings)
 	service->supported_resolutions = NULL;
 	service->supported_resolutions_count = 0;
 	service->max_fps = 0;
+	service->ertmp_config_url = NULL;
 
 	json_t *root = open_services_file();
 	if (root) {
