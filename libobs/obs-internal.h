@@ -1100,6 +1100,7 @@ struct obs_output {
 	volatile bool data_active;
 	volatile bool end_data_capture_thread_active;
 	int64_t video_offsets[MAX_OUTPUT_VIDEO_ENCODERS];
+	int64_t video_dts_offsets[MAX_OUTPUT_VIDEO_ENCODERS];
 	int64_t audio_offsets[MAX_OUTPUT_AUDIO_ENCODERS];
 	int64_t highest_audio_ts;
 	int64_t highest_video_ts[MAX_OUTPUT_VIDEO_ENCODERS];

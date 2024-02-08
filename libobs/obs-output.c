@@ -1438,6 +1438,9 @@ static inline void apply_interleaved_packet_offset(struct obs_output *output,
 	out->dts -= offset;
 	out->pts -= offset;
 
+	if (out->type == OBS_ENCODER_VIDEO)
+		out->dts -= output->video_dts_offsets[out->track_idx];
+
 	/* convert the newly adjusted dts to relative dts time to ensure proper
 	 * interleaving.  if we're using an audio encoder that's already been
 	 * started on another output, then the first audio packet may not be
@@ -1905,6 +1908,55 @@ static bool initialize_interleaved_packets(struct obs_output *output)
 			output->audio_offsets[i] = audio[i]->dts;
 		}
 	}
+
+	struct video_dts_offsets_t {
+		int64_t lowest_dts;
+		struct encoder_group *encoder_group;
+	} video_dts_offsets[MAX_OUTPUT_VIDEO_ENCODERS] = {0};
+
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		obs_encoder_t *encoder = output->video_encoders[i];
+		if (!encoder || !encoder->encoder_group)
+			continue;
+
+		for (size_t j = 0; j < MAX_OUTPUT_VIDEO_ENCODERS; j++) {
+			struct video_dts_offsets_t *offset =
+				&video_dts_offsets[j];
+			if (offset->encoder_group &&
+			    offset->encoder_group != encoder->encoder_group)
+				continue;
+
+			int64_t new_dts = video[i]->dts - video[i]->pts;
+			if (offset->encoder_group) {
+				if (offset->lowest_dts > new_dts)
+					offset->lowest_dts = new_dts;
+			} else {
+				offset->encoder_group = encoder->encoder_group;
+				offset->lowest_dts = new_dts;
+			}
+		}
+	}
+
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		obs_encoder_t *encoder = output->video_encoders[i];
+		if (!encoder)
+			continue;
+		if (!encoder->encoder_group) {
+			output->video_dts_offsets[i] = 0;
+			continue;
+		}
+
+		for (size_t j = 0; j < MAX_OUTPUT_VIDEO_ENCODERS; j++) {
+			struct video_dts_offsets_t *offset =
+				&video_dts_offsets[j];
+			if (offset->encoder_group != encoder->encoder_group)
+				continue;
+			output->video_dts_offsets[i] =
+				video[i]->dts - offset->lowest_dts;
+			break;
+		}
+	}
+
 #if DEBUG_STARTING_PACKETS == 1
 	int64_t v = video[first_video_idx]->dts_usec;
 	int64_t a = audio[first_audio_idx]->dts_usec;
@@ -2316,6 +2368,7 @@ static void reset_packet_data(obs_output_t *output)
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
 		output->received_video[i] = false;
 		output->video_offsets[i] = 0;
+		output->video_dts_offsets[i] = 0;
 		output->highest_video_ts[i] = 0;
 	}
 	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++)
