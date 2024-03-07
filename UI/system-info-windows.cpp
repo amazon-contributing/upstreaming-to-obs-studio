@@ -41,6 +41,9 @@ OBSDataArrayAutoRelease system_gpu_data()
 		OBSDataAutoRelease data = obs_data_create();
 		obs_data_set_string(data, "model", name);
 
+		obs_data_set_int(data, "vendor_id", desc.VendorId);
+		obs_data_set_int(data, "device_id", desc.DeviceId);
+
 		obs_data_set_int(data, "dedicated_video_memory",
 				 desc.DedicatedVideoMemory);
 		obs_data_set_int(data, "shared_system_memory",
