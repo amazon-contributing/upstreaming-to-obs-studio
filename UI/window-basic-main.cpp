@@ -1593,8 +1593,7 @@ bool OBSBasic::InitBasicConfigDefaults()
 				"MultitrackVideoMaximumAggregateBitrateAuto",
 				true);
 	config_set_default_bool(basicConfig, "Stream1",
-				"MultitrackVideoReservedEncoderSessionsAuto",
-				true);
+				"MultitrackVideoMaximumVideoTracksAuto", true);
 
 	config_set_default_string(basicConfig, "SimpleOutput", "FilePath",
 				  GetDefaultVideoSavePath().c_str());

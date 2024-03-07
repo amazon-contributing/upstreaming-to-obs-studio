@@ -2590,13 +2590,13 @@ FutureHolder<std::optional<bool>> BasicOutputHandler::SetupMultitrackVideo(
 				  main->Config(), "Stream1",
 				  "MultitrackVideoMaximumAggregateBitrate"));
 
-	auto reserved_encoder_sessions =
+	auto maximum_video_tracks =
 		config_get_bool(main->Config(), "Stream1",
-				"MultitrackVideoReservedEncoderSessionsAuto")
+				"MultitrackVideoMaximumVideoTracksAuto")
 			? std::nullopt
 			: std::make_optional<uint32_t>(config_get_int(
 				  main->Config(), "Stream1",
-				  "MultitrackVideoReservedEncoderSessions"));
+				  "MultitrackVideoMaximumVideoTracks"));
 
 	auto stream_dump_config = GenerateMultitrackVideoStreamDumpConfig();
 
@@ -2613,8 +2613,8 @@ FutureHolder<std::optional<bool>> BasicOutputHandler::SetupMultitrackVideo(
 					custom_rtmp_url, key,
 					audio_encoder_id.c_str(), audio_bitrate,
 					maximum_aggregate_bitrate,
-					reserved_encoder_sessions,
-					custom_config, stream_dump_config);
+					maximum_video_tracks, custom_config,
+					stream_dump_config);
 			} catch (const MultitrackVideoError &error) {
 				return error;
 			}

@@ -1493,18 +1493,18 @@
               </layout>
              </item>
              <item row="17" column="0">
-              <widget class="QLabel" name="multitrackVideoReservedEncoderSessionsLabel">
+              <widget class="QLabel" name="multitrackVideoMaximumVideoTracksLabel">
                <property name="text">
-                <string>Basic.Settings.Stream.MultitrackVideoReservedEncoderSessions</string>
+                <string>Basic.Settings.Stream.MultitrackVideoMaximumVideoTracks</string>
                </property>
               </widget>
              </item>
              <item row="17" column="1">
               <layout class="QHBoxLayout">
                <item>
-                <widget class="QCheckBox" name="multitrackVideoReservedEncoderSessionsAuto">
+                <widget class="QCheckBox" name="multitrackVideoMaximumVideoTracksAuto">
                  <property name="text">
-                  <string>Basic.Settings.Stream.MultitrackVideoReservedEncoderSessionsAuto</string>
+                  <string>Basic.Settings.Stream.MultitrackVideoMaximumVideoTracksAuto</string>
                  </property>
                  <property name="sizePolicy">
                   <enum>QSizePolicy::Minimum, QSizePolicy::Minimum</enum>
@@ -1512,7 +1512,7 @@
                 </widget>
                </item>
                <item>
-                <widget class="QSpinBox" name="multitrackVideoReservedEncoderSessions">
+                <widget class="QSpinBox" name="multitrackVideoMaximumVideoTracks">
                  <property name="sizePolicy">
                   <enum>QSizePolicy::MinimumExpanding, QSizePolicy::Minimum</enum>
                  </property>

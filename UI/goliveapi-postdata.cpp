@@ -7,7 +7,7 @@ OBSDataAutoRelease
 constructGoLivePost(const ImmutableDateTime &attempt_start_time,
 		    QString streamKey,
 		    const std::optional<uint64_t> &maximum_aggregate_bitrate,
-		    const std::optional<uint32_t> &reserved_encoder_sessions)
+		    const std::optional<uint32_t> &maximum_video_tracks)
 {
 	OBSDataAutoRelease postData = obs_data_create();
 	OBSDataAutoRelease capabilitiesData = obs_data_create();
@@ -48,9 +48,9 @@ constructGoLivePost(const ImmutableDateTime &attempt_start_time,
 	if (maximum_aggregate_bitrate.has_value())
 		obs_data_set_int(preferences, "maximum_aggregate_bitrate",
 				 maximum_aggregate_bitrate.value());
-	if (reserved_encoder_sessions.has_value())
-		obs_data_set_int(preferences, "reserved_encoder_sessions",
-				 reserved_encoder_sessions.value());
+	if (maximum_video_tracks.has_value())
+		obs_data_set_int(preferences, "maximum_video_tracks",
+				 maximum_video_tracks.value());
 
 #if 0
 	// XXX hardcoding the present-day AdvancedOutput behavior here..
