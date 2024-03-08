@@ -422,8 +422,8 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	HookWidget(ui->enableMultitrackVideo,      CHECK_CHANGED,  STREAM1_CHANGED);
 	HookWidget(ui->multitrackVideoMaximumAggregateBitrateAuto, CHECK_CHANGED,  STREAM1_CHANGED);
 	HookWidget(ui->multitrackVideoMaximumAggregateBitrate,     SCROLL_CHANGED, STREAM1_CHANGED);
-	HookWidget(ui->multitrackVideoReservedEncoderSessionsAuto, CHECK_CHANGED,  STREAM1_CHANGED);
-	HookWidget(ui->multitrackVideoReservedEncoderSessions,     SCROLL_CHANGED, STREAM1_CHANGED);
+	HookWidget(ui->multitrackVideoMaximumVideoTracksAuto, CHECK_CHANGED,  STREAM1_CHANGED);
+	HookWidget(ui->multitrackVideoMaximumVideoTracks,     SCROLL_CHANGED, STREAM1_CHANGED);
 	HookWidget(ui->multitrackVideoStreamDumpEnable,            CHECK_CHANGED,  STREAM1_CHANGED);
 	HookWidget(ui->multitrackVideoConfigOverrideEnable,        CHECK_CHANGED,  STREAM1_CHANGED);
 	HookWidget(ui->multitrackVideoConfigOverride,              TEXT_CHANGED,   STREAM1_CHANGED);
@@ -6236,17 +6236,17 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 		toggle_available && ui->enableMultitrackVideo->isChecked() &&
 		!ui->multitrackVideoMaximumAggregateBitrateAuto->isChecked());
 
-	ui->multitrackVideoReservedEncoderSessionsLabel->setVisible(available);
-	ui->multitrackVideoReservedEncoderSessionsAuto->setVisible(available);
-	ui->multitrackVideoReservedEncoderSessions->setVisible(available);
+	ui->multitrackVideoMaximumVideoTracksLabel->setVisible(available);
+	ui->multitrackVideoMaximumVideoTracksAuto->setVisible(available);
+	ui->multitrackVideoMaximumVideoTracks->setVisible(available);
 
-	ui->multitrackVideoReservedEncoderSessionsLabel->setEnabled(
+	ui->multitrackVideoMaximumVideoTracksLabel->setEnabled(
 		toggle_available && ui->enableMultitrackVideo->isChecked());
-	ui->multitrackVideoReservedEncoderSessionsAuto->setEnabled(
+	ui->multitrackVideoMaximumVideoTracksAuto->setEnabled(
 		toggle_available && ui->enableMultitrackVideo->isChecked());
-	ui->multitrackVideoReservedEncoderSessions->setEnabled(
+	ui->multitrackVideoMaximumVideoTracks->setEnabled(
 		toggle_available && ui->enableMultitrackVideo->isChecked() &&
-		!ui->multitrackVideoReservedEncoderSessionsAuto->isChecked());
+		!ui->multitrackVideoMaximumVideoTracksAuto->isChecked());
 
 	ui->multitrackVideoStreamDumpEnable->setVisible(
 		available && MultitrackVideoDeveloperModeEnabled());

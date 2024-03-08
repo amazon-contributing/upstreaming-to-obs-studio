@@ -648,7 +648,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 	const std::optional<std::string> &rtmp_url, const QString &stream_key,
 	const char *audio_encoder_id, int audio_bitrate,
 	std::optional<uint32_t> maximum_aggregate_bitrate,
-	std::optional<uint32_t> reserved_encoder_sessions,
+	std::optional<uint32_t> maximum_video_tracks,
 	std::optional<std::string> custom_config,
 	obs_data_t *dump_stream_to_file_config)
 {
@@ -706,10 +706,10 @@ void MultitrackVideoOutput::PrepareStreaming(
 	     "    custom config:  %s\n"
 	     "    config url:     %s\n"
 	     "  settings:\n"
-	     "    service:                   %s\n"
-	     "    max aggregate bitrate:     %s (%" PRIu32 ")\n"
-	     "    reserved encoder sessions: %s (%" PRIu32 ")\n"
-	     "    custom rtmp url:           %s ('%s')",
+	     "    service:               %s\n"
+	     "    max aggregate bitrate: %s (%" PRIu32 ")\n"
+	     "    max video tracks:      %s (%" PRIu32 ")\n"
+	     "    custom rtmp url:       %s ('%s')",
 	     device_id().toUtf8().constData(),
 	     obs_session_id().toUtf8().constData(),
 	     is_custom_config ? "Yes" : "No",
@@ -718,8 +718,8 @@ void MultitrackVideoOutput::PrepareStreaming(
 	     service_name,
 	     maximum_aggregate_bitrate.has_value() ? "Set" : "Auto",
 	     maximum_aggregate_bitrate.value_or(0),
-	     reserved_encoder_sessions.has_value() ? "Set" : "Auto",
-	     reserved_encoder_sessions.value_or(0),
+	     maximum_video_tracks.has_value() ? "Set" : "Auto",
+	     maximum_video_tracks.value_or(0),
 	     rtmp_url.has_value() ? "Yes" : "No",
 	     rtmp_url.has_value() ? rtmp_url->c_str() : "");
 
@@ -727,7 +727,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 		go_live_post = constructGoLivePost(attempt_start_time,
 						   stream_key,
 						   maximum_aggregate_bitrate,
-						   reserved_encoder_sessions);
+						   maximum_video_tracks);
 
 		go_live_config = DownloadGoLiveConfig(parent, auto_config_url,
 						      go_live_post);

@@ -400,8 +400,7 @@ private slots:
 	void on_enableMultitrackVideo_toggled(bool enabled);
 	void
 	on_multitrackVideoMaximumAggregateBitrateAuto_toggled(bool enabled);
-	void
-	on_multitrackVideoReservedEncoderSessionsAuto_toggled(bool enabled);
+	void on_multitrackVideoMaximumVideoTracksAuto_toggled(bool enabled);
 	void on_multitrackVideoConfigOverrideEnable_toggled(bool enabled);
 	void on_simpleOutputBrowse_clicked();
 	void on_advOutRecPathBrowse_clicked();
