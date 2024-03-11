@@ -17,6 +17,6 @@ if (( ! ${+commands[brew]} )) {
   return 2
 }
 
-brew bundle --file ${SCRIPT_HOME}/.Brewfile
+HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=true brew bundle --file ${SCRIPT_HOME}/.Brewfile
 rehash
 log_group
