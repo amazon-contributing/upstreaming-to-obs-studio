@@ -889,13 +889,12 @@ try {
 	/* ------------------------------------ */
 	/* get video info                       */
 
-	struct obs_video_info ovi;
-	obs_get_video_info(&ovi);
-
 	struct video_scale_info info;
-	info.format = ovi.output_format;
-	info.colorspace = ovi.colorspace;
-	info.range = ovi.range;
+	video_t *video = obs_encoder_video(enc->encoder);
+	const struct video_output_info *voi = video_output_get_info(video);
+	info.format = voi->format;
+	info.colorspace = voi->colorspace;
+	info.range = voi->range;
 
 	if (enc->fallback) {
 		if (enc->codec == amf_codec_type::AVC)
@@ -908,9 +907,9 @@ try {
 
 	enc->cx = obs_encoder_get_width(enc->encoder);
 	enc->cy = obs_encoder_get_height(enc->encoder);
-	enc->amf_frame_rate = AMFConstructRate(ovi.fps_num, ovi.fps_den);
-	enc->fps_num = (int)ovi.fps_num;
-	enc->fps_den = (int)ovi.fps_den;
+	enc->amf_frame_rate = AMFConstructRate(voi->fps_num, voi->fps_den);
+	enc->fps_num = (int)voi->fps_num;
+	enc->fps_den = (int)voi->fps_den;
 	enc->full_range = info.range == VIDEO_RANGE_FULL;
 
 	switch (info.colorspace) {
@@ -1393,14 +1392,13 @@ static void amf_avc_create_internal(amf_base *enc, obs_data_t *settings)
 			 enc->amf_characteristic);
 	set_avc_property(enc, OUTPUT_COLOR_PRIMARIES, enc->amf_primaries);
 	set_avc_property(enc, FULL_RANGE_COLOR, enc->full_range);
+	set_avc_property(enc, FRAMERATE, enc->amf_frame_rate);
 
 	amf_avc_init(enc, settings);
 
 	res = enc->amf_encoder->Init(enc->amf_format, enc->cx, enc->cy);
 	if (res != AMF_OK)
 		throw amf_error("AMFComponent::Init failed", res);
-
-	set_avc_property(enc, FRAMERATE, enc->amf_frame_rate);
 
 	res = enc->amf_encoder->GetProperty(AMF_VIDEO_ENCODER_EXTRADATA, &p);
 	if (res == AMF_OK && p.type == AMF_VARIANT_INTERFACE)
@@ -1736,6 +1734,7 @@ static void amf_hevc_create_internal(amf_base *enc, obs_data_t *settings)
 			  enc->amf_characteristic);
 	set_hevc_property(enc, OUTPUT_COLOR_PRIMARIES, enc->amf_primaries);
 	set_hevc_property(enc, NOMINAL_RANGE, enc->full_range);
+	set_hevc_property(enc, FRAMERATE, enc->amf_frame_rate);
 
 	if (is_hdr) {
 		const int hdr_nominal_peak_level =
@@ -1767,8 +1766,6 @@ static void amf_hevc_create_internal(amf_base *enc, obs_data_t *settings)
 	res = enc->amf_encoder->Init(enc->amf_format, enc->cx, enc->cy);
 	if (res != AMF_OK)
 		throw amf_error("AMFComponent::Init failed", res);
-
-	set_hevc_property(enc, FRAMERATE, enc->amf_frame_rate);
 
 	res = enc->amf_encoder->GetProperty(AMF_VIDEO_ENCODER_HEVC_EXTRADATA,
 					    &p);
@@ -2076,14 +2073,13 @@ static void amf_av1_create_internal(amf_base *enc, obs_data_t *settings)
 	set_av1_property(enc, OUTPUT_TRANSFER_CHARACTERISTIC,
 			 enc->amf_characteristic);
 	set_av1_property(enc, OUTPUT_COLOR_PRIMARIES, enc->amf_primaries);
+	set_av1_property(enc, FRAMERATE, enc->amf_frame_rate);
 
 	amf_av1_init(enc, settings);
 
 	res = enc->amf_encoder->Init(enc->amf_format, enc->cx, enc->cy);
 	if (res != AMF_OK)
 		throw amf_error("AMFComponent::Init failed", res);
-
-	set_av1_property(enc, FRAMERATE, enc->amf_frame_rate);
 
 	AMFVariant p;
 	res = enc->amf_encoder->GetProperty(AMF_VIDEO_ENCODER_AV1_EXTRA_DATA,
