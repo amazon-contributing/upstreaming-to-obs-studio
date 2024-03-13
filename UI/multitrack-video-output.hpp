@@ -42,10 +42,7 @@ public:
 	signal_handler_t *StreamingSignalHandler();
 	void StartedStreaming(QWidget *parent, bool success);
 	void StopStreaming();
-	bool IsStreaming() const;
 	std::optional<int> ConnectTimeMs() const;
-
-	const std::vector<OBSEncoderAutoRelease> &VideoEncoders() const;
 
 	obs_output_t *StreamingOutput() { return output_; }
 
@@ -61,8 +58,6 @@ private:
 
 	std::function<void(bool success, std::optional<int> connect_time_ms)>
 		send_start_event;
-
-	std::atomic<bool> streaming_ = false;
 
 	std::optional<ImmutableDateTime> stream_attempt_start_time_;
 

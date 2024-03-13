@@ -927,8 +927,8 @@ void MultitrackVideoOutput::StartedStreaming(QWidget *parent, bool success)
 
 	if (berryessa_) {
 		std::vector<OBSEncoder> video_encoders;
-		video_encoders.reserve(VideoEncoders().size());
-		for (const auto &encoder : VideoEncoders()) {
+		video_encoders.reserve(video_encoders_.size());
+		for (const auto &encoder : video_encoders_) {
 			video_encoders.emplace_back(encoder);
 		}
 
@@ -958,13 +958,6 @@ void MultitrackVideoOutput::StopStreaming()
 
 	output_ = nullptr;
 	recording_output_ = nullptr;
-
-	streaming_ = false;
-}
-
-bool MultitrackVideoOutput::IsStreaming() const
-{
-	return streaming_;
 }
 
 std::optional<int> MultitrackVideoOutput::ConnectTimeMs() const
@@ -973,12 +966,6 @@ std::optional<int> MultitrackVideoOutput::ConnectTimeMs() const
 		return std::nullopt;
 
 	return obs_output_get_connect_time_ms(output_);
-}
-
-const std::vector<OBSEncoderAutoRelease> &
-MultitrackVideoOutput::VideoEncoders() const
-{
-	return video_encoders_;
 }
 
 static OBSOutputs
@@ -1052,7 +1039,6 @@ void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self,
 void StreamStartHandler(void *arg, calldata_t * /* data */)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
-	self->streaming_ = true;
 
 	if (!self->stream_attempt_start_time_.has_value() || !self->berryessa_)
 		return;
@@ -1065,7 +1051,6 @@ void StreamStartHandler(void *arg, calldata_t * /* data */)
 void StreamStopHandler(void *arg, calldata_t *params)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
-	self->streaming_ = false;
 	self->weak_output_ = nullptr;
 	self->video_encoders_.clear();
 	self->audio_encoder_ = nullptr;
