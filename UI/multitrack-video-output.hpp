@@ -21,9 +21,11 @@ class QString;
 
 void StreamStartHandler(void *arg, calldata_t *data);
 void StreamStopHandler(void *arg, calldata_t *data);
+void StreamDeactivateHandler(void *arg, calldata_t *data);
 
 void RecordingStartHandler(void *arg, calldata_t *data);
 void RecordingStopHandler(void *arg, calldata_t *data);
+void RecordingDeactivateHandler(void *arg, calldata_t *data);
 
 bool MultitrackVideoDeveloperModeEnabled();
 
@@ -44,7 +46,10 @@ public:
 	void StopStreaming();
 	std::optional<int> ConnectTimeMs() const;
 
-	obs_output_t *StreamingOutput() { return output_; }
+	obs_output_t *StreamingOutput()
+	{
+		return current ? &*current->output_ : nullptr;
+	}
 
 private:
 	const ImmutableDateTime &GenerateStreamAttemptStartTime();
@@ -61,17 +66,21 @@ private:
 
 	std::optional<ImmutableDateTime> stream_attempt_start_time_;
 
-	OBSOutputAutoRelease output_;
-	OBSWeakOutputAutoRelease weak_output_;
-	std::vector<OBSEncoderAutoRelease> video_encoders_;
-	OBSEncoderAutoRelease audio_encoder_;
-	OBSServiceAutoRelease multitrack_video_service_;
+	struct OBSOutputObjects {
+		OBSOutputAutoRelease output_;
+		std::vector<OBSEncoderAutoRelease> video_encoders_;
+		std::vector<OBSEncoderAutoRelease> audio_encoders_;
+		OBSServiceAutoRelease multitrack_video_service_;
+		OBSSignal start_signal, stop_signal, deactivate_signal;
+	};
 
-	OBSOutputAutoRelease recording_output_;
-	OBSWeakOutputAutoRelease weak_recording_output_;
+	std::optional<OBSOutputObjects> current;
+	std::optional<OBSOutputObjects> current_stream_dump;
 
 	friend void StreamStartHandler(void *arg, calldata_t *data);
 	friend void StreamStopHandler(void *arg, calldata_t *data);
+	friend void StreamDeactivateHandler(void *arg, calldata_t *data);
 	friend void RecordingStartHandler(void *arg, calldata_t *data);
 	friend void RecordingStopHandler(void *arg, calldata_t *data);
+	friend void RecordingDeactivateHandler(void *arg, calldata_t *data);
 };

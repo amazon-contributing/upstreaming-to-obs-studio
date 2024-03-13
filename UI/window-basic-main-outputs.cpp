@@ -1462,7 +1462,6 @@ void SimpleOutput::StopStreaming(bool force)
 {
 	auto output = StreamingOutput();
 	if (force && output)
-		/* FIXME: this will probably not work with multitrackVideo since the strong ref is released immediately when trying to stop */
 		obs_output_force_stop(output);
 	else if (multitrackVideo && multitrackVideoActive)
 		multitrackVideo->StopStreaming();
