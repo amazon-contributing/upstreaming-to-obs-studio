@@ -26,6 +26,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <d3dcompiler.h>
 
 void gs_vertex_shader::GetBuffersExpected(
 	const vector<D3D11_INPUT_ELEMENT_DESC> &inputs)
@@ -257,7 +258,7 @@ void gs_shader::Compile(const char *shaderString, const char *file,
 			cacheFile.seekg(0, ios::beg);
 
 			len -= sizeof(checksum);
-			device->d3dCreateBlob(len, shader);
+			D3DCreateBlob(len, shader);
 			cacheFile.read((char *)(*shader)->GetBufferPointer(),
 				       len);
 			uint64_t calculated_checksum = fnv1a_hash(
@@ -279,10 +280,10 @@ void gs_shader::Compile(const char *shaderString, const char *file,
 	}
 
 	if (!is_cached) {
-		hr = device->d3dCompile(shaderString, shaderStrLen, file, NULL,
-					NULL, "main", target,
-					D3D10_SHADER_OPTIMIZATION_LEVEL3, 0,
-					shader, errorsBlob.Assign());
+		hr = D3DCompile(shaderString, shaderStrLen, file, NULL, NULL,
+				"main", target,
+				D3D10_SHADER_OPTIMIZATION_LEVEL3, 0, shader,
+				errorsBlob.Assign());
 		if (FAILED(hr)) {
 			if (errorsBlob != NULL && errorsBlob->GetBufferSize())
 				throw ShaderError(errorsBlob, hr);
@@ -315,12 +316,8 @@ void gs_shader::Compile(const char *shaderString, const char *file,
 #ifdef DISASSEMBLE_SHADERS
 	ComPtr<ID3D10Blob> asmBlob;
 
-	if (!device->d3dDisassemble)
-		return;
-
-	hr = device->d3dDisassemble((*shader)->GetBufferPointer(),
-				    (*shader)->GetBufferSize(), 0, nullptr,
-				    &asmBlob);
+	hr = D3DDisassemble((*shader)->GetBufferPointer(),
+			    (*shader)->GetBufferSize(), 0, nullptr, &asmBlob);
 
 	if (SUCCEEDED(hr) && !!asmBlob && asmBlob->GetBufferSize()) {
 		blog(LOG_INFO, "=============================================");

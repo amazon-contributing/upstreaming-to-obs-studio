@@ -239,6 +239,7 @@ private:
 	QStringList oldExtraDockNames;
 
 	OBSDataAutoRelease safeModeModuleData;
+	std::vector<OBSDataAutoRelease> safeModeTransitions;
 
 	bool loaded = false;
 	long disableSaving = 1;
@@ -364,6 +365,7 @@ private:
 	std::string patronJson;
 
 	std::atomic<obs_scene_t *> currentScene = nullptr;
+	std::optional<std::pair<uint32_t, uint32_t>> lastOutputResolution;
 
 	void UpdateMultiviewProjectorMenu();
 
@@ -1045,6 +1047,7 @@ public:
 	void SetDisplayAffinity(QWindow *window);
 
 	QColor GetSelectionColor() const;
+	inline bool Closing() { return closing; }
 
 	void AddAdditionalStreamOutput(obs_output_t *output);
 	void RemoveAdditionalStreamOutput(obs_weak_output_t *weak_output);

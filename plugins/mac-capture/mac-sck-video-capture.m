@@ -86,8 +86,7 @@ static bool init_screen_stream(struct screen_capture *sc)
     sc->stream_properties = [[SCStreamConfiguration alloc] init];
     os_sem_wait(sc->shareable_content_available);
 
-    SCDisplay * (^get_target_display)(void) = ^SCDisplay *
-    {
+    SCDisplayRef (^get_target_display)(void) = ^SCDisplayRef {
         for (SCDisplay *display in sc->shareable_content.displays) {
             if (display.displayID == sc->display) {
                 return display;
@@ -107,6 +106,13 @@ static bool init_screen_stream(struct screen_capture *sc)
     switch (sc->capture_type) {
         case ScreenCaptureDisplayStream: {
             SCDisplay *target_display = get_target_display();
+
+            if (!target_display) {
+                MACCAP_ERR("init_screen_stream: Invalid target display ID:  %u\n", sc->display);
+
+                os_sem_post(sc->shareable_content_available);
+                return false;
+            }
 
             if (sc->hide_obs) {
                 SCRunningApplication *obsApp = nil;
@@ -153,6 +159,10 @@ static bool init_screen_stream(struct screen_capture *sc)
 
                 [sc->stream_properties setWidth:(size_t) target_window.frame.size.width];
                 [sc->stream_properties setHeight:(size_t) target_window.frame.size.height];
+
+                if (@available(macOS 14.2, *)) {
+                    [sc->stream_properties setIncludeChildWindows:YES];
+                }
             }
         } break;
         case ScreenCaptureApplicationStream: {
@@ -169,6 +179,10 @@ static bool init_screen_stream(struct screen_capture *sc)
             content_filter = [[SCContentFilter alloc] initWithDisplay:target_display
                                                 includingApplications:target_application_array
                                                      exceptingWindows:empty_array];
+            if (@available(macOS 14.2, *)) {
+                content_filter.includeMenuBar = YES;
+            }
+
             [target_application_array release];
             [empty_array release];
 
