@@ -492,7 +492,8 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 	       OBSEncoderAutoRelease &audio_encoder,
 	       const char *audio_encoder_id, std::optional<int> audio_bitrate);
 static void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self,
-				obs_output_t *output);
+				obs_output_t *output, OBSSignal &start,
+				OBSSignal &stop, OBSSignal &deactivate);
 
 struct OutputObjects {
 	OBSOutputAutoRelease output;
@@ -673,6 +674,12 @@ void MultitrackVideoOutput::PrepareStreaming(
 			parent, [bem = std::move(berryessa_every_minute_)] {});
 	}
 
+	if (current || current_stream_dump) {
+		blog(LOG_WARNING,
+		     "Tried to prepare multitrack video output while it's already active");
+		return;
+	}
+
 	CheckPluginIntegrity(parent);
 
 	if (!berryessa_every_minute_) {
@@ -799,8 +806,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 		add_always_bool(berryessa_.get(), "config_custom",
 				is_custom_config);
 
-		video_encoders_.clear();
-		auto video_encoders = std::move(video_encoders_);
+		auto video_encoders = std::vector<OBSEncoderAutoRelease>();
 		OBSEncoderAutoRelease audio_encoder = nullptr;
 		auto outputs = SetupOBSOutput(dump_stream_to_file_config,
 					      go_live_config, video_encoders,
@@ -813,6 +819,9 @@ void MultitrackVideoOutput::PrepareStreaming(
 				QTStr("FailedToStartStream.FallbackToDefault")
 					.arg(multitrack_video_name));
 
+		std::vector<OBSEncoderAutoRelease> audio_encoders;
+		audio_encoders.emplace_back(std::move(audio_encoder));
+
 		auto multitrack_video_service =
 			create_service(device_id(), obs_session_id(),
 				       go_live_config, rtmp_url, stream_key);
@@ -823,18 +832,54 @@ void MultitrackVideoOutput::PrepareStreaming(
 
 		obs_output_set_service(output, multitrack_video_service);
 
-		SetupSignalHandlers(false, this, output);
-		if (dump_stream_to_file_config && recording_output)
-			SetupSignalHandlers(true, this, recording_output);
+		OBSSignal start_streaming;
+		OBSSignal stop_streaming;
+		OBSSignal deactivate_stream;
+		SetupSignalHandlers(false, this, output, start_streaming,
+				    stop_streaming, deactivate_stream);
 
-		output_ = std::move(output);
-		weak_output_ = obs_output_get_weak_output(output_);
-		video_encoders_ = std::move(video_encoders);
-		audio_encoder_ = std::move(audio_encoder);
-		multitrack_video_service_ = std::move(multitrack_video_service);
-		recording_output_ = std::move(recording_output);
-		weak_recording_output_ =
-			obs_output_get_weak_output(recording_output_);
+		if (dump_stream_to_file_config && recording_output) {
+			OBSSignal start_recording;
+			OBSSignal stop_recording;
+			OBSSignal deactivate_recording;
+			SetupSignalHandlers(true, this, recording_output,
+					    start_recording, stop_recording,
+					    deactivate_recording);
+
+			decltype(video_encoders) recording_video_encoders;
+			recording_video_encoders.reserve(video_encoders.size());
+			for (auto &encoder : video_encoders) {
+				recording_video_encoders.emplace_back(
+					obs_encoder_get_ref(encoder));
+			}
+
+			decltype(audio_encoders) recording_audio_encoders;
+			recording_audio_encoders.reserve(audio_encoders.size());
+			for (auto &encoder : audio_encoders) {
+				recording_audio_encoders.emplace_back(
+					obs_encoder_get_ref(encoder));
+			}
+
+			current_stream_dump.emplace(OBSOutputObjects{
+				std::move(recording_output),
+				std::move(recording_video_encoders),
+				std::move(recording_audio_encoders),
+				nullptr,
+				std::move(start_recording),
+				std::move(stop_recording),
+				std::move(deactivate_recording),
+			});
+		}
+
+		current.emplace(OBSOutputObjects{
+			std::move(output),
+			std::move(video_encoders),
+			std::move(audio_encoders),
+			std::move(multitrack_video_service),
+			std::move(start_streaming),
+			std::move(stop_streaming),
+			std::move(deactivate_stream),
+		});
 
 		if (berryessa_) {
 			send_start_event = [berryessa = berryessa_.get(),
@@ -902,7 +947,9 @@ void MultitrackVideoOutput::PrepareStreaming(
 
 signal_handler_t *MultitrackVideoOutput::StreamingSignalHandler()
 {
-	return obs_output_get_signal_handler(output_);
+	return current.has_value()
+		       ? obs_output_get_signal_handler(current->output_)
+		       : nullptr;
 }
 
 void MultitrackVideoOutput::StartedStreaming(QWidget *parent, bool success)
@@ -914,8 +961,8 @@ void MultitrackVideoOutput::StartedStreaming(QWidget *parent, bool success)
 		return;
 	}
 
-	if (recording_output_) {
-		auto result = obs_output_start(recording_output_);
+	if (current_stream_dump && current_stream_dump->output_) {
+		auto result = obs_output_start(current_stream_dump->output_);
 		blog(LOG_INFO, "MultitrackVideoOutput: starting recording%s",
 		     result ? "" : " failed");
 	}
@@ -925,10 +972,10 @@ void MultitrackVideoOutput::StartedStreaming(QWidget *parent, bool success)
 
 	send_start_event = {};
 
-	if (berryessa_) {
+	if (berryessa_ && current) {
 		std::vector<OBSEncoder> video_encoders;
-		video_encoders.reserve(VideoEncoders().size());
-		for (const auto &encoder : VideoEncoders()) {
+		video_encoders.reserve(current->video_encoders_.size());
+		for (const auto &encoder : current->video_encoders_) {
 			video_encoders.emplace_back(encoder);
 		}
 
@@ -947,38 +994,23 @@ void MultitrackVideoOutput::StartedStreaming(QWidget *parent, bool success)
 
 void MultitrackVideoOutput::StopStreaming()
 {
-	if (output_)
-		obs_output_stop(output_);
+	if (current && current->output_) {
+		obs_output_stop(current->output_);
 
-	if (recording_output_)
-		obs_output_stop(recording_output_);
+		submit_event(berryessa_.get(), "ivs_obs_stream_stop",
+			     MakeEvent_ivs_obs_stream_stop());
+	}
 
-	submit_event(berryessa_.get(), "ivs_obs_stream_stop",
-		     MakeEvent_ivs_obs_stream_stop());
-
-	output_ = nullptr;
-	recording_output_ = nullptr;
-
-	streaming_ = false;
-}
-
-bool MultitrackVideoOutput::IsStreaming() const
-{
-	return streaming_;
+	if (current_stream_dump && current_stream_dump->output_)
+		obs_output_stop(current_stream_dump->output_);
 }
 
 std::optional<int> MultitrackVideoOutput::ConnectTimeMs() const
 {
-	if (!output_)
+	if (!current || !current->output_)
 		return std::nullopt;
 
-	return obs_output_get_connect_time_ms(output_);
-}
-
-const std::vector<OBSEncoderAutoRelease> &
-MultitrackVideoOutput::VideoEncoders() const
-{
-	return video_encoders_;
+	return obs_output_get_connect_time_ms(current->output_);
 }
 
 static OBSOutputs
@@ -1036,23 +1068,28 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 }
 
 void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self,
-			 obs_output_t *output)
+			 obs_output_t *output, OBSSignal &start,
+			 OBSSignal &stop, OBSSignal &deactivate)
 {
 	auto handler = obs_output_get_signal_handler(output);
 
-	signal_handler_connect(
-		handler, "start",
-		!recording ? StreamStartHandler : RecordingStartHandler, self);
+	start.Connect(handler, "start",
+		      !recording ? StreamStartHandler : RecordingStartHandler,
+		      self);
 
-	signal_handler_connect(
-		handler, "stop",
-		!recording ? StreamStopHandler : RecordingStopHandler, self);
+	stop.Connect(handler, "stop",
+		     !recording ? StreamStopHandler : RecordingStopHandler,
+		     self);
+
+	deactivate.Connect(handler, "deactivate",
+			   !recording ? StreamDeactivateHandler
+				      : RecordingDeactivateHandler,
+			   self);
 }
 
 void StreamStartHandler(void *arg, calldata_t * /* data */)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
-	self->streaming_ = true;
 
 	if (!self->stream_attempt_start_time_.has_value() || !self->berryessa_)
 		return;
@@ -1065,14 +1102,9 @@ void StreamStartHandler(void *arg, calldata_t * /* data */)
 void StreamStopHandler(void *arg, calldata_t *params)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
-	self->streaming_ = false;
-	self->weak_output_ = nullptr;
-	self->video_encoders_.clear();
-	self->audio_encoder_ = nullptr;
 
-	if (self->recording_output_) {
-		obs_output_stop(self->recording_output_);
-		self->recording_output_ = nullptr;
+	if (self->current_stream_dump && self->current_stream_dump->output_) {
+		obs_output_stop(self->current_stream_dump->output_);
 	}
 
 	auto code = calldata_int(params, "code");
@@ -1081,11 +1113,19 @@ void StreamStopHandler(void *arg, calldata_t *params)
 	auto stopped_event = MakeEvent_ivs_obs_stream_stopped(
 		code == OBS_OUTPUT_SUCCESS ? nullptr : &code, last_error);
 
+	decltype(self->current) object_releaser = std::nullopt;
+	if (!obs_output_active(static_cast<obs_output_t *>(
+		    calldata_ptr(params, "output")))) {
+		object_releaser = std::move(self->current);
+		self->current.reset();
+	}
+
 	QMetaObject::invokeMethod(
 		QApplication::instance()->thread(),
 		[berryessa = QPointer{self->berryessa_.get()},
 		 bem = std::move(self->berryessa_every_minute_),
-		 stopped_event = std::move(stopped_event)] {
+		 stopped_event = std::move(stopped_event),
+		 object_releaser = std::move(object_releaser)] {
 			submit_event(berryessa, "ivs_obs_stream_stopped",
 				     stopped_event);
 
@@ -1102,17 +1142,46 @@ void StreamStopHandler(void *arg, calldata_t *params)
 			std::nullopt);
 }
 
+void StreamDeactivateHandler(void *arg, calldata_t * /* data */)
+{
+	auto self = static_cast<MultitrackVideoOutput *>(arg);
+	if (!self->current)
+		return;
+
+	QMetaObject::invokeMethod(QApplication::instance()->thread(),
+				  [to_delete = std::move(self->current)] {});
+	self->current.reset();
+}
+
 void RecordingStartHandler(void * /* arg */, calldata_t * /* data */)
 {
 	blog(LOG_INFO, "MultitrackVideoOutput: recording started");
 }
 
-void RecordingStopHandler(void *arg, calldata_t * /* data */)
+void RecordingStopHandler(void *arg, calldata_t *params)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
-	self->weak_recording_output_ = nullptr;
-
 	blog(LOG_INFO, "MultitrackVideoOutput: recording stopped");
+
+	if (!obs_output_active(static_cast<obs_output_t *>(
+		    calldata_ptr(params, "output")))) {
+		QMetaObject::invokeMethod(
+			QApplication::instance()->thread(),
+			[to_delete = std::move(self->current_stream_dump)] {});
+		self->current_stream_dump.reset();
+	}
+}
+
+void RecordingDeactivateHandler(void *arg, calldata_t * /*data*/)
+{
+	auto self = static_cast<MultitrackVideoOutput *>(arg);
+	if (!self->current_stream_dump)
+		return;
+
+	QMetaObject::invokeMethod(
+		QApplication::instance()->thread(),
+		[to_delete = std::move(self->current_stream_dump)] {});
+	self->current_stream_dump.reset();
 }
 
 const ImmutableDateTime &MultitrackVideoOutput::GenerateStreamAttemptStartTime()
