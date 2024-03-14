@@ -47,10 +47,10 @@ runs:
           GITHUB_REF_BEFORE='4b825dc642cb6eb9a060e54bf8d69288fbee4904'
         fi
 
-        local -a changes=($(git diff --name-only HEAD~1 HEAD))
+        local -a changes=($(git diff --diff-filter=d --name-only HEAD~1 HEAD))
         case ${GITHUB_EVENT_NAME} {
-          pull_request) changes=($(git diff --name-only origin/${GITHUB_BASE_REF} HEAD)) ;;
-          push) if [[ ${GITHUB_EVENT_FORCED} != true ]] changes=($(git diff --name-only ${GITHUB_REF_BEFORE} HEAD)) ;;
+          pull_request) changes=($(git diff --diff-filter=d --name-only origin/${GITHUB_BASE_REF} HEAD)) ;;
+          push) if [[ ${GITHUB_EVENT_FORCED} != true ]] changes=($(git diff --diff-filter=d --name-only ${GITHUB_REF_BEFORE} HEAD)) ;;
           *) ;;
         }
 
