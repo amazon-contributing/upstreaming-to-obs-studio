@@ -72,7 +72,7 @@ static inline void free_packets(struct rtmp_stream *stream)
 
 	while (stream->packets.size) {
 		struct encoder_packet packet;
-		circlebuf_pop_front(&stream->packets, &packet, sizeof(packet));
+		deque_pop_front(&stream->packets, &packet, sizeof(packet));
 		obs_encoder_packet_release(&packet);
 	}
 	pthread_mutex_unlock(&stream->packets_mutex);
@@ -130,11 +130,11 @@ static void rtmp_stream_destroy(void *data)
 	os_event_destroy(stream->stop_event);
 	os_sem_destroy(stream->send_sem);
 	pthread_mutex_destroy(&stream->packets_mutex);
-	circlebuf_free(&stream->packets);
+	deque_free(&stream->packets);
 #ifdef TEST_FRAMEDROPS
-	circlebuf_free(&stream->droptest_info);
+	deque_free(&stream->droptest_info);
 #endif
-	circlebuf_free(&stream->dbr_frames);
+	deque_free(&stream->dbr_frames);
 	pthread_mutex_destroy(&stream->dbr_mutex);
 
 	os_event_destroy(stream->buffer_space_available_event);
@@ -241,8 +241,8 @@ static inline bool get_next_packet(struct rtmp_stream *stream,
 
 	pthread_mutex_lock(&stream->packets_mutex);
 	if (stream->packets.size) {
-		circlebuf_pop_front(&stream->packets, packet,
-				    sizeof(struct encoder_packet));
+		deque_pop_front(&stream->packets, packet,
+				sizeof(struct encoder_packet));
 		new_packet = true;
 	}
 	pthread_mutex_unlock(&stream->packets_mutex);
@@ -326,12 +326,11 @@ static void droptest_cap_data_rate(struct rtmp_stream *stream, size_t size)
 	info.ts = ts;
 	info.size = size;
 
-	circlebuf_push_back(&stream->droptest_info, &info, sizeof(info));
+	deque_push_back(&stream->droptest_info, &info, sizeof(info));
 	stream->droptest_size += size;
 
 	if (stream->droptest_info.size) {
-		circlebuf_peek_front(&stream->droptest_info, &info,
-				     sizeof(info));
+		deque_peek_front(&stream->droptest_info, &info, sizeof(info));
 
 		if (stream->droptest_size > stream->droptest_max) {
 			uint64_t elapsed = ts - info.ts;
@@ -342,8 +341,8 @@ static void droptest_cap_data_rate(struct rtmp_stream *stream, size_t size)
 			}
 
 			while (stream->droptest_size > stream->droptest_max) {
-				circlebuf_pop_front(&stream->droptest_info,
-						    &info, sizeof(info));
+				deque_pop_front(&stream->droptest_info, &info,
+						sizeof(info));
 				stream->droptest_size -= info.size;
 			}
 		}
@@ -587,8 +586,8 @@ static void dbr_add_frame(struct rtmp_stream *stream, struct dbr_frame *back)
 	struct dbr_frame front;
 	uint64_t dur;
 
-	circlebuf_push_back(&stream->dbr_frames, back, sizeof(*back));
-	circlebuf_peek_front(&stream->dbr_frames, &front, sizeof(front));
+	deque_push_back(&stream->dbr_frames, back, sizeof(*back));
+	deque_peek_front(&stream->dbr_frames, &front, sizeof(front));
 
 	stream->dbr_data_size += back->size;
 
@@ -596,7 +595,7 @@ static void dbr_add_frame(struct rtmp_stream *stream, struct dbr_frame *back)
 
 	if (dur >= MAX_ESTIMATE_DURATION_MS) {
 		stream->dbr_data_size -= front.size;
-		circlebuf_pop_front(&stream->dbr_frames, NULL, sizeof(front));
+		deque_pop_front(&stream->dbr_frames, NULL, sizeof(front));
 	}
 
 	stream->dbr_est_bitrate =
@@ -960,7 +959,7 @@ static inline bool send_headers(struct rtmp_stream *stream)
 
 	if (!send_audio_header(stream, i++, &next))
 		return false;
-	if (!send_video_header(stream, 0) || !send_video_metadata(stream, 0))
+	if (!send_video_metadata(stream, 0) || !send_video_header(stream, 0))
 		return false;
 
 	while (next) {
@@ -970,8 +969,8 @@ static inline bool send_headers(struct rtmp_stream *stream)
 
 	i = 1;
 	while (obs_output_get_video_encoder2(stream->output, i) != NULL) {
-		if (!send_video_header(stream, i) ||
-		    !send_video_metadata(stream, i))
+		if (!send_video_metadata(stream, i) ||
+		    !send_video_header(stream, i))
 			return false;
 		i += 1;
 	}
@@ -1338,7 +1337,7 @@ static bool init_connect(struct rtmp_stream *stream)
 		}
 	}
 
-	circlebuf_free(&stream->dbr_frames);
+	deque_free(&stream->dbr_frames);
 	stream->audio_bitrate = (long)obs_data_get_int(asettings, "bitrate");
 	stream->dbr_data_size = 0;
 	stream->dbr_orig_bitrate = (long)obs_data_get_int(vsettings, "bitrate");
@@ -1420,11 +1419,14 @@ static void *connect_thread(void *data)
 		return NULL;
 	}
 
-	// HDR streaming disabled for AV1 and HEVC
+	// HDR streaming disabled for AV1
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
 		if (stream->video_codec[i] &&
-		    stream->video_codec[i] != CODEC_H264) {
-			video_t *video = obs_get_video();
+		    stream->video_codec[i] != CODEC_H264 &&
+		    stream->video_codec[i] != CODEC_HEVC) {
+			obs_encoder_t *enc = obs_output_get_video_encoder2(
+				stream->output, i);
+			video_t *video = obs_encoder_video(enc);
 			const struct video_output_info *info =
 				video_output_get_info(video);
 
@@ -1468,8 +1470,8 @@ static bool rtmp_stream_start(void *data)
 static inline bool add_packet(struct rtmp_stream *stream,
 			      struct encoder_packet *packet)
 {
-	circlebuf_push_back(&stream->packets, packet,
-			    sizeof(struct encoder_packet));
+	deque_push_back(&stream->packets, packet,
+			sizeof(struct encoder_packet));
 	return true;
 }
 
@@ -1483,7 +1485,7 @@ static void drop_frames(struct rtmp_stream *stream, const char *name,
 {
 	UNUSED_PARAMETER(pframes);
 
-	struct circlebuf new_buf = {0};
+	struct deque new_buf = {0};
 	int num_frames_dropped = 0;
 
 #ifdef _DEBUG
@@ -1492,16 +1494,16 @@ static void drop_frames(struct rtmp_stream *stream, const char *name,
 	UNUSED_PARAMETER(name);
 #endif
 
-	circlebuf_reserve(&new_buf, sizeof(struct encoder_packet) * 8);
+	deque_reserve(&new_buf, sizeof(struct encoder_packet) * 8);
 
 	while (stream->packets.size) {
 		struct encoder_packet packet;
-		circlebuf_pop_front(&stream->packets, &packet, sizeof(packet));
+		deque_pop_front(&stream->packets, &packet, sizeof(packet));
 
 		/* do not drop audio data or video keyframes */
 		if (packet.type == OBS_ENCODER_AUDIO ||
 		    packet.drop_priority >= highest_priority) {
-			circlebuf_push_back(&new_buf, &packet, sizeof(packet));
+			deque_push_back(&new_buf, &packet, sizeof(packet));
 
 		} else {
 			num_frames_dropped++;
@@ -1509,7 +1511,7 @@ static void drop_frames(struct rtmp_stream *stream, const char *name,
 		}
 	}
 
-	circlebuf_free(&stream->packets);
+	deque_free(&stream->packets);
 	stream->packets = new_buf;
 
 	if (stream->min_priority < highest_priority)
@@ -1531,7 +1533,7 @@ static bool find_first_video_packet(struct rtmp_stream *stream,
 
 	for (size_t i = 0; i < count; i++) {
 		struct encoder_packet *cur =
-			circlebuf_data(&stream->packets, i * sizeof(*first));
+			deque_data(&stream->packets, i * sizeof(*first));
 		if (cur->type == OBS_ENCODER_VIDEO && !cur->keyframe) {
 			*first = *cur;
 			return true;
@@ -1550,8 +1552,8 @@ static bool dbr_bitrate_lowered(struct rtmp_stream *stream)
 	if (stream->dbr_est_bitrate &&
 	    stream->dbr_est_bitrate < stream->dbr_cur_bitrate) {
 		stream->dbr_data_size = 0;
-		circlebuf_pop_front(&stream->dbr_frames, NULL,
-				    stream->dbr_frames.size);
+		deque_pop_front(&stream->dbr_frames, NULL,
+				stream->dbr_frames.size);
 		est_bitrate = stream->dbr_est_bitrate / 100 * 100;
 		if (est_bitrate < 50) {
 			est_bitrate = 50;

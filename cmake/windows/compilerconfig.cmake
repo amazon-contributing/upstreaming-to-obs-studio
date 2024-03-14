@@ -1,5 +1,9 @@
 # OBS CMake Windows compiler configuration module
 
+# cmake-format: off
+# cmake-lint: disable=E1126
+# cmake-format: on
+
 include_guard(GLOBAL)
 
 include(ccache)
@@ -10,6 +14,7 @@ if(ENABLE_CCACHE AND CCACHE_PROGRAM)
     file(COPY_FILE ${CCACHE_PROGRAM} "${CMAKE_CURRENT_BINARY_DIR}/cl.exe")
     set(CMAKE_VS_GLOBALS "CLToolExe=cl.exe" "CLToolPath=${CMAKE_BINARY_DIR}" "TrackFileAccess=false"
                          "UseMultiToolTask=true")
+    # Ccache does not support debug information stored in program database (PDB) files
     set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT Embedded)
   elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
     file(COPY_FILE ${CCACHE_PROGRAM} "${CMAKE_CURRENT_BINARY_DIR}/clang-cl.exe")
@@ -42,9 +47,8 @@ if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION VERSION_LESS 10.0.20348)
                       "Please download and install the most recent Windows SDK.")
 endif()
 
-set(_obs_msvc_c_options /Brepro /MP /permissive- /Zc:__cplusplus /Zc:preprocessor)
-
-set(_obs_msvc_cpp_options /Brepro /MP /permissive- /Zc:__cplusplus /Zc:preprocessor)
+set(_obs_msvc_c_options /MP /Zc:__cplusplus /Zc:preprocessor)
+set(_obs_msvc_cpp_options /MP /Zc:__cplusplus /Zc:preprocessor)
 
 if(CMAKE_CXX_STANDARD GREATER_EQUAL 20)
   list(APPEND _obs_msvc_cpp_options /Zc:char8_t-)
@@ -53,11 +57,15 @@ endif()
 add_compile_options(
   /W3
   /utf-8
+  /Brepro
+  /permissive-
   "$<$<COMPILE_LANG_AND_ID:C,MSVC>:${_obs_msvc_c_options}>"
   "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:${_obs_msvc_cpp_options}>"
   "$<$<COMPILE_LANG_AND_ID:C,Clang>:${_obs_clang_c_options}>"
   "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:${_obs_clang_cxx_options}>"
-  $<$<NOT:$<CONFIG:Debug>>:/Gy>)
+  $<$<NOT:$<CONFIG:Debug>>:/Gy>
+  $<$<NOT:$<CONFIG:Debug>>:/GL>
+  $<$<NOT:$<CONFIG:Debug>>:/Oi>)
 
 add_compile_definitions(UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS $<$<CONFIG:DEBUG>:DEBUG>
                         $<$<CONFIG:DEBUG>:_DEBUG>)
@@ -65,6 +73,7 @@ add_compile_definitions(UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO
 # cmake-format: off
 add_link_options($<$<NOT:$<CONFIG:Debug>>:/OPT:REF>
                  $<$<NOT:$<CONFIG:Debug>>:/OPT:ICF>
+                 $<$<NOT:$<CONFIG:Debug>>:/LTCG>
                  $<$<NOT:$<CONFIG:Debug>>:/INCREMENTAL:NO>
                  /DEBUG
                  /Brepro)
