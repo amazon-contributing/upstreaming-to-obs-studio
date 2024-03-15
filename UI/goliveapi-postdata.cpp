@@ -2,12 +2,14 @@
 
 #include "immutable-date-time.hpp"
 #include "system-info.hpp"
+#include "multitrack-video-output.hpp"
 
 OBSDataAutoRelease
 constructGoLivePost(const ImmutableDateTime &attempt_start_time,
 		    QString streamKey,
 		    const std::optional<uint64_t> &maximum_aggregate_bitrate,
-		    const std::optional<uint32_t> &maximum_video_tracks)
+		    const std::optional<uint32_t> &maximum_video_tracks,
+		    std::map<std::string, video_t *> &extra_views)
 {
 	OBSDataAutoRelease postData = obs_data_create();
 	OBSDataAutoRelease capabilitiesData = obs_data_create();
@@ -42,6 +44,26 @@ constructGoLivePost(const ImmutableDateTime &attempt_start_time,
 		obs_data_set_int(clientData, "canvas_width", ovi.base_width);
 		obs_data_set_int(clientData, "canvas_height", ovi.base_height);
 	}
+
+	OBSDataArrayAutoRelease views = obs_data_array_create();
+
+	for (auto &video_output : extra_views) {
+		video_t *video = video_output.second;
+		if (!video)
+			continue;
+		const struct video_output_info *voi =
+			video_output_get_info(video);
+		if (!voi)
+			continue;
+		OBSDataAutoRelease view = obs_data_create();
+		obs_data_set_string(view, "name", video_output.first.c_str());
+		obs_data_set_int(view, "width", voi->width);
+		obs_data_set_int(view, "height", voi->height);
+		obs_data_set_int(view, "fps_numerator", voi->fps_num);
+		obs_data_set_int(view, "fps_denominator", voi->fps_den);
+		obs_data_array_push_back(views, view);
+	}
+	obs_data_set_array(capabilitiesData, "extra_views", views);
 
 	OBSDataAutoRelease preferences = obs_data_create();
 	obs_data_set_obj(postData, "preferences", preferences);

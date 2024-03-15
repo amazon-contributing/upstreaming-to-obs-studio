@@ -174,6 +174,12 @@ struct obs_frontend_callbacks {
 	obs_frontend_external_stream_stopped(obs_weak_output_t *output) = 0;
 
 	virtual char *obs_frontend_get_version_string() = 0;
+
+	virtual void obs_frontend_multitrack_video_register(
+		const char *name, multitrack_video_start_cb start_video,
+		multitrack_video_stop_cb stop_video, void *param) = 0;
+	virtual void
+	obs_frontend_multitrack_video_unregister(const char *name) = 0;
 };
 
 EXPORT void
