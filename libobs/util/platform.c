@@ -835,11 +835,29 @@ struct timespec *os_nstime_to_timespec(uint64_t timestamp,
 
 	*storage = timespec_offset.ts;
 
-	uint64_t offset = timestamp - timespec_offset.timestamp;
-	uint64_t nsecs = storage->tv_nsec + offset % 1000000000;
-	uint64_t secs = storage->tv_sec + offset / 1000000000;
-	if (nsecs > 1000000000) {
-		nsecs -= 1000000000;
+	static const int64_t nsecs_per_sec = 1000000000;
+
+	int64_t nsecs = 0;
+	int64_t secs = 0;
+	if (timestamp >= timespec_offset.timestamp) {
+		uint64_t offset = timestamp - timespec_offset.timestamp;
+		nsecs = storage->tv_nsec + offset % nsecs_per_sec;
+		secs = storage->tv_sec + offset / nsecs_per_sec;
+	} else {
+		uint64_t offset = timespec_offset.timestamp - timestamp;
+		int64_t nsec_offset = offset % nsecs_per_sec;
+		int64_t sec_offset = offset / nsecs_per_sec;
+		int64_t tv_nsec = storage->tv_nsec;
+		if (nsec_offset > tv_nsec) {
+			storage->tv_sec -= 1;
+			tv_nsec += nsecs_per_sec;
+		}
+		nsecs = tv_nsec - nsec_offset;
+		secs = storage->tv_sec - sec_offset;
+	}
+
+	if (nsecs > nsecs_per_sec) {
+		nsecs -= nsecs_per_sec;
 		secs += 1;
 	}
 	storage->tv_nsec = (long)nsecs;
