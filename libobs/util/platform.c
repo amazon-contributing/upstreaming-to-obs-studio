@@ -27,6 +27,7 @@
 #include "utf8.h"
 #include "dstr.h"
 #include "obs.h"
+#include "threading.h"
 
 FILE *os_wfopen(const wchar_t *path, const char *mode)
 {
@@ -807,6 +808,44 @@ char *os_generate_formatted_filename(const char *extension, bool space,
 		dstr_mid(&sf, &sf, 0, 255);
 
 	return sf.array;
+}
+
+static struct {
+	struct timespec ts;
+	bool ts_valid;
+	uint64_t timestamp;
+} timespec_offset = {0};
+
+static void init_timespec_offset(void)
+{
+	timespec_offset.ts_valid =
+		timespec_get(&timespec_offset.ts, TIME_UTC) == TIME_UTC;
+	timespec_offset.timestamp = os_gettime_ns();
+}
+
+struct timespec *os_nstime_to_timespec(uint64_t timestamp,
+				       struct timespec *storage)
+{
+	static pthread_once_t once = PTHREAD_ONCE_INIT;
+	pthread_once(&once, init_timespec_offset);
+
+	if (!storage || !timespec_offset.ts_valid) {
+		return NULL;
+	}
+
+	*storage = timespec_offset.ts;
+
+	uint64_t offset = timestamp - timespec_offset.timestamp;
+	uint64_t nsecs = storage->tv_nsec + offset % 1000000000;
+	uint64_t secs = storage->tv_sec + offset / 1000000000;
+	if (nsecs > 1000000000) {
+		nsecs -= 1000000000;
+		secs += 1;
+	}
+	storage->tv_nsec = (long)nsecs;
+	storage->tv_sec = (time_t)secs;
+
+	return storage;
 }
 
 char *os_hash_file_sha256(const char *path)
