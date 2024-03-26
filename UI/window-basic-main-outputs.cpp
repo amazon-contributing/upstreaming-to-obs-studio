@@ -509,6 +509,7 @@ struct SimpleOutput : BasicOutputHandler {
 	void UpdateRecording();
 	bool ConfigureRecording(bool useReplayBuffer);
 
+	bool IsVodTrackEnabled(obs_service_t *service);
 	void SetupVodTrack(obs_service_t *service);
 
 	virtual FutureHolder<bool>
@@ -1189,7 +1190,7 @@ static void clear_archive_encoder(obs_output_t *output,
 		obs_output_set_audio_encoder(output, nullptr, 1);
 }
 
-void SimpleOutput::SetupVodTrack(obs_service_t *service)
+bool SimpleOutput::IsVodTrackEnabled(obs_service_t *service)
 {
 	bool advanced =
 		config_get_bool(main->Config(), "SimpleOutput", "UseAdvanced");
@@ -1203,11 +1204,14 @@ void SimpleOutput::SetupVodTrack(obs_service_t *service)
 
 	const char *id = obs_service_get_id(service);
 	if (strcmp(id, "rtmp_custom") == 0)
-		enable = enableForCustomServer ? enable : false;
+		return enableForCustomServer ? enable : false;
 	else
-		enable = advanced && enable && ServiceSupportsVodTrack(name);
+		return advanced && enable && ServiceSupportsVodTrack(name);
+}
 
-	if (enable)
+void SimpleOutput::SetupVodTrack(obs_service_t *service)
+{
+	if (IsVodTrackEnabled(service))
 		obs_output_set_audio_encoder(streamOutput, audioArchive, 1);
 	else
 		clear_archive_encoder(streamOutput, SIMPLE_ARCHIVE_NAME);
@@ -1537,6 +1541,7 @@ struct AdvancedOutput : BasicOutputHandler {
 	inline void UpdateAudioSettings();
 	virtual void Update() override;
 
+	inline std::optional<size_t> VodTrackMixerIdx(obs_service_t *service);
 	inline void SetupVodTrack(obs_service_t *service);
 
 	inline void SetupStreaming();
@@ -2185,7 +2190,8 @@ int AdvancedOutput::GetAudioBitrate(size_t i, const char *id) const
 	return FindClosestAvailableAudioBitrate(id, bitrate);
 }
 
-inline void AdvancedOutput::SetupVodTrack(obs_service_t *service)
+inline std::optional<size_t>
+AdvancedOutput::VodTrackMixerIdx(obs_service_t *service)
 {
 	int streamTrackIndex =
 		config_get_int(main->Config(), "AdvOut", "TrackIndex");
@@ -2206,7 +2212,15 @@ inline void AdvancedOutput::SetupVodTrack(obs_service_t *service)
 		if (!ServiceSupportsVodTrack(service))
 			vodTrackEnabled = false;
 	}
+
 	if (vodTrackEnabled && streamTrackIndex != vodTrackIndex)
+		return {vodTrackIndex};
+	return std::nullopt;
+}
+
+inline void AdvancedOutput::SetupVodTrack(obs_service_t *service)
+{
+	if (VodTrackMixerIdx(service).has_value())
 		obs_output_set_audio_encoder(streamOutput, streamArchiveEnc, 1);
 	else
 		clear_archive_encoder(streamOutput, ADV_ARCHIVE_NAME);
