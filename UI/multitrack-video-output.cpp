@@ -1083,20 +1083,11 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 	return false;
 }
 
-static OBSOutputs
-SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
-	       obs_data_t *go_live_config,
-	       std::vector<OBSEncoderAutoRelease> &video_encoders,
-	       OBSEncoderAutoRelease &audio_encoder,
-	       const char *audio_encoder_id, std::optional<int> audio_bitrate)
+static bool
+create_video_encoders(obs_data_t *go_live_config,
+		      std::vector<OBSEncoderAutoRelease> &video_encoders,
+		      obs_output_t *output, obs_output_t *recording_output)
 {
-
-	auto output = create_output();
-	OBSOutputAutoRelease recording_output;
-	if (dump_stream_to_file_config)
-		recording_output =
-			create_recording_output(dump_stream_to_file_config);
-
 	OBSDataArrayAutoRelease encoder_configs =
 		obs_data_get_array(go_live_config, "encoder_configurations");
 	DStr video_encoder_name_buffer;
@@ -1113,7 +1104,7 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 		auto encoder = create_video_encoder(video_encoder_name_buffer,
 						    i, encoder_config);
 		if (!encoder)
-			return {nullptr, nullptr};
+			return false;
 
 		if (!first_encoder)
 			first_encoder = encoder;
@@ -1127,6 +1118,27 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 						      i);
 		video_encoders.emplace_back(std::move(encoder));
 	}
+
+	return true;
+}
+
+static OBSOutputs
+SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
+	       obs_data_t *go_live_config,
+	       std::vector<OBSEncoderAutoRelease> &video_encoders,
+	       OBSEncoderAutoRelease &audio_encoder,
+	       const char *audio_encoder_id, std::optional<int> audio_bitrate)
+{
+
+	auto output = create_output();
+	OBSOutputAutoRelease recording_output;
+	if (dump_stream_to_file_config)
+		recording_output =
+			create_recording_output(dump_stream_to_file_config);
+
+	if (!create_video_encoders(go_live_config, video_encoders, output,
+				   recording_output))
+		return {nullptr, nullptr};
 
 	audio_encoder = create_audio_encoder(audio_encoder_id, audio_bitrate);
 	obs_output_set_audio_encoder(output, audio_encoder, 0);
