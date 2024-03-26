@@ -463,8 +463,8 @@ static OBSEncoderAutoRelease create_video_encoder(DStr &name_buffer,
 }
 
 static OBSEncoderAutoRelease
-create_audio_encoder(const char *audio_encoder_id,
-		     std::optional<int> audio_bitrate)
+create_audio_encoder(const char *name, const char *audio_encoder_id,
+		     std::optional<int> audio_bitrate, size_t mixer_idx)
 {
 	OBSDataAutoRelease settings = nullptr;
 	if (audio_bitrate.has_value()) {
@@ -473,7 +473,7 @@ create_audio_encoder(const char *audio_encoder_id,
 	}
 
 	OBSEncoderAutoRelease audio_encoder = obs_audio_encoder_create(
-		audio_encoder_id, "multitrack video aac", settings, 0, nullptr);
+		audio_encoder_id, name, settings, mixer_idx, nullptr);
 	if (!audio_encoder) {
 		blog(LOG_ERROR, "failed to create audio encoder");
 		throw MultitrackVideoError::warning(QTStr(
@@ -490,9 +490,10 @@ struct OBSOutputs {
 static OBSOutputs
 SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 	       obs_data_t *go_live_config,
+	       std::vector<OBSEncoderAutoRelease> &audio_encoders,
 	       std::vector<OBSEncoderAutoRelease> &video_encoders,
-	       OBSEncoderAutoRelease &audio_encoder,
-	       const char *audio_encoder_id, std::optional<int> audio_bitrate);
+	       const char *audio_encoder_id, std::optional<int> audio_bitrate,
+	       std::optional<size_t> vod_track_mixer);
 static void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self,
 				obs_output_t *output, OBSSignal &start,
 				OBSSignal &stop, OBSSignal &deactivate);
@@ -612,7 +613,8 @@ void MultitrackVideoOutput::PrepareStreaming(
 	std::optional<uint32_t> maximum_aggregate_bitrate,
 	std::optional<uint32_t> maximum_video_tracks,
 	std::optional<std::string> custom_config,
-	obs_data_t *dump_stream_to_file_config)
+	obs_data_t *dump_stream_to_file_config,
+	std::optional<size_t> vod_track_mixer)
 {
 	if (!berryessa_) {
 		QMetaObject::invokeMethod(
@@ -665,6 +667,11 @@ void MultitrackVideoOutput::PrepareStreaming(
 
 	auto auto_config_url_data = auto_config_url.toUtf8();
 
+	DStr vod_track_info_storage;
+	if (vod_track_mixer.has_value())
+		dstr_printf(vod_track_info_storage, "Yes (mixer: %zu)",
+			    vod_track_mixer.value());
+
 	blog(LOG_INFO,
 	     "Preparing enhanced broadcasting stream for:\n"
 	     "    device_id:      %s\n"
@@ -675,7 +682,8 @@ void MultitrackVideoOutput::PrepareStreaming(
 	     "    service:               %s\n"
 	     "    max aggregate bitrate: %s (%" PRIu32 ")\n"
 	     "    max video tracks:      %s (%" PRIu32 ")\n"
-	     "    custom rtmp url:       %s ('%s')",
+	     "    custom rtmp url:       %s ('%s')\n"
+	     "    vod track:             %s",
 	     device_id().toUtf8().constData(),
 	     obs_session_id().toUtf8().constData(),
 	     is_custom_config ? "Yes" : "No",
@@ -687,13 +695,16 @@ void MultitrackVideoOutput::PrepareStreaming(
 	     maximum_video_tracks.has_value() ? "Set" : "Auto",
 	     maximum_video_tracks.value_or(0),
 	     rtmp_url.has_value() ? "Yes" : "No",
-	     rtmp_url.has_value() ? rtmp_url->c_str() : "");
+	     rtmp_url.has_value() ? rtmp_url->c_str() : "",
+	     vod_track_info_storage->array ? vod_track_info_storage->array
+					   : "No");
 
 	try {
 		go_live_post = constructGoLivePost(attempt_start_time,
 						   stream_key,
 						   maximum_aggregate_bitrate,
-						   maximum_video_tracks);
+						   maximum_video_tracks,
+						   vod_track_mixer.has_value());
 
 		go_live_config = DownloadGoLiveConfig(parent, auto_config_url,
 						      go_live_post);
@@ -765,21 +776,19 @@ void MultitrackVideoOutput::PrepareStreaming(
 		add_always_bool(berryessa_.get(), "config_custom",
 				is_custom_config);
 
+		auto audio_encoders = std::vector<OBSEncoderAutoRelease>();
 		auto video_encoders = std::vector<OBSEncoderAutoRelease>();
 		OBSEncoderAutoRelease audio_encoder = nullptr;
 		auto outputs = SetupOBSOutput(dump_stream_to_file_config,
-					      go_live_config, video_encoders,
-					      audio_encoder, audio_encoder_id,
-					      audio_bitrate);
+					      go_live_config, audio_encoders,
+					      video_encoders, audio_encoder_id,
+					      audio_bitrate, vod_track_mixer);
 		auto output = std::move(outputs.output);
 		auto recording_output = std::move(outputs.recording_output);
 		if (!output)
 			throw MultitrackVideoError::warning(
 				QTStr("FailedToStartStream.FallbackToDefault")
 					.arg(multitrack_video_name));
-
-		std::vector<OBSEncoderAutoRelease> audio_encoders;
-		audio_encoders.emplace_back(std::move(audio_encoder));
 
 		auto multitrack_video_service =
 			create_service(device_id(), obs_session_id(),
@@ -1094,9 +1103,12 @@ create_video_encoders(obs_data_t *go_live_config,
 	obs_encoder_t *first_encoder = nullptr;
 	const size_t num_encoder_configs =
 		obs_data_array_count(encoder_configs);
-	if (num_encoder_configs < 1)
+	if (num_encoder_configs < 1) {
+		blog(LOG_WARNING,
+		     "MultitrackVideoOutput: Missing video encoder configurations");
 		throw MultitrackVideoError::warning(
 			QTStr("FailedToStartStream.MissingEncoderConfigs"));
+	}
 
 	for (size_t i = 0; i < num_encoder_configs; i++) {
 		OBSDataAutoRelease encoder_config =
@@ -1122,12 +1134,90 @@ create_video_encoders(obs_data_t *go_live_config,
 	return true;
 }
 
+static void
+create_audio_encoders(obs_data_t *go_live_config,
+		      std::vector<OBSEncoderAutoRelease> &audio_encoders,
+		      obs_output_t *output, obs_output_t *recording_output,
+		      const char *audio_encoder_id,
+		      std::optional<int> audio_bitrate,
+		      std::optional<size_t> vod_track_mixer)
+{
+
+	OBSDataAutoRelease audio_configs =
+		obs_data_get_obj(go_live_config, "audio_configurations");
+	if (!audio_configs) {
+		OBSEncoderAutoRelease audio_encoder = create_audio_encoder(
+			"multitrack video live audio", audio_encoder_id,
+			audio_bitrate, 0);
+
+		obs_output_set_audio_encoder(output, audio_encoder, 0);
+		if (recording_output)
+			obs_output_set_audio_encoder(recording_output,
+						     audio_encoder, 0);
+
+		audio_encoders.emplace_back(std::move(audio_encoder));
+		return;
+	}
+
+	DStr encoder_name_buffer;
+	size_t output_encoder_index = 0;
+
+	auto create_encoders = [&](const char *name_prefix,
+				   obs_data_array_t *config, size_t mixer_idx) {
+		size_t num_audio_encoders = obs_data_array_count(config);
+		if (num_audio_encoders < 1) {
+			blog(LOG_WARNING,
+			     "MultitrackVideoOutput: Missing audio encoder configurations (for '%s')",
+			     name_prefix);
+			throw MultitrackVideoError::warning(QTStr(
+				"FailedToStartStream.MissingEncoderConfigs"));
+		}
+
+		for (size_t i = 0; i < num_audio_encoders; i++) {
+			OBSDataAutoRelease encoder_config =
+				obs_data_array_item(config, i);
+			dstr_printf(encoder_name_buffer, "%s %zu", name_prefix,
+				    i);
+			OBSEncoderAutoRelease audio_encoder =
+				create_audio_encoder(
+					encoder_name_buffer->array,
+					audio_encoder_id,
+					obs_data_get_int(encoder_config,
+							 "bitrate"),
+					mixer_idx);
+			obs_output_set_audio_encoder(output, audio_encoder,
+						     output_encoder_index);
+			if (recording_output)
+				obs_output_set_audio_encoder(
+					recording_output, audio_encoder,
+					output_encoder_index);
+			output_encoder_index += 1;
+			audio_encoders.emplace_back(std::move(audio_encoder));
+		}
+	};
+
+	OBSDataArrayAutoRelease live_config =
+		obs_data_get_array(audio_configs, "live");
+	create_encoders("multitrack video live audio", live_config, 0);
+
+	if (!vod_track_mixer.has_value())
+		return;
+
+	OBSDataArrayAutoRelease vod_config =
+		obs_data_get_array(audio_configs, "vod");
+	create_encoders("multitrack video vod audio", vod_config,
+			*vod_track_mixer);
+
+	return;
+}
+
 static OBSOutputs
 SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 	       obs_data_t *go_live_config,
+	       std::vector<OBSEncoderAutoRelease> &audio_encoders,
 	       std::vector<OBSEncoderAutoRelease> &video_encoders,
-	       OBSEncoderAutoRelease &audio_encoder,
-	       const char *audio_encoder_id, std::optional<int> audio_bitrate)
+	       const char *audio_encoder_id, std::optional<int> audio_bitrate,
+	       std::optional<size_t> vod_track_mixer)
 {
 
 	auto output = create_output();
@@ -1140,11 +1230,9 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 				   recording_output))
 		return {nullptr, nullptr};
 
-	audio_encoder = create_audio_encoder(audio_encoder_id, audio_bitrate);
-	obs_output_set_audio_encoder(output, audio_encoder, 0);
-	if (recording_output)
-		obs_output_set_audio_encoder(recording_output, audio_encoder,
-					     0);
+	create_audio_encoders(go_live_config, audio_encoders, output,
+			      recording_output, audio_encoder_id, audio_bitrate,
+			      vod_track_mixer);
 
 	return {std::move(output), std::move(recording_output)};
 }

@@ -424,7 +424,7 @@ bool AutoConfigStreamPage::validatePage()
 		auto postData =
 			constructGoLivePost(ImmutableDateTime::CurrentTimeUtc(),
 					    QString::fromStdString(wiz->key),
-					    std::nullopt, std::nullopt);
+					    std::nullopt, std::nullopt, false);
 
 		try {
 			auto config = DownloadGoLiveConfig(

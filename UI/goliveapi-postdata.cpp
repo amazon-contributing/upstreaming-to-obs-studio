@@ -7,7 +7,8 @@ OBSDataAutoRelease
 constructGoLivePost(const ImmutableDateTime &attempt_start_time,
 		    QString streamKey,
 		    const std::optional<uint64_t> &maximum_aggregate_bitrate,
-		    const std::optional<uint32_t> &maximum_video_tracks)
+		    const std::optional<uint32_t> &maximum_video_tracks,
+		    bool vod_track_enabled)
 {
 	OBSDataAutoRelease postData = obs_data_create();
 	OBSDataAutoRelease capabilitiesData = obs_data_create();
@@ -26,11 +27,13 @@ constructGoLivePost(const ImmutableDateTime &attempt_start_time,
 	auto systemData = system_info();
 	obs_data_apply(capabilitiesData, systemData);
 
+	OBSDataAutoRelease clientData = obs_data_create();
+	obs_data_set_obj(capabilitiesData, "client", clientData);
+
+	obs_data_set_bool(clientData, "vod_track_audio", vod_track_enabled);
+
 	obs_video_info ovi;
 	if (obs_get_video_info(&ovi)) {
-		OBSDataAutoRelease clientData = obs_data_create();
-		obs_data_set_obj(capabilitiesData, "client", clientData);
-
 		obs_data_set_string(clientData, "name", "obs-studio");
 		obs_data_set_string(clientData, "version",
 				    obs_get_version_string());
