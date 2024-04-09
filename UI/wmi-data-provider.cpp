@@ -264,6 +264,13 @@ static std::optional<std::string> GetLUID(const std::wstring &str)
 	return std::string{buffer.Get(), len};
 }
 
+template<typename Func>
+bool GetData(std::optional<WMIDataQuery> &query, Func &&func)
+{
+	return query.has_value() ? query->GetData(std::forward<Func>(func))
+				 : false;
+}
+
 void WMIQueries::SummarizeData(obs_data_t *data)
 {
 	if (!wmi_provider_->Refresh())
@@ -274,7 +281,7 @@ void WMIQueries::SummarizeData(obs_data_t *data)
 		static std::optional<PropertyHandle> name_handle;
 		static std::optional<PropertyHandle>
 			percent_processor_time_handle;
-		cpu_usage_->GetData([&](IWbemObjectAccess *object) {
+		GetData(cpu_usage_, [&](IWbemObjectAccess *object) {
 			if (!name_handle.has_value() &&
 			    !LoadPropertyHandle(name_handle, cpu_usage_->query_,
 						object, L"Name"))
@@ -306,7 +313,7 @@ void WMIQueries::SummarizeData(obs_data_t *data)
 		static std::optional<PropertyHandle>
 			utilization_percentage_handle;
 		std::unordered_map<std::string, uint64_t> usages;
-		gpu_usage_->GetData([&](IWbemObjectAccess *object) {
+		GetData(gpu_usage_, [&](IWbemObjectAccess *object) {
 			if (!name_handle.has_value() &&
 			    !LoadPropertyHandle(name_handle, gpu_usage_->query_,
 						object, L"name"))
@@ -364,7 +371,7 @@ void WMIQueries::SummarizeData(obs_data_t *data)
 		static std::optional<PropertyHandle> shared_usage_handle;
 		std::unordered_map<std::string, std::pair<uint64_t, uint64_t>>
 			adapter_memory_usages;
-		gpu_memory_usage_->GetData([&](IWbemObjectAccess *object) {
+		GetData(gpu_memory_usage_, [&](IWbemObjectAccess *object) {
 			if (!name_handle.has_value() &&
 			    !LoadPropertyHandle(name_handle,
 						gpu_memory_usage_->query_,
