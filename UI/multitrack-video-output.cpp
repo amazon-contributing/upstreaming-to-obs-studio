@@ -17,8 +17,10 @@
 #include <string>
 #include <vector>
 
+#include <QAbstractButton>
 #include <QMessageBox>
 #include <QObject>
+#include <QPushButton>
 #include <QScopeGuard>
 #include <QString>
 #include <QThreadPool>
@@ -1011,6 +1013,114 @@ std::optional<int> MultitrackVideoOutput::ConnectTimeMs() const
 		return std::nullopt;
 
 	return obs_output_get_connect_time_ms(current->output_);
+}
+
+bool MultitrackVideoOutput::HandleIncompatibleSettings(
+	QWidget *parent, config_t *config, obs_service_t *service,
+	bool &useDelay, bool &enableNewSocketLoop, bool &enableDynBitrate)
+{
+	QString incompatible_settings;
+	QString where_to_disable;
+	QString incompatible_settings_list;
+
+	size_t num = 1;
+
+	auto check_setting = [&](bool setting, const char *name,
+				 const char *section) {
+		if (!setting)
+			return;
+
+		incompatible_settings +=
+			QString(" %1. %2\n").arg(num).arg(QTStr(name));
+
+		where_to_disable +=
+			QString(" %1. [%2 > %3 > %4]\n")
+				.arg(num)
+				.arg(QTStr("Settings"))
+				.arg(QTStr("Basic.Settings.Advanced"))
+				.arg(QTStr(section));
+
+		incompatible_settings_list += QString("%1, ").arg(name);
+
+		num += 1;
+	};
+
+	check_setting(useDelay, "Basic.Settings.Advanced.StreamDelay",
+		      "Basic.Settings.Advanced.StreamDelay");
+	check_setting(enableNewSocketLoop,
+		      "Basic.Settings.Advanced.Network.EnableNewSocketLoop",
+		      "Basic.Settings.Advanced.Network");
+	check_setting(enableDynBitrate,
+		      "Basic.Settings.Output.DynamicBitrate.Beta",
+		      "Basic.Settings.Advanced.Network");
+
+	OBSDataAutoRelease service_settings = obs_service_get_settings(service);
+
+	QMessageBox mb(parent);
+	mb.setIcon(QMessageBox::Critical);
+	mb.setWindowTitle("Incompatible Settings");
+	mb.setText(
+		QString("%1 is not currently compatible with:\n\n%2\n"
+			"To continue streaming with %1, disable "
+			"incompatible settings:\n\n%3\n"
+			"and Start Streaming again.")
+			.arg(obs_data_get_string(service_settings,
+						 "ertmp_multitrack_video_name"))
+			.arg(incompatible_settings)
+			.arg(where_to_disable));
+	auto this_stream =
+		mb.addButton("Disable for this stream and Start Streaming",
+			     QMessageBox::AcceptRole);
+	auto all_streams = mb.addButton(
+		QString("Update %1 and Start Streaming").arg(QTStr("Settings")),
+		QMessageBox::AcceptRole);
+	mb.setStandardButtons(QMessageBox::StandardButton::Cancel);
+
+	mb.exec();
+
+	{
+		QString action = "cancel";
+		if (mb.clickedButton() == this_stream) {
+			action = this_stream->text();
+		} else if (mb.clickedButton() == all_streams) {
+			action = all_streams->text();
+		}
+
+		auto error =
+			QString("attempted to start stream with incompatible settings (%1); "
+				"action taken: %2")
+				.arg(incompatible_settings_list)
+				.arg(action)
+				.toUtf8();
+		auto ev = MakeEvent_ivs_obs_stream_stop();
+		obs_data_set_string(ev, "server_error", error.constData());
+		submit_event(berryessa_.get(), "ivs_obs_stream_stop", ev);
+		blog(LOG_INFO, "MultitrackVideoOutput: %s", error.constData());
+	}
+
+	if (mb.clickedButton() == this_stream ||
+	    mb.clickedButton() == all_streams) {
+		useDelay = false;
+		enableNewSocketLoop = false;
+		enableDynBitrate = false;
+		useDelay = false;
+		enableNewSocketLoop = false;
+		enableDynBitrate = false;
+
+		if (mb.clickedButton() == all_streams) {
+			config_set_bool(config, "Output", "DelayEnable", false);
+#ifdef _WIN32
+			config_set_bool(config, "Output", "NewSocketLoopEnable",
+					false);
+#endif
+			config_set_bool(config, "Output", "DynamicBitrate",
+					false);
+		}
+
+		return true;
+	}
+
+	return false;
 }
 
 static OBSOutputs
