@@ -1,6 +1,7 @@
 #pragma once
 
 #include <obs.hpp>
+#include <util/config-file.h>
 
 #include <atomic>
 #include <optional>
@@ -45,6 +46,10 @@ public:
 	void StartedStreaming(QWidget *parent, bool success);
 	void StopStreaming();
 	std::optional<int> ConnectTimeMs() const;
+	bool HandleIncompatibleSettings(QWidget *parent, config_t *config,
+					obs_service_t *service, bool &useDelay,
+					bool &enableNewSocketLoop,
+					bool &enableDynBitrate);
 
 	obs_output_t *StreamingOutput()
 	{
