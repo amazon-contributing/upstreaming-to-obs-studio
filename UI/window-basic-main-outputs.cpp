@@ -1244,6 +1244,7 @@ bool SimpleOutput::StartStreaming(obs_service_t *service)
 	    !multitrackVideo->HandleIncompatibleSettings(
 		    main, main->Config(), service, useDelay,
 		    enableNewSocketLoop, enableDynBitrate)) {
+		multitrackVideoActive = false;
 		return false;
 	}
 
@@ -1280,8 +1281,10 @@ bool SimpleOutput::StartStreaming(obs_service_t *service)
 		return true;
 	}
 
-	if (multitrackVideo && multitrackVideoActive)
+	if (multitrackVideo && multitrackVideoActive) {
+		multitrackVideoActive = false;
 		multitrackVideo->StartedStreaming(main, false);
+	}
 
 	const char *error = obs_output_get_last_error(streamOutput);
 	bool hasLastError = error && *error;
@@ -2335,6 +2338,7 @@ bool AdvancedOutput::StartStreaming(obs_service_t *service)
 	    !multitrackVideo->HandleIncompatibleSettings(
 		    main, main->Config(), service, useDelay,
 		    enableNewSocketLoop, enableDynBitrate)) {
+		multitrackVideoActive = false;
 		return false;
 	}
 
@@ -2379,8 +2383,10 @@ bool AdvancedOutput::StartStreaming(obs_service_t *service)
 		return true;
 	}
 
-	if (multitrackVideo && multitrackVideoActive)
+	if (multitrackVideo && multitrackVideoActive) {
+		multitrackVideoActive = false;
 		multitrackVideo->StartedStreaming(main, false);
+	}
 
 	const char *error = obs_output_get_last_error(streamOutput);
 	bool hasLastError = error && *error;
