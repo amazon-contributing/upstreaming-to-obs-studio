@@ -518,29 +518,15 @@ struct HashMismatch {
 	std::string expected_hash;
 };
 
-static void CheckPluginIntegrity(QWidget *parent)
+std::optional<std::vector<HashMismatch>>
+check_plugin_hash_mismatches(const char *text)
 {
 	using json = nlohmann::json;
-
-	DStr url;
-	dstr_catf(url, "https://d50yg09cghihd.cloudfront.net/hashes/%s.json",
-		  obs_get_version_string());
-
-	std::string response;
-	std::string error;
-	long response_code = 0;
-	if (!GetRemoteFile(url->array, response, error, &response_code, nullptr,
-			   "GET", nullptr, {}, nullptr, 10)) {
-		blog(LOG_WARNING,
-		     "CheckPluginIntegrity: Failed to download hashes from '%s' (code %ld): %s",
-		     url->array, response_code, error.c_str());
-		return;
-	}
 
 	std::vector<HashMismatch> mismatches;
 
 	try {
-		auto data = json::parse(response);
+		auto data = json::parse(text);
 
 		auto &hashes = data["/hashes"_json_pointer];
 		std::optional<json::exception> exception;
@@ -611,13 +597,37 @@ static void CheckPluginIntegrity(QWidget *parent)
 			throw *exception;
 	} catch (const json::exception &exception) {
 		blog(LOG_ERROR,
-		     "CheckPluginIntegrity: Error while processing plugin integrity json (%d): %s",
+		     "check_plugin_hash_mismatches: Error while processing plugin integrity json (%d): %s",
 		     exception.id, exception.what());
+		return std::nullopt;
+	}
+
+	return {mismatches};
+}
+
+static void CheckPluginIntegrity(QWidget *parent)
+{
+	DStr url;
+	dstr_catf(url, "https://d50yg09cghihd.cloudfront.net/hashes/%s.json",
+		  obs_get_version_string());
+
+	std::string response;
+	std::string error;
+	long response_code = 0;
+	if (!GetRemoteFile(url->array, response, error, &response_code, nullptr,
+			   "GET", nullptr, {}, nullptr, 10)) {
+		blog(LOG_WARNING,
+		     "CheckPluginIntegrity: Failed to download hashes from '%s' (code %ld): %s",
+		     url->array, response_code, error.c_str());
 		return;
 	}
 
-	if (mismatches.empty())
+	auto maybe_mismatches = check_plugin_hash_mismatches(response.c_str());
+
+	if (!maybe_mismatches || maybe_mismatches->empty())
 		return;
+
+	auto &mismatches = *maybe_mismatches;
 
 	blog(LOG_ERROR,
 	     "CheckPluginIntegrity: File hashes don't match expected values:");
