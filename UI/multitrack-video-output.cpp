@@ -518,29 +518,15 @@ struct HashMismatch {
 	std::string expected_hash;
 };
 
-static void CheckPluginIntegrity(QWidget *parent)
+std::optional<std::vector<HashMismatch>>
+check_plugin_hash_mismatches(const char *text)
 {
 	using json = nlohmann::json;
-
-	DStr url;
-	dstr_catf(url, "https://d50yg09cghihd.cloudfront.net/hashes/%s.json",
-		  obs_get_version_string());
-
-	std::string response;
-	std::string error;
-	long response_code = 0;
-	if (!GetRemoteFile(url->array, response, error, &response_code, nullptr,
-			   "GET", nullptr, {}, nullptr, 10)) {
-		blog(LOG_WARNING,
-		     "CheckPluginIntegrity: Failed to download hashes from '%s' (code %ld): %s",
-		     url->array, response_code, error.c_str());
-		return;
-	}
 
 	std::vector<HashMismatch> mismatches;
 
 	try {
-		auto data = json::parse(response);
+		auto data = json::parse(text);
 
 		auto &hashes = data["/hashes"_json_pointer];
 		std::optional<json::exception> exception;
@@ -611,39 +597,12 @@ static void CheckPluginIntegrity(QWidget *parent)
 			throw *exception;
 	} catch (const json::exception &exception) {
 		blog(LOG_ERROR,
-		     "CheckPluginIntegrity: Error while processing plugin integrity json (%d): %s",
+		     "check_plugin_hash_mismatches: Error while processing plugin integrity json (%d): %s",
 		     exception.id, exception.what());
-		return;
+		return std::nullopt;
 	}
 
-	if (mismatches.empty())
-		return;
-
-	blog(LOG_ERROR,
-	     "CheckPluginIntegrity: File hashes don't match expected values:");
-	for (auto &mismatch : mismatches) {
-		blog(LOG_ERROR,
-		     "    %s: expected sha256: '%s' actual sha256: '%s'",
-		     mismatch.file_name, mismatch.expected_hash.c_str(),
-		     mismatch.current_hash);
-	}
-
-	bool ret = false;
-	QMetaObject::invokeMethod(
-		parent,
-		[=] {
-			QMessageBox mb(parent);
-			mb.setIcon(QMessageBox::Warning);
-			mb.setWindowTitle(QTStr("ModuleMismatchError.Title"));
-			mb.setTextFormat(Qt::RichText);
-			mb.setText(QTStr("ModuleMismatchError.Text"));
-			mb.setStandardButtons(QMessageBox::StandardButton::Yes |
-					      QMessageBox::StandardButton::No);
-			return mb.exec() == QMessageBox::StandardButton::No;
-		},
-		BlockingConnectionTypeFor(parent), &ret);
-	if (ret)
-		throw MultitrackVideoError::cancel();
+	return {mismatches};
 }
 
 void MultitrackVideoOutput::PrepareStreaming(
@@ -681,8 +640,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 		     "Tried to prepare multitrack video output while it's already active");
 		return;
 	}
-
-	CheckPluginIntegrity(parent);
 
 	if (!berryessa_every_minute_) {
 		berryessa_every_minute_ =
