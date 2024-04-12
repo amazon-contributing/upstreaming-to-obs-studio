@@ -75,7 +75,6 @@ runs:
         python3 -u \
           .github/scripts/utils.py/check-jsonschema.py \
           plugins/rtmp-services/data/@(services|package).json \
-          "plugins/rtmp-services/data/services - amazon ivs.json" \
           --loglevel INFO
         echo ::endgroup::
 

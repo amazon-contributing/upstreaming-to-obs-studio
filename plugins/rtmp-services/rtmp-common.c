@@ -412,17 +412,6 @@ static json_t *open_services_file(void)
 		}
 	}
 
-	file = obs_module_file("services - amazon ivs.json");
-	if (file) {
-		json_t *ivs_root = open_json_file(file);
-		bfree(file);
-
-		if (ivs_root) {
-			json_array_extend(root, ivs_root);
-			json_decref(ivs_root);
-		}
-	}
-
 	return root;
 }
 
