@@ -81,15 +81,6 @@ function Build {
     Log-Group "Building obs-studio..."
     Invoke-External cmake @CmakeBuildArgs
 
-    Log-Group "Plugin hashes"
-    Push-Location
-    Set-Location ${ProjectRoot}/build_${Target}/plugins
-    $modules = Get-ChildItem -Filter *.dll -recurse | ForEach-Object { Get-FileHash $_.FullName }
-    $modules | Format-Table -AutoSize | Out-String -Width 1024
-    $modules | Format-Table -AutoSize | Out-File -Encoding ascii -Width 1024 ${ProjectRoot}/UI/data/plugin-hashes.txt
-    @{hashes = $modules} | ConvertTo-Json | Out-File -Encoding ascii ${ProjectRoot}/UI/data/plugin-hashes.json
-    Pop-Location
-
     Log-Group "Installing obs-studio..."
     Invoke-External cmake @CmakeInstallArgs
 
