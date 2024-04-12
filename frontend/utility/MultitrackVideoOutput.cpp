@@ -421,50 +421,6 @@ std::optional<std::vector<HashMismatch>> check_plugin_hash_mismatches(const char
 	return {mismatches};
 }
 
-static void CheckPluginIntegrity(QWidget *parent)
-{
-	DStr url;
-	dstr_catf(url, "https://d50yg09cghihd.cloudfront.net/hashes/%s.json", obs_get_version_string());
-
-	std::string response;
-	std::string error;
-	long response_code = 0;
-	if (!GetRemoteFile(url->array, response, error, &response_code, nullptr, "GET", nullptr, {}, nullptr, 10)) {
-		blog(LOG_WARNING, "CheckPluginIntegrity: Failed to download hashes from '%s' (code %ld): %s",
-		     url->array, response_code, error.c_str());
-		return;
-	}
-
-	auto maybe_mismatches = check_plugin_hash_mismatches(response.c_str());
-
-	if (!maybe_mismatches || maybe_mismatches->empty())
-		return;
-
-	auto &mismatches = *maybe_mismatches;
-
-	blog(LOG_ERROR, "CheckPluginIntegrity: File hashes don't match expected values:");
-	for (auto &mismatch : mismatches) {
-		blog(LOG_ERROR, "    %s: expected sha256: '%s' actual sha256: '%s'", mismatch.file_name,
-		     mismatch.expected_hash.c_str(), mismatch.current_hash);
-	}
-
-	bool ret = false;
-	QMetaObject::invokeMethod(
-		parent,
-		[=] {
-			QMessageBox mb(parent);
-			mb.setIcon(QMessageBox::Warning);
-			mb.setWindowTitle(QTStr("ModuleMismatchError.Title"));
-			mb.setTextFormat(Qt::RichText);
-			mb.setText(QTStr("ModuleMismatchError.Text"));
-			mb.setStandardButtons(QMessageBox::StandardButton::Yes | QMessageBox::StandardButton::No);
-			return mb.exec() == QMessageBox::StandardButton::No;
-		},
-		BlockingConnectionTypeFor(parent), &ret);
-	if (ret)
-		throw MultitrackVideoError::cancel();
-}
-
 void MultitrackVideoOutput::PrepareStreaming(
 	QWidget *parent, const char *service_name, obs_service_t *service, const std::optional<std::string> &rtmp_url,
 	const QString &stream_key, const char *audio_encoder_id, std::optional<uint32_t> maximum_aggregate_bitrate,
@@ -482,8 +438,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 	}
 
 	restart_on_error = false;
-
-	CheckPluginIntegrity(parent);
 
 	std::optional<GoLiveApi::Config> go_live_config;
 	std::optional<GoLiveApi::Config> custom;
