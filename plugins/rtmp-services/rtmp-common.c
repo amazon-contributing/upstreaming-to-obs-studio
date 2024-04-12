@@ -399,11 +399,13 @@ static json_t *open_services_file(void)
 	char *file;
 	json_t *root = NULL;
 
+#if 0
 	file = obs_module_config_path("services.json");
 	if (file) {
 		root = open_json_file(file);
 		bfree(file);
 	}
+#endif
 
 	if (!root) {
 		file = obs_module_file("services.json");
