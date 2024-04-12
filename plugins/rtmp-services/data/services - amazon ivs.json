@@ -9,8 +9,7 @@
             "servers": [],
             "supported video codecs": [
                 "h264"
-            ],
-            "ertmp_configuration_url": "https://ingest.contribute.live-video.net/api/v3/GetClientConfiguration"
+            ]
         }
     ]
 }
