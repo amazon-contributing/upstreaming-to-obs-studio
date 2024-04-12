@@ -1054,6 +1054,9 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 		      "Basic.Settings.Output.DynamicBitrate.Beta",
 		      "Basic.Settings.Advanced.Network");
 
+	if (incompatible_settings.isEmpty())
+		return true;
+
 	OBSDataAutoRelease service_settings = obs_service_get_settings(service);
 
 	QMessageBox mb(parent);
