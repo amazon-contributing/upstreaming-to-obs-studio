@@ -2330,6 +2330,61 @@ QAccessibleInterface *accessibleFactory(const QString &classname,
 	return nullptr;
 }
 
+struct HashMismatch {
+	const char *file_name;
+	const char *current_hash;
+	std::string expected_hash;
+};
+
+extern std::optional<std::vector<HashMismatch>>
+check_plugin_hash_mismatches(const char *text);
+
+static void check_plugin_hashes(OBSApp &program)
+{
+	BPtr<char> json = nullptr;
+	{
+		std::string path;
+		DStr filename;
+		dstr_printf(filename, "%s.json", obs_get_version_string());
+		if (!GetDataFilePath(filename->array, path)) {
+			blog(LOG_WARNING,
+			     "check_plugin_hashes: Could not find plugin hashes file '%s'",
+			     filename->array);
+			return;
+		}
+
+		json = os_quick_read_utf8_file(path.c_str());
+	}
+
+	auto maybe_mismatches = check_plugin_hash_mismatches(json);
+	if (!maybe_mismatches)
+		return;
+
+	auto &mismatches = *maybe_mismatches;
+	if (mismatches.empty())
+		return;
+
+	DStr mismatched_plugins;
+	for (auto &mismatch : mismatches) {
+		dstr_catf(mismatched_plugins, "\n - %s", mismatch.file_name);
+	}
+
+	blog(LOG_ERROR,
+	     "check_plugin_hashes: Mismatched plugin hashes detected:%s",
+	     mismatched_plugins->array);
+
+	QMessageBox mb(QMessageBox::Critical,
+		       QTStr("PluginHashesMismatch.Title"),
+		       QTStr("PluginHashesMismatch.Text")
+			       .arg(mismatched_plugins->array),
+		       QMessageBox::StandardButton::NoButton,
+		       program.GetMainWindow());
+	mb.addButton(QTStr("Exit"), QMessageBox::AcceptRole);
+	mb.exec();
+
+	program.GetMainWindow()->close();
+}
+
 static const char *run_program_init = "run_program_init";
 static int run_program(fstream &logFile, int argc, char *argv[])
 {
@@ -2596,6 +2651,12 @@ static int run_program(fstream &logFile, int argc, char *argv[])
 			return 0;
 
 		prof.Stop();
+
+		/* this uses libobs functionality, so it has to happen after libobs
+		 * is initialized; we can't just exit via `return 0;` at this point
+		 * because some libobs cleanup relies on windows being closed and
+		 * similar (Qt-based?) cleanup */
+		check_plugin_hashes(program);
 
 		ret = program.exec();
 
