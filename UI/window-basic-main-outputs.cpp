@@ -509,6 +509,7 @@ struct SimpleOutput : BasicOutputHandler {
 	void UpdateRecording();
 	bool ConfigureRecording(bool useReplayBuffer);
 
+	bool IsVodTrackEnabled(obs_service_t *service);
 	void SetupVodTrack(obs_service_t *service);
 
 	virtual FutureHolder<bool>
@@ -1120,9 +1121,12 @@ FutureHolder<bool> SimpleOutput::SetupStreaming(obs_service_t *service)
 		return {[] {}, CreateFuture().then([] { return false; })};
 
 	auto audio_bitrate = GetAudioBitrate();
+	auto vod_track_mixer = IsVodTrackEnabled(service) ? std::optional{1}
+							  : std::nullopt;
+
 	auto holder = SetupMultitrackVideo(
 		service, GetSimpleAACEncoderForBitrate(audio_bitrate),
-		audio_bitrate);
+		audio_bitrate, vod_track_mixer);
 	auto future = holder.future.then(main, [&](std::optional<bool>
 							   multitrackVideoResult) {
 		if (multitrackVideoResult.has_value())
@@ -1189,7 +1193,7 @@ static void clear_archive_encoder(obs_output_t *output,
 		obs_output_set_audio_encoder(output, nullptr, 1);
 }
 
-void SimpleOutput::SetupVodTrack(obs_service_t *service)
+bool SimpleOutput::IsVodTrackEnabled(obs_service_t *service)
 {
 	bool advanced =
 		config_get_bool(main->Config(), "SimpleOutput", "UseAdvanced");
@@ -1203,11 +1207,14 @@ void SimpleOutput::SetupVodTrack(obs_service_t *service)
 
 	const char *id = obs_service_get_id(service);
 	if (strcmp(id, "rtmp_custom") == 0)
-		enable = enableForCustomServer ? enable : false;
+		return enableForCustomServer ? enable : false;
 	else
-		enable = advanced && enable && ServiceSupportsVodTrack(name);
+		return advanced && enable && ServiceSupportsVodTrack(name);
+}
 
-	if (enable)
+void SimpleOutput::SetupVodTrack(obs_service_t *service)
+{
+	if (IsVodTrackEnabled(service))
 		obs_output_set_audio_encoder(streamOutput, audioArchive, 1);
 	else
 		clear_archive_encoder(streamOutput, SIMPLE_ARCHIVE_NAME);
@@ -1537,6 +1544,7 @@ struct AdvancedOutput : BasicOutputHandler {
 	inline void UpdateAudioSettings();
 	virtual void Update() override;
 
+	inline std::optional<size_t> VodTrackMixerIdx(obs_service_t *service);
 	inline void SetupVodTrack(obs_service_t *service);
 
 	inline void SetupStreaming();
@@ -2185,7 +2193,8 @@ int AdvancedOutput::GetAudioBitrate(size_t i, const char *id) const
 	return FindClosestAvailableAudioBitrate(id, bitrate);
 }
 
-inline void AdvancedOutput::SetupVodTrack(obs_service_t *service)
+inline std::optional<size_t>
+AdvancedOutput::VodTrackMixerIdx(obs_service_t *service)
 {
 	int streamTrackIndex =
 		config_get_int(main->Config(), "AdvOut", "TrackIndex");
@@ -2206,7 +2215,15 @@ inline void AdvancedOutput::SetupVodTrack(obs_service_t *service)
 		if (!ServiceSupportsVodTrack(service))
 			vodTrackEnabled = false;
 	}
+
 	if (vodTrackEnabled && streamTrackIndex != vodTrackIndex)
+		return {vodTrackIndex};
+	return std::nullopt;
+}
+
+inline void AdvancedOutput::SetupVodTrack(obs_service_t *service)
+{
+	if (VodTrackMixerIdx(service).has_value())
 		obs_output_set_audio_encoder(streamOutput, streamArchiveEnc, 1);
 	else
 		clear_archive_encoder(streamOutput, ADV_ARCHIVE_NAME);
@@ -2243,9 +2260,9 @@ FutureHolder<bool> AdvancedOutput::SetupStreaming(obs_service_t *service)
 	const char *audio_encoder_id =
 		config_get_string(main->Config(), "AdvOut", "AudioEncoder");
 
-	auto holder =
-		SetupMultitrackVideo(service, audio_encoder_id,
-				     GetAudioBitrate(0, audio_encoder_id));
+	auto holder = SetupMultitrackVideo(service, audio_encoder_id,
+					   GetAudioBitrate(0, audio_encoder_id),
+					   VodTrackMixerIdx(service));
 	auto future = holder.future.then(main, [&](std::optional<bool>
 							   multitrackVideoResult) {
 		if (multitrackVideoResult.has_value())
@@ -2646,7 +2663,8 @@ std::string BasicOutputHandler::GetRecordingFilename(
 extern std::string DeserializeConfigText(const char *text);
 
 FutureHolder<std::optional<bool>> BasicOutputHandler::SetupMultitrackVideo(
-	obs_service_t *service, std::string audio_encoder_id, int audio_bitrate)
+	obs_service_t *service, std::string audio_encoder_id, int audio_bitrate,
+	std::optional<size_t> vod_track_mixer)
 {
 	if (!multitrackVideo)
 		return {[] {}, CreateFuture().then([] {
@@ -2743,7 +2761,7 @@ FutureHolder<std::optional<bool>> BasicOutputHandler::SetupMultitrackVideo(
 					audio_encoder_id.c_str(), audio_bitrate,
 					maximum_aggregate_bitrate,
 					maximum_video_tracks, custom_config,
-					stream_dump_config);
+					stream_dump_config, vod_track_mixer);
 			} catch (const MultitrackVideoError &error) {
 				return error;
 			}
