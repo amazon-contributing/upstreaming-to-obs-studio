@@ -1935,7 +1935,7 @@ static bool update_metrics(struct obs_output *output, struct metrics_data *m_tra
 
 	// Convert the timespec to an RFC3339 string, to be used in SEI messages
 	memset(&m_track->pirts.rfc3339_str, 0,
-	       sizeof(&m_track->pirts.rfc3339_str));
+	       sizeof(m_track->pirts.rfc3339_str));
 	strftime(m_track->pirts.rfc3339_str,
 		 sizeof(m_track->pirts.rfc3339_str), "%Y-%m-%dT%T",
 		 gmtime(&m_track->pirts.tspec.tv_sec));
@@ -1974,19 +1974,19 @@ enum eb_erm_type {
 };
 
 #define SEI_UUID_SIZE 16
-const static uint8_t ebt_uuid[SEI_UUID_SIZE] = {
+static const uint8_t ebt_uuid[SEI_UUID_SIZE] = {
 	0x0a, 0xec, 0xff, 0xe7,
 	0x52, 0x72, 0x4e, 0x2f,
 	0xa6, 0x2f, 0xd1, 0x9c,
 	0xd6, 0x1a, 0x93, 0xb5
 };
-const static uint8_t ebsm_uuid[SEI_UUID_SIZE] = {
+static const uint8_t ebsm_uuid[SEI_UUID_SIZE] = {
 	0xca, 0x60, 0xe7, 0x1c,
 	0x6a, 0x8b, 0x43, 0x88,
 	0xa3, 0x77, 0x15, 0x1d,
 	0xf7, 0xbf, 0x8a, 0xc2
 };
-static uint8_t eberm_uuid[SEI_UUID_SIZE] = {
+static const uint8_t eberm_uuid[SEI_UUID_SIZE] = {
 	0xf1, 0xfb, 0xc1, 0xd5,
 	0x10, 0x1e, 0x4f, 0xb5,
 	0xa6, 0x1e, 0xb8, 0xce,
