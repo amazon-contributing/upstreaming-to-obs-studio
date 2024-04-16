@@ -1091,6 +1091,32 @@ struct caption_track_data {
 	struct deque caption_data;
 };
 
+struct counter_data {
+	uint32_t diff;
+	uint32_t ref;
+	uint32_t curr;
+};
+
+#define RFC3339_MAX_LENGTH (64)
+struct metrics_time {
+	struct timespec tspec;
+	char rfc3339_str[RFC3339_MAX_LENGTH];
+};
+
+struct metrics_data {
+	pthread_mutex_t metrics_mutex;
+	struct counter_data rendition_frames_input;
+	struct counter_data rendition_frames_output;
+	struct counter_data rendition_frames_skipped;
+	struct counter_data session_frames_rendered;
+	struct counter_data session_frames_output;
+	struct counter_data session_frames_skipped;
+	struct counter_data session_frames_lagged;
+	// Packet Interleave Request Time
+	struct metrics_time pirts;
+};
+
+
 struct pause_data {
 	pthread_mutex_t mutex;
 	uint64_t last_video_ts;
@@ -1185,6 +1211,10 @@ struct obs_output {
 
 	// captions are output per track
 	struct caption_track_data *caption_tracks[MAX_OUTPUT_VIDEO_ENCODERS];
+
+	// Per-track metrics are modelled as a stream of data to allow
+	// flexible insertion frequency.
+	struct metrics_data *metrics_tracks[MAX_OUTPUT_VIDEO_ENCODERS];
 
 	bool valid;
 
