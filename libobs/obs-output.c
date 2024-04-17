@@ -276,7 +276,6 @@ static void destroy_metrics_track(struct metrics_data **metrics_track_ptr)
 	*metrics_track_ptr = NULL;
 }
 
-
 void obs_output_destroy(obs_output_t *output)
 {
 	if (output) {
@@ -1043,8 +1042,7 @@ static struct caption_track_data *create_caption_track()
 
 static struct metrics_data *create_metrics_track()
 {
-	struct metrics_data *rval =
-		bzalloc(sizeof(struct metrics_data));
+	struct metrics_data *rval = bzalloc(sizeof(struct metrics_data));
 	pthread_mutex_init_value(&rval->metrics_mutex);
 
 	if (pthread_mutex_init(&rval->metrics_mutex, NULL) != 0) {
@@ -1862,8 +1860,9 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 	return false;
 }
 
-static bool update_metrics(struct obs_output *output, struct metrics_data *m_track,
-			   const video_t *video, bool set_ref)
+static bool update_metrics(struct obs_output *output,
+			   struct metrics_data *m_track, const video_t *video,
+			   bool set_ref)
 {
 	// Sample and update track metrics data
 	if (!m_track)
@@ -1873,8 +1872,10 @@ static bool update_metrics(struct obs_output *output, struct metrics_data *m_tra
 	os_nstime_to_timespec(os_gettime_ns(), &m_track->pirts.tspec);
 
 	// Perform reads on all the counters as close together as possible
-	m_track->session_frames_output.curr = obs_output_get_total_frames(output);
-	m_track->session_frames_skipped.curr = obs_output_get_frames_dropped(output);
+	m_track->session_frames_output.curr =
+		obs_output_get_total_frames(output);
+	m_track->session_frames_skipped.curr =
+		obs_output_get_frames_dropped(output);
 	m_track->session_frames_rendered.curr = obs_get_total_frames();
 	m_track->session_frames_lagged.curr = obs_get_lagged_frames();
 	if (video) {
@@ -1936,12 +1937,10 @@ static bool update_metrics(struct obs_output *output, struct metrics_data *m_tra
 	// Convert the timespec to an RFC3339 string, to be used in SEI messages
 	memset(&m_track->pirts.rfc3339_str, 0,
 	       sizeof(m_track->pirts.rfc3339_str));
-	strftime(m_track->pirts.rfc3339_str,
-		 sizeof(m_track->pirts.rfc3339_str), "%Y-%m-%dT%T",
-		 gmtime(&m_track->pirts.tspec.tv_sec));
-	sprintf(m_track->pirts.rfc3339_str +
-		strlen(m_track->pirts.rfc3339_str), ".%03ldZ",
-		m_track->pirts.tspec.tv_nsec / 1000000);
+	strftime(m_track->pirts.rfc3339_str, sizeof(m_track->pirts.rfc3339_str),
+		 "%Y-%m-%dT%T", gmtime(&m_track->pirts.tspec.tv_sec));
+	sprintf(m_track->pirts.rfc3339_str + strlen(m_track->pirts.rfc3339_str),
+		".%03ldZ", m_track->pirts.tspec.tv_nsec / 1000000);
 
 	return true;
 }
@@ -1953,9 +1952,9 @@ static const uint8_t eberm_ts_name[] = "EBERM_TS";
 
 // Enhanced Broadcasting timestamp types
 enum eb_ts_type {
-	EB_TS_RFC3339 = 1,	// RFC3339 timestamp string
-	EB_TS_DURATION,		// Duration since epoch in milliseconds (64-bit)
-	EB_TS_DELTA		// Delta timestamp in nanoseconds (64-bit)
+	EB_TS_RFC3339 = 1, // RFC3339 timestamp string
+	EB_TS_DURATION,    // Duration since epoch in milliseconds (64-bit)
+	EB_TS_DELTA        // Delta timestamp in nanoseconds (64-bit)
 };
 
 // Enhanced Broadcasting Session Metrics types
@@ -1974,26 +1973,21 @@ enum eb_erm_type {
 };
 
 #define SEI_UUID_SIZE 16
-static const uint8_t ebt_uuid[SEI_UUID_SIZE] = {
-	0x0a, 0xec, 0xff, 0xe7,
-	0x52, 0x72, 0x4e, 0x2f,
-	0xa6, 0x2f, 0xd1, 0x9c,
-	0xd6, 0x1a, 0x93, 0xb5
-};
-static const uint8_t ebsm_uuid[SEI_UUID_SIZE] = {
-	0xca, 0x60, 0xe7, 0x1c,
-	0x6a, 0x8b, 0x43, 0x88,
-	0xa3, 0x77, 0x15, 0x1d,
-	0xf7, 0xbf, 0x8a, 0xc2
-};
-static const uint8_t eberm_uuid[SEI_UUID_SIZE] = {
-	0xf1, 0xfb, 0xc1, 0xd5,
-	0x10, 0x1e, 0x4f, 0xb5,
-	0xa6, 0x1e, 0xb8, 0xce,
-	0x3c, 0x07, 0xb8, 0xc0
-};
+static const uint8_t ebt_uuid[SEI_UUID_SIZE] = {0x0a, 0xec, 0xff, 0xe7,
+						0x52, 0x72, 0x4e, 0x2f,
+						0xa6, 0x2f, 0xd1, 0x9c,
+						0xd6, 0x1a, 0x93, 0xb5};
+static const uint8_t ebsm_uuid[SEI_UUID_SIZE] = {0xca, 0x60, 0xe7, 0x1c,
+						 0x6a, 0x8b, 0x43, 0x88,
+						 0xa3, 0x77, 0x15, 0x1d,
+						 0xf7, 0xbf, 0x8a, 0xc2};
+static const uint8_t eberm_uuid[SEI_UUID_SIZE] = {0xf1, 0xfb, 0xc1, 0xd5,
+						  0x10, 0x1e, 0x4f, 0xb5,
+						  0xa6, 0x1e, 0xb8, 0xce,
+						  0x3c, 0x07, 0xb8, 0xc0};
 
-static bool ebt_sei_render(struct array_output_data *out, struct metrics_data *m_track)
+static bool ebt_sei_render(struct array_output_data *out,
+			   struct metrics_data *m_track)
 {
 	uint8_t val = 0;
 	uint8_t num_timestamps = 0;
@@ -2022,7 +2016,8 @@ static bool ebt_sei_render(struct array_output_data *out, struct metrics_data *m
 	return true;
 }
 
-static bool ebsm_sei_render(struct array_output_data *out, struct metrics_data *m_track)
+static bool ebsm_sei_render(struct array_output_data *out,
+			    struct metrics_data *m_track)
 {
 	uint8_t val = 0;
 	uint8_t num_timestamps = 0;
@@ -2073,7 +2068,8 @@ static bool ebsm_sei_render(struct array_output_data *out, struct metrics_data *
 	return true;
 }
 
-static bool eberm_sei_render(struct array_output_data *out, struct metrics_data *m_track)
+static bool eberm_sei_render(struct array_output_data *out,
+			     struct metrics_data *m_track)
 {
 	uint8_t val = 0;
 	uint8_t num_timestamps = 0;
@@ -2120,7 +2116,8 @@ static bool eberm_sei_render(struct array_output_data *out, struct metrics_data 
 
 // process_metrics() will update and insert unregistered SEI messages into the encoded video bitstream.
 // Refer to <TBD> for the definition of the SEI messages
-static bool process_metrics(struct obs_output *output, struct encoder_packet *out)
+static bool process_metrics(struct obs_output *output,
+			    struct encoder_packet *out)
 {
 	struct encoder_packet backup = *out;
 	sei_t sei;
@@ -2146,8 +2143,7 @@ static bool process_metrics(struct obs_output *output, struct encoder_packet *ou
 #endif
 	}
 
-	struct metrics_data *m_track =
-		output->metrics_tracks[out->track_idx];
+	struct metrics_data *m_track = output->metrics_tracks[out->track_idx];
 	if (!m_track) {
 		blog(LOG_DEBUG,
 		     "Metrics track for index: %lu had not be initialized",
@@ -2156,9 +2152,11 @@ static bool process_metrics(struct obs_output *output, struct encoder_packet *ou
 	}
 
 	// Update the metrics for this track
-	if (!update_metrics(output, m_track, obs_encoder_video(out->encoder), (out->pts == 0))) {
+	if (!update_metrics(output, m_track, obs_encoder_video(out->encoder),
+			    (out->pts == 0))) {
 		// Something went wrong; log it and return
-		blog(LOG_DEBUG, "update_metrics() for track index: %lu failed", out->track_idx);
+		blog(LOG_DEBUG, "update_metrics() for track index: %lu failed",
+		     out->track_idx);
 		return false;
 	}
 	//blog(LOG_DEBUG,
@@ -2218,12 +2216,10 @@ static bool process_metrics(struct obs_output *output, struct encoder_packet *ou
 					     ebt_data.bytes.num);
 	sei_message_append(&sei, msg);
 	msg = sei_message_new(sei_type_user_data_unregistered,
-		ebsm_data.bytes.array,
-		ebsm_data.bytes.num);
+			      ebsm_data.bytes.array, ebsm_data.bytes.num);
 	sei_message_append(&sei, msg);
 	msg = sei_message_new(sei_type_user_data_unregistered,
-		eberm_data.bytes.array,
-		eberm_data.bytes.num);
+			      eberm_data.bytes.array, eberm_data.bytes.num);
 	sei_message_append(&sei, msg);
 
 	array_output_serializer_free(&ebt_data);
@@ -2352,15 +2348,20 @@ static inline void send_interleaved(struct obs_output *output)
 		// FIXME: There should be a better way to detect Enhanced Broadcasting other than
 		//	  comparing 2 strings on every packet
 		if (out.keyframe &&
-			    (strcmp(output->context.name,
-				   "rtmp multitrack video") == 0) &&
-			    (strcmp(output->info.id, "rtmp_output") == 0)) {
+		    (strcmp(output->context.name, "rtmp multitrack video") ==
+		     0) &&
+		    (strcmp(output->info.id, "rtmp_output") == 0)) {
 			// Update the metrics and generate SEI packets
-			pthread_mutex_lock(&output->metrics_tracks[out.track_idx]->metrics_mutex);
+			pthread_mutex_lock(
+				&output->metrics_tracks[out.track_idx]
+					 ->metrics_mutex);
 			if (!process_metrics(output, &out)) {
-				blog(LOG_DEBUG, "process_metrics(): Failed to insert SEI metrics");
+				blog(LOG_DEBUG,
+				     "process_metrics(): Failed to insert SEI metrics");
 			}
-			pthread_mutex_unlock(&output->metrics_tracks[out.track_idx]->metrics_mutex);
+			pthread_mutex_unlock(
+				&output->metrics_tracks[out.track_idx]
+					 ->metrics_mutex);
 		}
 	}
 
