@@ -1116,7 +1116,6 @@ struct metrics_data {
 	struct metrics_time pirts;
 };
 
-
 struct pause_data {
 	pthread_mutex_t mutex;
 	uint64_t last_video_ts;
