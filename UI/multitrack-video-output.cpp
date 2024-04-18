@@ -1312,10 +1312,14 @@ void StreamStopHandler(void *arg, calldata_t *params)
 			std::nullopt);
 }
 
-void StreamDeactivateHandler(void *arg, calldata_t * /* data */)
+void StreamDeactivateHandler(void *arg, calldata_t *params)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
 	if (!self->current)
+		return;
+
+	if (obs_output_reconnecting(static_cast<obs_output_t *>(
+		    calldata_ptr(params, "output"))))
 		return;
 
 	QMetaObject::invokeMethod(QApplication::instance()->thread(),
