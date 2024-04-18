@@ -201,6 +201,8 @@ public:
 
 	inline OBSObject GetObject() const { return OBSGetStrongRef(weakObj); }
 
+	void SetDisabled(bool disabled);
+
 #define Def_IsObject(type)                                \
 	inline bool IsObject(obs_##type##_t *type) const  \
 	{                                                 \
