@@ -271,6 +271,9 @@ static void destroy_metrics_track(struct metrics_data **metrics_track_ptr)
 		return;
 	}
 	struct metrics_data *m_track = *metrics_track_ptr;
+	for (uint8_t i = 0; i < EB_SEI_MAX; ++i) {
+		array_output_serializer_free(&m_track->sei_payload[i]);
+	}
 	pthread_mutex_destroy(&m_track->metrics_mutex);
 	bfree(m_track);
 	*metrics_track_ptr = NULL;
@@ -1567,7 +1570,8 @@ static inline bool has_higher_opposing_ts(struct obs_output *output,
 			  output->highest_audio_ts > packet->dts_usec);
 }
 
-static size_t extract_itut_t35_buffer_from_sei(sei_t *sei, uint8_t **data_out)
+// FIXME: This function should probably be moved into the mpeg.c file with other sei_* API's
+static size_t extract_buffer_from_sei(sei_t *sei, uint8_t **data_out)
 {
 	if (!sei || !sei->head) {
 		return 0;
@@ -1602,12 +1606,20 @@ static inline void encode_uleb128(uint64_t val, uint8_t *out_buf,
 	*len_out = num_bytes;
 }
 
-static const uint8_t METADATA_TYPE_ITUT_T35 = 4;
 static const uint8_t OBU_METADATA = 5;
-// create a metadata OBU to carry caption information
-static void metadata_obu_itu_t35(const uint8_t *itut_t35_buffer,
-				 size_t itut_bufsize, uint8_t **out_buffer,
-				 size_t *outbuf_size)
+enum av1_obu_metadata_type {
+	METADATA_TYPE_HDR_CLL = 1,
+	METADATA_TYPE_HDR_MDCV,
+	METADATA_TYPE_SCALABILITY,
+	METADATA_TYPE_ITUT_T35,
+	METADATA_TYPE_TIMECODE,
+	METADATA_TYPE_USER_PRIVATE_6
+};
+
+// Create an OBU to carry AV1 metadata types, including captions and user private data
+static void metadata_obu(const uint8_t *src_buffer, size_t bufsize,
+			 uint8_t **out_buffer, size_t *outbuf_size,
+			 uint8_t metadata_type)
 {
 	//Start with OBU header
 	// -------------
@@ -1635,22 +1647,22 @@ static void metadata_obu_itu_t35(const uint8_t *itut_t35_buffer,
 	// everything in here is byte aligned
 
 	// leb128(metadatatype) should always be 1 byte +1 for trailing bits
-	int64_t size_field = 1 + itut_bufsize + 1;
+	int64_t size_field = 1 + bufsize + 1;
 	uint8_t size_buf[10];
 	size_t size_buf_size = 0;
 	encode_uleb128(size_field, size_buf, &size_buf_size);
-	// header + obu_size + metadat_type + metadata_payload + trailing_bits
-	*outbuf_size = 1 + size_buf_size + 1 + itut_bufsize + 1;
+	// header + obu_size + metadata_type + metadata_payload + trailing_bits
+	*outbuf_size = 1 + size_buf_size + 1 + bufsize + 1;
 	*out_buffer = bzalloc(*outbuf_size);
 	size_t offset = 0;
 	(*out_buffer)[0] = obu_header_byte;
 	++offset;
 	memcpy((*out_buffer) + offset, size_buf, size_buf_size);
 	offset += size_buf_size;
-	(*out_buffer)[offset] = METADATA_TYPE_ITUT_T35;
+	(*out_buffer)[offset] = metadata_type;
 	++offset;
-	memcpy((*out_buffer) + offset, itut_t35_buffer, itut_bufsize);
-	offset += itut_bufsize;
+	memcpy((*out_buffer) + offset, src_buffer, bufsize);
+	offset += bufsize;
 	// Trailing bits - From General OBU semantics
 	// Trailing bits are always present, unless the OBU consists of only
 	// the header. Trailing bits achieve byte alignment when the payload of
@@ -1835,9 +1847,9 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 		} else if (av1) {
 			uint8_t *obu_buffer = NULL;
 			size_t obu_buffer_size = 0;
-			size = extract_itut_t35_buffer_from_sei(&sei, &data);
-			metadata_obu_itu_t35(data, size, &obu_buffer,
-					     &obu_buffer_size);
+			size = extract_buffer_from_sei(&sei, &data);
+			metadata_obu(data, size, &obu_buffer, &obu_buffer_size,
+				     METADATA_TYPE_ITUT_T35);
 			if (obu_buffer) {
 				da_push_back_array(out_data, obu_buffer,
 						   obu_buffer_size);
@@ -1986,15 +1998,15 @@ static const uint8_t eberm_uuid[SEI_UUID_SIZE] = {0xf1, 0xfb, 0xc1, 0xd5,
 						  0xa6, 0x1e, 0xb8, 0xce,
 						  0x3c, 0x07, 0xb8, 0xc0};
 
-static bool ebt_sei_render(struct array_output_data *out,
-			   struct metrics_data *m_track)
+void ebt_sei_render(struct metrics_data *m_track)
 {
-	uint8_t val = 0;
 	uint8_t num_timestamps = 0;
 	struct serializer s;
 
+	m_track->sei_rendered[EB_SEI_EBT] = false;
+
 	// Initialize the output array here; caller is responsible to free it
-	array_output_serializer_init(&s, out);
+	array_output_serializer_init(&s, &m_track->sei_payload[EB_SEI_EBT]);
 
 	// Write the UUID for this SEI message
 	s_write(&s, ebt_uuid, sizeof(ebt_uuid));
@@ -2002,30 +2014,28 @@ static bool ebt_sei_render(struct array_output_data *out,
 	// Encode number of timestamps for this SEI
 	num_timestamps = 1;
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_timestamps - 1
-	val = (num_timestamps - 1) & 0x0F;
-	s_w8(&s, val);
+	s_w8(&s, (num_timestamps - 1) & 0x0F);
 	// Timestamp type
-	val = EB_TS_RFC3339;
-	s_w8(&s, val);
+	s_w8(&s, EB_TS_RFC3339);
 	// Write the timestamp name (Packet Interleave Request Timestamp)
 	s_write(&s, pirts_name, sizeof(pirts_name));
 	// Write the RFC3339-formatted string, including the null terminator
 	s_write(&s, m_track->pirts.rfc3339_str,
 		strlen(m_track->pirts.rfc3339_str) + 1);
 
-	return true;
+	m_track->sei_rendered[EB_SEI_EBT] = true;
 }
 
-static bool ebsm_sei_render(struct array_output_data *out,
-			    struct metrics_data *m_track)
+void ebsm_sei_render(struct metrics_data *m_track)
 {
-	uint8_t val = 0;
 	uint8_t num_timestamps = 0;
 	uint8_t num_counters = 0;
 	struct serializer s;
 
+	m_track->sei_rendered[EB_SEI_EBSM] = false;
+
 	// Initialize the output array here; caller is responsible to free it
-	array_output_serializer_init(&s, out);
+	array_output_serializer_init(&s, &m_track->sei_payload[EB_SEI_EBSM]);
 
 	// Write the UUID for this SEI message
 	s_write(&s, ebsm_uuid, sizeof(ebsm_uuid));
@@ -2033,16 +2043,14 @@ static bool ebsm_sei_render(struct array_output_data *out,
 	// Encode number of timestamps for this SEI
 	num_timestamps = 1;
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_timestamps - 1
-	val = (num_timestamps - 1) & 0x0F;
-	s_w8(&s, val);
+	s_w8(&s, (num_timestamps - 1) & 0x0F);
 	// Timestamp type
-	val = EB_TS_RFC3339;
-	s_w8(&s, val);
+	s_w8(&s, EB_TS_RFC3339);
 
 	// Write the timestamp name (Enhanced Broadcasting Session Metrics Timestamp)
 	s_write(&s, ebsm_ts_name, sizeof(ebsm_ts_name));
 	// Write the RFC3339-formatted string, including the null terminator
-	// We're using the PIRTS timestamp because the data was all collected at that time
+	// Using the PIRTS timestamp because the data was all collected at that time
 	s_write(&s, m_track->pirts.rfc3339_str,
 		strlen(m_track->pirts.rfc3339_str) + 1);
 
@@ -2050,34 +2058,29 @@ static bool ebsm_sei_render(struct array_output_data *out,
 	num_counters = 4;
 	// Send all the counters with a tag(8-bit):value(32-bit) configuration
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_counters - 1
-	val = (num_counters - 1) & 0x0F;
-	s_w8(&s, val);
-	val = EB_SM_FRAMES_RENDERED;
-	s_w8(&s, val);
+	s_w8(&s, (num_counters - 1) & 0x0F);
+	s_w8(&s, EB_SM_FRAMES_RENDERED);
 	s_wb32(&s, m_track->session_frames_rendered.diff);
-	val = EB_SM_FRAMES_LAGGED;
-	s_w8(&s, val);
+	s_w8(&s, EB_SM_FRAMES_LAGGED);
 	s_wb32(&s, m_track->session_frames_lagged.diff);
-	val = EB_SM_FRAMES_SKIPPED;
-	s_w8(&s, val);
+	s_w8(&s, EB_SM_FRAMES_SKIPPED);
 	s_wb32(&s, m_track->session_frames_skipped.diff);
-	val = EB_SM_FRAMES_OUTPUT;
-	s_w8(&s, val);
+	s_w8(&s, EB_SM_FRAMES_OUTPUT);
 	s_wb32(&s, m_track->session_frames_output.diff);
 
-	return true;
+	m_track->sei_rendered[EB_SEI_EBSM] = true;
 }
 
-static bool eberm_sei_render(struct array_output_data *out,
-			     struct metrics_data *m_track)
+void eberm_sei_render(struct metrics_data *m_track)
 {
-	uint8_t val = 0;
 	uint8_t num_timestamps = 0;
 	uint8_t num_counters = 0;
 	struct serializer s;
 
+	m_track->sei_rendered[EB_SEI_EBERM] = false;
+
 	// Initialize the output array here; caller is responsible to free it
-	array_output_serializer_init(&s, out);
+	array_output_serializer_init(&s, &m_track->sei_payload[EB_SEI_EBERM]);
 
 	// Write the UUID for this SEI message
 	s_write(&s, eberm_uuid, sizeof(eberm_uuid));
@@ -2085,16 +2088,14 @@ static bool eberm_sei_render(struct array_output_data *out,
 	// Encode number of timestamps for this SEI
 	num_timestamps = 1;
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_timestamps - 1
-	val = (num_timestamps - 1) & 0x0F;
-	s_w8(&s, val);
+	s_w8(&s, (num_timestamps - 1) & 0x0F);
 	// Timestamp type
-	val = EB_TS_RFC3339;
-	s_w8(&s, val);
+	s_w8(&s, EB_TS_RFC3339);
 
 	// Write the timestamp name (Enhanced Broadcasting Encoder Rendition Metrics Timestamp)
 	s_write(&s, eberm_ts_name, sizeof(eberm_ts_name));
 	// Write the RFC3339-formatted string, including the null terminator
-	// We're using the PIRTS timestamp because the data was all collected at that time
+	// Using the PIRTS timestamp because the data was all collected at that time
 	s_write(&s, m_track->pirts.rfc3339_str,
 		strlen(m_track->pirts.rfc3339_str) + 1);
 
@@ -2102,20 +2103,17 @@ static bool eberm_sei_render(struct array_output_data *out,
 	num_counters = 2;
 	// Send all the counters with a tag(8-bit):value(32-bit) configuration
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_counters - 1
-	val = (num_counters - 1) & 0x0F;
-	s_w8(&s, val);
-	val = EB_ERM_FRAMES_INPUT;
-	s_w8(&s, val);
+	s_w8(&s, (num_counters - 1) & 0x0F);
+	s_w8(&s, EB_ERM_FRAMES_INPUT);
 	s_wb32(&s, m_track->rendition_frames_input.diff);
-	val = EB_ERM_FRAMES_SKIPPED;
-	s_w8(&s, val);
+	s_w8(&s, EB_ERM_FRAMES_SKIPPED);
 	s_wb32(&s, m_track->rendition_frames_skipped.diff);
 
-	return true;
+	m_track->sei_rendered[EB_SEI_EBERM] = true;
 }
 
 // process_metrics() will update and insert unregistered SEI messages into the encoded video bitstream.
-// Refer to <TBD> for the definition of the SEI messages
+// FIXME: Refer to <TBD> for the definition of the SEI messages
 static bool process_metrics(struct obs_output *output,
 			    struct encoder_packet *out)
 {
@@ -2128,18 +2126,13 @@ static bool process_metrics(struct obs_output *output,
 	bool hevc = false;
 	bool av1 = false;
 
-	// For the moment we only support H.264. AV1 and HEVC need testing.
 	if (strcmp(out->encoder->info.codec, "h264") == 0) {
 		avc = true;
 	} else if (strcmp(out->encoder->info.codec, "av1") == 0) {
 		av1 = true;
-		// FIXME: Need to test AV1; return for the time being.
-		return false;
 #ifdef ENABLE_HEVC
 	} else if (strcmp(out->encoder->info.codec, "hevc") == 0) {
 		hevc = true;
-		// FIXME: Need to test AV1; return for the time being.
-		return false;
 #endif
 	}
 
@@ -2159,17 +2152,6 @@ static bool process_metrics(struct obs_output *output,
 		     out->track_idx);
 		return false;
 	}
-	//blog(LOG_DEBUG,
-	//     "update_metrics(): Track: %d, S:osrl:%d,%d,%d,%d, R:os:%d, %d",
-	//     out->track_idx, m_track->session_frames_output.diff,
-	//     m_track->session_frames_skipped.diff,
-	//     m_track->session_frames_rendered.diff,
-	//     m_track->session_frames_lagged.diff,
-	//     m_track->rendition_frames_input.diff,
-	//     m_track->rendition_frames_skipped.diff);
-
-	// Create array for the original packet data + the SEI appended data
-	DARRAY(uint8_t) out_data;
 
 #ifdef ENABLE_HEVC
 	uint8_t hevc_nal_header[2];
@@ -2196,101 +2178,111 @@ static bool process_metrics(struct obs_output *output,
 		hevc_nal_header[1] = out->data[nal_header_index_start + 1];
 	}
 #endif
-	sei_init(&sei, 0.0);
-
+	// Create array for the original packet data + the SEI appended data
+	DARRAY(uint8_t) out_data;
 	da_init(out_data);
+
+	// Copy the original packet
 	da_push_back_array(out_data, (uint8_t *)&ref, sizeof(ref));
 	da_push_back_array(out_data, out->data, out->size);
 
-	struct array_output_data ebt_data;
-	struct array_output_data ebsm_data;
-	struct array_output_data eberm_data;
+	// Build the SEI metrics message payload
+	ebt_sei_render(m_track);
+	ebsm_sei_render(m_track);
+	eberm_sei_render(m_track);
 
-	ebt_sei_render(&ebt_data, m_track);
-	ebsm_sei_render(&ebsm_data, m_track);
-	eberm_sei_render(&eberm_data, m_track);
+	// Iterate over all the EB SEI types
+	for (uint8_t i = 0; i < EB_SEI_MAX; ++i) {
+		// Create and inject the syntax specific SEI messages in the bitstream if the rendering was successful
+		if (m_track->sei_rendered[i] == true) {
+			// Send one SEI message per NALU or OBU
+			sei_init(&sei, 0.0);
 
-	// Generate the SEI message
-	sei_message_t *msg = sei_message_new(sei_type_user_data_unregistered,
-					     ebt_data.bytes.array,
-					     ebt_data.bytes.num);
-	sei_message_append(&sei, msg);
-	msg = sei_message_new(sei_type_user_data_unregistered,
-			      ebsm_data.bytes.array, ebsm_data.bytes.num);
-	sei_message_append(&sei, msg);
-	msg = sei_message_new(sei_type_user_data_unregistered,
-			      eberm_data.bytes.array, eberm_data.bytes.num);
-	sei_message_append(&sei, msg);
+			// Generate the formatted SEI message
+			sei_message_t *msg = sei_message_new(
+				sei_type_user_data_unregistered,
+				m_track->sei_payload[i].bytes.array,
+				m_track->sei_payload[i].bytes.num);
+			sei_message_append(&sei, msg);
 
-	array_output_serializer_free(&ebt_data);
-	array_output_serializer_free(&ebsm_data);
-	array_output_serializer_free(&eberm_data);
-
-	if (avc || hevc || av1) {
-		if (avc || hevc) {
-			data = malloc(sei_render_size(&sei));
-			size = sei_render(&sei, data);
-		}
-		// In each of these specs there is an identical structure that
-		// carries caption information it is named slightly differently
-		// the metadata_itut_t35 in AV1, or the
-		// user_data_registered_itu_t_t35 in HEVC/AVC.  We have an AVC
-		// SEI wrapped version of that here and we will strip away and
-		// repackage it slightly to fit the different codec carrying
-		// mechanisms a slightly modified SEI for HEVC and a
-		// metadata_obu for AV1
-		if (avc) {
-			/* TODO SEI should come after AUD/SPS/PPS,
-			   but before any VCL */
-			da_push_back_array(out_data, nal_start, 4);
-			da_push_back_array(out_data, data, size);
+			// Update for any codec specific syntax and add to the output bitstream
+			if (avc || hevc || av1) {
+				if (avc || hevc) {
+					data = malloc(sei_render_size(&sei));
+					size = sei_render(&sei, data);
+				}
+				// In each of these specs there is an identical structure that
+				// carries caption information it is named slightly differently
+				// the metadata_itut_t35 in AV1, or the
+				// user_data_registered_itu_t_t35 in HEVC/AVC.  We have an AVC
+				// SEI wrapped version of that here and we will strip away and
+				// repackage it slightly to fit the different codec carrying
+				// mechanisms a slightly modified SEI for HEVC and a
+				// metadata_obu for AV1
+				if (avc) {
+					/* TODO SEI should come after AUD/SPS/PPS,
+				   but before any VCL */
+					da_push_back_array(out_data, nal_start,
+							   4);
+					da_push_back_array(out_data, data,
+							   size);
 #ifdef ENABLE_HEVC
-		} else if (hevc) {
-			/* Only first nal, VPS/PPS/SPS should use the 4 byte
-			   start code, seis use 3 byte version */
-			da_push_back_array(out_data, nal_start + 1, 3);
-			// nal_unit_header( ) {
-			// forbidden_zero_bit       f(1)
-			// nal_unit_type            u(6)
-			// nuh_layer_id             u(6)
-			// nuh_temporal_id_plus1    u(3)
-			// }
-			const uint8_t prefix_sei_nal_type = 39;
-			// The first bit is always 0, so we just need to
-			// save the last bit off the original header and
-			// add the sei nal type
-			uint8_t first_byte = (prefix_sei_nal_type << 1) |
-					     (0x01 & hevc_nal_header[0]);
-			hevc_nal_header[0] = first_byte;
-			// the H265 nal unit header is 2 byte instead of
-			// one, otherwise everything else is the
-			// same.
-			da_push_back_array(out_data, hevc_nal_header, 2);
-			da_push_back_array(out_data, &data[1], size - 1);
+				} else if (hevc) {
+					/* Only first nal, VPS/PPS/SPS should use the 4 byte
+				   start code, seis use 3 byte version */
+					da_push_back_array(out_data,
+							   nal_start + 1, 3);
+					// nal_unit_header( ) {
+					// forbidden_zero_bit       f(1)
+					// nal_unit_type            u(6)
+					// nuh_layer_id             u(6)
+					// nuh_temporal_id_plus1    u(3)
+					// }
+					const uint8_t prefix_sei_nal_type = 39;
+					// The first bit is always 0, so we just need to
+					// save the last bit off the original header and
+					// add the sei nal type
+					uint8_t first_byte =
+						(prefix_sei_nal_type << 1) |
+						(0x01 & hevc_nal_header[0]);
+					hevc_nal_header[0] = first_byte;
+					// the H265 nal unit header is 2 byte instead of
+					// one, otherwise everything else is the
+					// same.
+					da_push_back_array(out_data,
+							   hevc_nal_header, 2);
+					da_push_back_array(out_data, &data[1],
+							   size - 1);
 #endif
-		} else if (av1) {
-			// FIXME: How to handle metrics SEI in AV1?
-			//uint8_t *obu_buffer = NULL;
-			//size_t obu_buffer_size = 0;
-			//size = extract_itut_t35_buffer_from_sei(&sei, &data);
-			//metadata_obu_itu_t35(data, size, &obu_buffer,
-			//		     &obu_buffer_size);
-			//if (obu_buffer) {
-			//	da_push_back_array(out_data, obu_buffer,
-			//			   obu_buffer_size);
-			//	bfree(obu_buffer);
-			//}
+				} else if (av1) {
+					uint8_t *obu_buffer = NULL;
+					size_t obu_buffer_size = 0;
+					size = extract_buffer_from_sei(&sei,
+								       &data);
+					metadata_obu(
+						data, size, &obu_buffer,
+						&obu_buffer_size,
+						METADATA_TYPE_USER_PRIVATE_6);
+					if (obu_buffer) {
+						da_push_back_array(
+							out_data, obu_buffer,
+							obu_buffer_size);
+						bfree(obu_buffer);
+					}
+				}
+				if (data) {
+					free(data);
+				}
+			}
+			sei_free(&sei);
 		}
-		if (data) {
-			free(data);
-		}
-		obs_encoder_packet_release(out);
-
-		*out = backup;
-		out->data = (uint8_t *)out_data.array + sizeof(ref);
-		out->size = out_data.num - sizeof(ref);
 	}
-	sei_free(&sei);
+	obs_encoder_packet_release(out);
+
+	*out = backup;
+	out->data = (uint8_t *)out_data.array + sizeof(ref);
+	out->size = out_data.num - sizeof(ref);
+
 	if (avc || hevc || av1) {
 		return true;
 	}
