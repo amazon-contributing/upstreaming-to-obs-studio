@@ -26,6 +26,7 @@
 #include "util/profiler.h"
 #include "util/task.h"
 #include "util/uthash.h"
+#include "util/array-serializer.h"
 #include "callback/signal.h"
 #include "callback/proc.h"
 
@@ -1103,6 +1104,13 @@ struct metrics_time {
 	char rfc3339_str[RFC3339_MAX_LENGTH];
 };
 
+enum eb_sei_types {
+	EB_SEI_EBT = 0, // Enhanced Broadcasting Timestamp SEI
+	EB_SEI_EBSM,    // Enhanced Broadcasting Session Metrics SEI
+	EB_SEI_EBERM,   // Enhanced Broadcasting Encoded Rendition Metrics SEI
+	EB_SEI_MAX
+};
+
 struct metrics_data {
 	pthread_mutex_t metrics_mutex;
 	struct counter_data rendition_frames_input;
@@ -1112,8 +1120,9 @@ struct metrics_data {
 	struct counter_data session_frames_output;
 	struct counter_data session_frames_skipped;
 	struct counter_data session_frames_lagged;
-	// Packet Interleave Request Time
-	struct metrics_time pirts;
+	struct array_output_data sei_payload[EB_SEI_MAX];
+	bool sei_rendered[EB_SEI_MAX];
+	struct metrics_time pirts; // Packet Interleave Request Time
 };
 
 struct pause_data {
