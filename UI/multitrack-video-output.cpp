@@ -194,6 +194,9 @@ create_service(const QString &device_id, const QString &obs_session_id,
 	obs_data_set_string(settings, "key",
 			    key_with_param.toUtf8().constData());
 
+	// Enable metrics delivery over SEI for multitrack live services
+	obs_data_set_bool(settings, "enable_metrics", true);
+
 	auto service = obs_service_create(
 		"rtmp_custom", "multitrack video service", settings, nullptr);
 

@@ -351,6 +351,7 @@ const char *obs_output_get_name(const obs_output_t *output)
 bool obs_output_actual_start(obs_output_t *output)
 {
 	bool success = false;
+	bool sei_metrics_enable = false;
 
 	os_event_wait(output->stopping_event);
 	output->stop_code = 0;
@@ -382,12 +383,22 @@ bool obs_output_actual_start(obs_output_t *output)
 		pthread_mutex_unlock(&ctrack->caption_mutex);
 	}
 
+	// Check if SEI-based metrics injection is enabled for the service,
+	// and save the setting for each track in the loop below. A single call
+	// to obs_data_get_bool() is needed per start/stop iteration instead
+	// of at the injection frequency.
+	if ((output->service != NULL) && (output->service->context.settings != NULL))
+	{
+		sei_metrics_enable = obs_data_get_bool(
+			output->service->context.settings, "enable_metrics");
+	}
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
 		struct metrics_data *mtrack = output->metrics_tracks[i];
 		if (!mtrack) {
 			continue;
 		}
 		pthread_mutex_lock(&mtrack->metrics_mutex);
+		mtrack->metrics_enable = sei_metrics_enable;
 		mtrack->rendition_frames_input.diff = 0;
 		mtrack->rendition_frames_output.diff = 0;
 		mtrack->rendition_frames_skipped.diff = 0;
@@ -2336,24 +2347,21 @@ static inline void send_interleaved(struct obs_output *output)
 		}
 		pthread_mutex_unlock(&ctrack->caption_mutex);
 
-		// Insert SEI metrics only when a keyframe is detected and only for Enhanced Broadcasting
-		// FIXME: There should be a better way to detect Enhanced Broadcasting other than
-		//	  comparing 2 strings on every packet
-		if (out.keyframe &&
-		    (strcmp(output->context.name, "rtmp multitrack video") ==
-		     0) &&
-		    (strcmp(output->info.id, "rtmp_output") == 0)) {
-			// Update the metrics and generate SEI packets
-			pthread_mutex_lock(
-				&output->metrics_tracks[out.track_idx]
-					 ->metrics_mutex);
-			if (!process_metrics(output, &out)) {
-				blog(LOG_DEBUG,
-				     "process_metrics(): Failed to insert SEI metrics");
+		// Insert SEI metrics only when a keyframe is detected
+		// and only for services that enabled metrics delivery
+		if (out.keyframe) {
+			struct metrics_data *m_track =
+				output->metrics_tracks[out.track_idx];
+			pthread_mutex_lock(&m_track->metrics_mutex);
+			if (m_track->metrics_enable == true) {
+				// Update the metrics and generate SEI packets
+				if (process_metrics(output, &out) == false)
+				{
+					blog(LOG_DEBUG,
+					     "process_metrics(): SEI-based metrics injection failed");
+				}
 			}
-			pthread_mutex_unlock(
-				&output->metrics_tracks[out.track_idx]
-					 ->metrics_mutex);
+			pthread_mutex_unlock(&m_track->metrics_mutex);
 		}
 	}
 
