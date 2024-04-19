@@ -36,6 +36,7 @@
 #include "ivs-events.hpp"
 #include "multitrack-video-error.hpp"
 #include "qt-helpers.hpp"
+#include "window-basic-main.hpp"
 
 Qt::ConnectionType BlockingConnectionTypeFor(QObject *object)
 {
@@ -316,7 +317,9 @@ static obs_scale_type load_gpu_scale_type(obs_data_t *encoder_config)
 	return default_scale_type;
 }
 
-static void adjust_video_encoder_scaling(const obs_video_info &ovi,
+static void adjust_video_encoder_scaling(const char *view_name,
+					 const obs_video_info *ovi,
+					 const struct video_output_info *voi,
 					 obs_encoder_t *video_encoder,
 					 obs_data_t *encoder_config,
 					 size_t encoder_index)
@@ -324,17 +327,15 @@ static void adjust_video_encoder_scaling(const obs_video_info &ovi,
 	uint64_t requested_width = obs_data_get_int(encoder_config, "width");
 	uint64_t requested_height = obs_data_get_int(encoder_config, "height");
 
-	if (ovi.output_width == requested_width ||
-	    ovi.output_height == requested_height)
-		return;
+	auto width = ovi ? ovi->base_width : voi->width;
+	auto height = ovi ? ovi->base_height : voi->height;
 
-	if (ovi.base_width < requested_width ||
-	    ovi.base_height < requested_height) {
+	if (width < requested_width || height < requested_height) {
 		blog(LOG_WARNING,
 		     "Requested resolution exceeds canvas/available resolution for encoder %zu: %" PRIu64
-		     "x%" PRIu64 " > %" PRIu32 "x%" PRIu32,
-		     encoder_index, requested_width, requested_height,
-		     ovi.base_width, ovi.base_height);
+		     "x%" PRIu64 " > %" PRIu32 "x%" PRIu32 " (canvas: %s)",
+		     encoder_index, requested_width, requested_height, width,
+		     height, view_name ? view_name : "obs base");
 	}
 
 	obs_encoder_set_scaled_size(video_encoder,
@@ -405,9 +406,10 @@ static bool encoder_available(const char *type)
 			    }) != std::end(encoders);
 }
 
-static OBSEncoderAutoRelease create_video_encoder(DStr &name_buffer,
-						  size_t encoder_index,
-						  obs_data_t *encoder_config)
+static OBSEncoderAutoRelease
+create_video_encoder(DStr &name_buffer, size_t encoder_index,
+		     obs_data_t *encoder_config,
+		     const std::map<std::string, video_t *> &extra_views)
 {
 	auto encoder_type = obs_data_get_string(encoder_config, "type");
 	if (!encoder_available(encoder_type)) {
@@ -442,10 +444,9 @@ static OBSEncoderAutoRelease create_video_encoder(DStr &name_buffer,
 			QTStr("FailedToStartStream.FailedToCreateVideoEncoder")
 				.arg(name_buffer->array, encoder_type));
 	}
-	obs_encoder_set_video(video_encoder, obs_get_video());
 
-	obs_video_info ovi;
-	if (!obs_get_video_info(&ovi)) {
+	obs_video_info ovi_storage;
+	if (!obs_get_video_info(&ovi_storage)) {
 		blog(LOG_WARNING,
 		     "Failed to get obs video info while creating encoder %zu",
 		     encoder_index);
@@ -453,11 +454,26 @@ static OBSEncoderAutoRelease create_video_encoder(DStr &name_buffer,
 			QTStr("FailedToStartStream.FailedToGetOBSVideoInfo")
 				.arg(name_buffer->array, encoder_type));
 	}
+	obs_video_info *ovi = &ovi_storage;
 
-	adjust_video_encoder_scaling(ovi, video_encoder, encoder_config,
-				     encoder_index);
-	adjust_encoder_frame_rate_divisor(ovi, video_encoder, encoder_config,
-					  encoder_index);
+	const char *view_name = nullptr;
+	video_t *video = nullptr;
+	if (obs_data_has_user_value(encoder_config, "view")) {
+		view_name = obs_data_get_string(encoder_config, "view");
+		auto it = extra_views.find(view_name);
+		if (it != extra_views.end()) {
+			video = it->second;
+			ovi = nullptr;
+		}
+	}
+
+	obs_encoder_set_video(video_encoder, video ? video : obs_get_video());
+
+	auto voi = video ? video_output_get_info(video) : nullptr;
+	adjust_video_encoder_scaling(view_name, ovi, voi, video_encoder,
+				     encoder_config, encoder_index);
+	adjust_encoder_frame_rate_divisor(ovi_storage, video_encoder,
+					  encoder_config, encoder_index);
 
 	return video_encoder;
 }
@@ -493,7 +509,8 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 	       std::vector<OBSEncoderAutoRelease> &audio_encoders,
 	       std::vector<OBSEncoderAutoRelease> &video_encoders,
 	       const char *audio_encoder_id, std::optional<int> audio_bitrate,
-	       std::optional<size_t> vod_track_mixer);
+	       std::optional<size_t> vod_track_mixer,
+	       const std::map<std::string, video_t *> &extra_views);
 static void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self,
 				obs_output_t *output, OBSSignal &start,
 				OBSSignal &stop, OBSSignal &deactivate);
@@ -704,12 +721,18 @@ void MultitrackVideoOutput::PrepareStreaming(
 	     vod_track_info_storage->array ? vod_track_info_storage->array
 					   : "No");
 
+	for (auto &video_output : OBSBasic::Get()->multitrackVideoViews) {
+		video_t *video = video_output.start_video(video_output.param);
+		if (!video)
+			continue;
+		extra_views_[video_output.name] = video;
+	}
+
 	try {
-		go_live_post = constructGoLivePost(attempt_start_time,
-						   stream_key,
-						   maximum_aggregate_bitrate,
-						   maximum_video_tracks,
-						   vod_track_mixer.has_value());
+		go_live_post = constructGoLivePost(
+			attempt_start_time, stream_key,
+			maximum_aggregate_bitrate, maximum_video_tracks,
+			vod_track_mixer.has_value(), extra_views_);
 
 		go_live_config = DownloadGoLiveConfig(parent, auto_config_url,
 						      go_live_post);
@@ -787,7 +810,8 @@ void MultitrackVideoOutput::PrepareStreaming(
 		auto outputs = SetupOBSOutput(dump_stream_to_file_config,
 					      go_live_config, audio_encoders,
 					      video_encoders, audio_encoder_id,
-					      audio_bitrate, vod_track_mixer);
+					      audio_bitrate, vod_track_mixer,
+					      extra_views_);
 		auto output = std::move(outputs.output);
 		auto recording_output = std::move(outputs.recording_output);
 		if (!output)
@@ -921,8 +945,20 @@ void MultitrackVideoOutput::PrepareStreaming(
 			berryessa_->unsetAlways("config_id");
 			berryessa_->unsetAlways("stream_attempt_start_time");
 		}
+
+		StopExtraViews();
 		throw;
 	}
+}
+
+void MultitrackVideoOutput::StopExtraViews()
+{
+	for (auto &view : extra_views_) {
+		for (auto &v : OBSBasic::Get()->multitrackVideoViews)
+			if (v.name == view.first)
+				v.stop_video(view.second, v.param);
+	}
+	extra_views_.clear();
 }
 
 signal_handler_t *MultitrackVideoOutput::StreamingSignalHandler()
@@ -1137,7 +1173,8 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 static bool
 create_video_encoders(obs_data_t *go_live_config,
 		      std::vector<OBSEncoderAutoRelease> &video_encoders,
-		      obs_output_t *output, obs_output_t *recording_output)
+		      obs_output_t *output, obs_output_t *recording_output,
+		      const std::map<std::string, video_t *> &extra_views)
 {
 	OBSDataArrayAutoRelease encoder_configs =
 		obs_data_get_array(go_live_config, "encoder_configurations");
@@ -1156,7 +1193,8 @@ create_video_encoders(obs_data_t *go_live_config,
 		OBSDataAutoRelease encoder_config =
 			obs_data_array_item(encoder_configs, i);
 		auto encoder = create_video_encoder(video_encoder_name_buffer,
-						    i, encoder_config);
+						    i, encoder_config,
+						    extra_views);
 		if (!encoder)
 			return false;
 
@@ -1259,7 +1297,8 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 	       std::vector<OBSEncoderAutoRelease> &audio_encoders,
 	       std::vector<OBSEncoderAutoRelease> &video_encoders,
 	       const char *audio_encoder_id, std::optional<int> audio_bitrate,
-	       std::optional<size_t> vod_track_mixer)
+	       std::optional<size_t> vod_track_mixer,
+	       const std::map<std::string, video_t *> &extra_views)
 {
 
 	auto output = create_output();
@@ -1269,7 +1308,7 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 			create_recording_output(dump_stream_to_file_config);
 
 	if (!create_video_encoders(go_live_config, video_encoders, output,
-				   recording_output))
+				   recording_output, extra_views))
 		return {nullptr, nullptr};
 
 	create_audio_encoders(go_live_config, audio_encoders, output,
@@ -1344,6 +1383,7 @@ void StreamStartHandler(void *arg, calldata_t * /* data */)
 void StreamStopHandler(void *arg, calldata_t *params)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
+	self->StopExtraViews();
 
 	OBSOutputAutoRelease stream_dump_output = nullptr;
 	{

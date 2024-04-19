@@ -1,6 +1,7 @@
 #pragma once
 
 #include <obs.hpp>
+#include <obs-frontend-api.h>
 #include <util/config-file.h>
 
 #include <atomic>
@@ -30,6 +31,23 @@ void RecordingDeactivateHandler(void *arg, calldata_t *data);
 
 bool MultitrackVideoDeveloperModeEnabled();
 
+struct MultitrackVideoViewInfo {
+	inline MultitrackVideoViewInfo(const char *name_,
+				       multitrack_video_start_cb start_video_,
+				       multitrack_video_stop_cb stop_video_,
+				       void *param_)
+		: start_video(start_video_),
+		  stop_video(stop_video_),
+		  param(param_),
+		  name(name_)
+	{
+	}
+	std::string name;
+	multitrack_video_start_cb start_video = nullptr;
+	multitrack_video_stop_cb stop_video = nullptr;
+	void *param = nullptr;
+};
+
 struct MultitrackVideoOutput {
 
 public:
@@ -58,6 +76,10 @@ public:
 		return current ? obs_output_get_ref(current->output_) : nullptr;
 	}
 
+	void StopExtraViews();
+
+	const std::vector<OBSEncoderAutoRelease> &VideoEncoders() const;
+
 private:
 	const ImmutableDateTime &GenerateStreamAttemptStartTime();
 
@@ -80,6 +102,7 @@ private:
 		OBSServiceAutoRelease multitrack_video_service_;
 		OBSSignal start_signal, stop_signal, deactivate_signal;
 	};
+	std::map<std::string, video_t *> extra_views_;
 
 	std::optional<OBSOutputObjects> take_current();
 	std::optional<OBSOutputObjects> take_current_stream_dump();
