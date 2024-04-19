@@ -387,8 +387,8 @@ bool obs_output_actual_start(obs_output_t *output)
 	// and save the setting for each track in the loop below. A single call
 	// to obs_data_get_bool() is needed per start/stop iteration instead
 	// of at the injection frequency.
-	if ((output->service != NULL) && (output->service->context.settings != NULL))
-	{
+	if ((output->service != NULL) &&
+	    (output->service->context.settings != NULL)) {
 		sei_metrics_enable = obs_data_get_bool(
 			output->service->context.settings, "enable_metrics");
 	}
@@ -2355,8 +2355,7 @@ static inline void send_interleaved(struct obs_output *output)
 			pthread_mutex_lock(&m_track->metrics_mutex);
 			if (m_track->metrics_enable == true) {
 				// Update the metrics and generate SEI packets
-				if (process_metrics(output, &out) == false)
-				{
+				if (process_metrics(output, &out) == false) {
 					blog(LOG_DEBUG,
 					     "process_metrics(): SEI-based metrics injection failed");
 				}
