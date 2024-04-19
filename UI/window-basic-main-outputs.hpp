@@ -25,11 +25,12 @@ struct BasicOutputHandler {
 	std::unique_ptr<MultitrackVideoOutput> multitrackVideo;
 	bool multitrackVideoActive = false;
 
-	obs_output_t *StreamingOutput() const
+	OBSOutputAutoRelease StreamingOutput() const
 	{
 		return (multitrackVideo && multitrackVideoActive)
 			       ? multitrackVideo->StreamingOutput()
-			       : static_cast<obs_output_t *>(streamOutput);
+			       : OBSOutputAutoRelease{
+					 obs_output_get_ref(streamOutput)};
 	}
 
 	obs_view_t *virtualCamView = nullptr;

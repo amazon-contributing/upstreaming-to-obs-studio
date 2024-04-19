@@ -46,15 +46,16 @@ public:
 	signal_handler_t *StreamingSignalHandler();
 	void StartedStreaming(QWidget *parent, bool success);
 	void StopStreaming();
-	std::optional<int> ConnectTimeMs() const;
+	std::optional<int> ConnectTimeMs();
 	bool HandleIncompatibleSettings(QWidget *parent, config_t *config,
 					obs_service_t *service, bool &useDelay,
 					bool &enableNewSocketLoop,
 					bool &enableDynBitrate);
 
-	obs_output_t *StreamingOutput()
+	OBSOutputAutoRelease StreamingOutput()
 	{
-		return current ? &*current->output_ : nullptr;
+		const std::lock_guard current_lock{current_mutex};
+		return current ? obs_output_get_ref(current->output_) : nullptr;
 	}
 
 private:
@@ -80,7 +81,16 @@ private:
 		OBSSignal start_signal, stop_signal, deactivate_signal;
 	};
 
+	std::optional<OBSOutputObjects> take_current();
+	std::optional<OBSOutputObjects> take_current_stream_dump();
+
+	static void
+	ReleaseOnMainThread(std::optional<OBSOutputObjects> objects);
+
+	std::mutex current_mutex;
 	std::optional<OBSOutputObjects> current;
+
+	std::mutex current_stream_dump_mutex;
 	std::optional<OBSOutputObjects> current_stream_dump;
 
 	friend void StreamStartHandler(void *arg, calldata_t *data);
