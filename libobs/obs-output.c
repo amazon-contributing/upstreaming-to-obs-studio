@@ -400,7 +400,6 @@ bool obs_output_actual_start(obs_output_t *output)
 		mtrack->session_frames_output.diff = 0;
 		mtrack->session_frames_skipped.diff = 0;
 		mtrack->session_frames_lagged.diff = 0;
-		//mtrack->metrics_enable = true;
 		memset(mtrack->pirts.rfc3339_str, 0,
 		       sizeof(mtrack->pirts.rfc3339_str));
 		pthread_mutex_unlock(&mtrack->metrics_mutex);
