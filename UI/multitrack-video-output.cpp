@@ -194,9 +194,6 @@ create_service(const QString &device_id, const QString &obs_session_id,
 	obs_data_set_string(settings, "key",
 			    key_with_param.toUtf8().constData());
 
-	// Enable metrics delivery over SEI for multitrack live services
-	obs_data_set_bool(settings, "enable_metrics", true);
-
 	auto service = obs_service_create(
 		"rtmp_custom", "multitrack video service", settings, nullptr);
 
@@ -834,6 +831,9 @@ void MultitrackVideoOutput::PrepareStreaming(
 					.arg(multitrack_video_name));
 
 		obs_output_set_service(output, multitrack_video_service);
+
+		// Enable metrics delivery over SEI for multitrack live services
+		obs_output_enable_metrics(output);
 
 		OBSSignal start_streaming;
 		OBSSignal stop_streaming;

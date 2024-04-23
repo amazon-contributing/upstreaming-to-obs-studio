@@ -21,6 +21,7 @@
 extern "C" {
 #endif
 
+/* obs_output_info.flags definitions */
 #define OBS_OUTPUT_VIDEO (1 << 0)
 #define OBS_OUTPUT_AUDIO (1 << 1)
 #define OBS_OUTPUT_AV (OBS_OUTPUT_VIDEO | OBS_OUTPUT_AUDIO)
@@ -32,6 +33,7 @@ extern "C" {
 #define OBS_OUTPUT_MULTI_TRACK_VIDEO (1 << 6)
 #define OBS_OUTPUT_MULTI_TRACK_AV \
 	(OBS_OUTPUT_MULTI_TRACK_AUDIO | OBS_OUTPUT_MULTI_TRACK_VIDEO)
+#define OBS_OUTPUT_METRICS (1 << 7)
 
 #define MAX_OUTPUT_AUDIO_ENCODERS 6
 #define MAX_OUTPUT_VIDEO_ENCODERS 10

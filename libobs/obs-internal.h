@@ -1122,7 +1122,6 @@ struct metrics_data {
 	struct counter_data session_frames_lagged;
 	struct array_output_data sei_payload[EB_SEI_MAX];
 	bool sei_rendered[EB_SEI_MAX];
-	bool metrics_enable; // Enable (true) or disable metrics injection over SEI
 	struct metrics_time pirts; // Packet Interleave Request Time
 };
 

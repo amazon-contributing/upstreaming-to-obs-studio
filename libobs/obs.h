@@ -2327,6 +2327,8 @@ EXPORT const char *obs_get_output_supported_video_codecs(const char *id);
 
 EXPORT const char *obs_get_output_supported_audio_codecs(const char *id);
 
+EXPORT void obs_output_enable_metrics(obs_output_t *output);
+
 /* ------------------------------------------------------------------------- */
 /* Functions used by outputs */
 

@@ -125,6 +125,11 @@ static inline bool log_flag_service(const struct obs_output *output,
 	return ret;
 }
 
+static inline bool flag_metrics(const struct obs_output *output)
+{
+	return (output->info.flags & OBS_OUTPUT_METRICS) != 0;
+}
+
 const struct obs_output_info *find_output(const char *id)
 {
 	size_t i;
@@ -351,7 +356,6 @@ const char *obs_output_get_name(const obs_output_t *output)
 bool obs_output_actual_start(obs_output_t *output)
 {
 	bool success = false;
-	bool sei_metrics_enable = false;
 
 	os_event_wait(output->stopping_event);
 	output->stop_code = 0;
@@ -383,22 +387,12 @@ bool obs_output_actual_start(obs_output_t *output)
 		pthread_mutex_unlock(&ctrack->caption_mutex);
 	}
 
-	// Check if SEI-based metrics injection is enabled for the service,
-	// and save the setting for each track in the loop below. A single call
-	// to obs_data_get_bool() is needed per start/stop iteration instead
-	// of at the injection frequency.
-	if ((output->service != NULL) &&
-	    (output->service->context.settings != NULL)) {
-		sei_metrics_enable = obs_data_get_bool(
-			output->service->context.settings, "enable_metrics");
-	}
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
 		struct metrics_data *mtrack = output->metrics_tracks[i];
 		if (!mtrack) {
 			continue;
 		}
 		pthread_mutex_lock(&mtrack->metrics_mutex);
-		mtrack->metrics_enable = sei_metrics_enable;
 		mtrack->rendition_frames_input.diff = 0;
 		mtrack->rendition_frames_output.diff = 0;
 		mtrack->rendition_frames_skipped.diff = 0;
@@ -406,6 +400,7 @@ bool obs_output_actual_start(obs_output_t *output)
 		mtrack->session_frames_output.diff = 0;
 		mtrack->session_frames_skipped.diff = 0;
 		mtrack->session_frames_lagged.diff = 0;
+		//mtrack->metrics_enable = true;
 		memset(mtrack->pirts.rfc3339_str, 0,
 		       sizeof(mtrack->pirts.rfc3339_str));
 		pthread_mutex_unlock(&mtrack->metrics_mutex);
@@ -2349,16 +2344,14 @@ static inline void send_interleaved(struct obs_output *output)
 
 		// Insert SEI metrics only when a keyframe is detected
 		// and only for services that enabled metrics delivery
-		if (out.keyframe) {
+		if (out.keyframe && (flag_metrics(output) == true)) {
 			struct metrics_data *m_track =
 				output->metrics_tracks[out.track_idx];
 			pthread_mutex_lock(&m_track->metrics_mutex);
-			if (m_track->metrics_enable == true) {
-				// Update the metrics and generate SEI packets
-				if (process_metrics(output, &out) == false) {
-					blog(LOG_DEBUG,
-					     "process_metrics(): SEI-based metrics injection failed");
-				}
+			// Update the metrics and generate SEI packets
+			if (process_metrics(output, &out) == false) {
+				blog(LOG_DEBUG,
+				     "process_metrics(): SEI-based metrics injection failed");
 			}
 			pthread_mutex_unlock(&m_track->metrics_mutex);
 		}
@@ -3943,4 +3936,16 @@ const char *obs_get_output_supported_audio_codecs(const char *id)
 {
 	const struct obs_output_info *info = find_output(id);
 	return info ? info->encoded_audio_codecs : NULL;
+}
+
+void obs_output_enable_metrics(obs_output_t *output)
+{
+	if (!obs_output_valid(output, "obs_output_enable_metrics"))
+		return;
+	if (!log_flag_service(output, __FUNCTION__))
+		return;
+	if (active(output))
+		return;
+
+	output->info.flags |= OBS_OUTPUT_METRICS;
 }
