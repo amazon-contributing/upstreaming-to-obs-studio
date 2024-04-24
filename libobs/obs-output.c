@@ -2210,6 +2210,9 @@ static bool process_metrics(struct obs_output *output,
 				m_track->sei_payload[i].bytes.num);
 			sei_message_append(&sei, msg);
 
+			// Free the SEI payload buffer in the metrics track
+			array_output_serializer_free(&m_track->sei_payload[i]);
+
 			// Update for any codec specific syntax and add to the output bitstream
 			if (avc || hevc || av1) {
 				if (avc || hevc) {
