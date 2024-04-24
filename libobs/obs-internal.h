@@ -1105,10 +1105,10 @@ struct metrics_time {
 };
 
 enum eb_sei_types {
-	EB_SEI_EBT = 0, // Enhanced Broadcasting Timestamp SEI
-	EB_SEI_EBSM,    // Enhanced Broadcasting Session Metrics SEI
-	EB_SEI_EBERM,   // Enhanced Broadcasting Encoded Rendition Metrics SEI
-	EB_SEI_MAX
+	BPM_TS_SEI = 0, // Broadcast Performance Metrics Timestamp SEI
+	BPM_SM_SEI,    // Broadcast Performance Metrics Session Metrics SEI
+	BPM_ERM_SEI,   // Broadcast Performance Metrics Encoded Rendition Metrics SEI
+	BPM_MAX_SEI
 };
 
 struct metrics_data {
@@ -1120,8 +1120,8 @@ struct metrics_data {
 	struct counter_data session_frames_output;
 	struct counter_data session_frames_skipped;
 	struct counter_data session_frames_lagged;
-	struct array_output_data sei_payload[EB_SEI_MAX];
-	bool sei_rendered[EB_SEI_MAX];
+	struct array_output_data sei_payload[BPM_MAX_SEI];
+	bool sei_rendered[BPM_MAX_SEI];
 	struct metrics_time pirts; // Packet Interleave Request Time
 };
 

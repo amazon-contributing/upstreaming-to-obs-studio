@@ -276,7 +276,7 @@ static void destroy_metrics_track(struct metrics_data **metrics_track_ptr)
 		return;
 	}
 	struct metrics_data *m_track = *metrics_track_ptr;
-	for (uint8_t i = 0; i < EB_SEI_MAX; ++i) {
+	for (uint8_t i = 0; i < BPM_MAX_SEI; ++i) {
 		array_output_serializer_free(&m_track->sei_payload[i]);
 	}
 	pthread_mutex_destroy(&m_track->metrics_mutex);
@@ -1962,100 +1962,100 @@ static bool update_metrics(struct obs_output *output,
 	return true;
 }
 
-static const uint8_t pirts_name[] = "PIRTS";
-static const uint8_t ebsm_ts_name[] = "EBSM_TS";
-static const uint8_t eberm_ts_name[] = "EBERM_TS";
+// Packet Interleave Request time stamp name
+static const uint8_t pir_ts_name[] = "PIR_TS";
+// Composition time stamp name
 //static const uint8_t cts_name[] = "CTS";
 
-// Enhanced Broadcasting timestamp types
-enum eb_ts_type {
-	EB_TS_RFC3339 = 1, // RFC3339 timestamp string
-	EB_TS_DURATION,    // Duration since epoch in milliseconds (64-bit)
-	EB_TS_DELTA        // Delta timestamp in nanoseconds (64-bit)
+// Broadcast Performance Metrics timestamp types
+enum bpm_ts_type {
+	BPM_TS_RFC3339 = 1, // RFC3339 timestamp string
+	BPM_TS_DURATION,    // Duration since epoch in milliseconds (64-bit)
+	BPM_TS_DELTA        // Delta timestamp in nanoseconds (64-bit)
 };
 
-// Enhanced Broadcasting Session Metrics types
-enum eb_sm_type {
-	EB_SM_FRAMES_RENDERED = 1, // Frames rendered by compositor
-	EB_SM_FRAMES_LAGGED,       // Frames lagged by compositor
-	EB_SM_FRAMES_SKIPPED,      // Frames skipped by compositor
-	EB_SM_FRAMES_OUTPUT // Total frames output (sum of all video encoder rendition sinks)
+// Broadcast Performance Session Metrics types
+enum bpm_sm_type {
+	BPM_SM_FRAMES_RENDERED = 1, // Frames rendered by compositor
+	BPM_SM_FRAMES_LAGGED,       // Frames lagged by compositor
+	BPM_SM_FRAMES_SKIPPED,      // Frames skipped by compositor
+	BPM_SM_FRAMES_OUTPUT // Total frames output (sum of all video encoder rendition sinks)
 };
 
-// Enhanced Broadcasting Encoded Rendition Metrics types
-enum eb_erm_type {
-	EB_ERM_FRAMES_INPUT = 1, // Frames input to the encoder rendition
-	EB_ERM_FRAMES_SKIPPED,   // Frames skippped by the encoder rendition
-	EB_ERM_FRAMES_OUTPUT // Frames output (encoded) by the encoder rendition
+// Broadcast Performance Encoded Rendition Metrics types
+enum bpm_erm_type {
+	BPM_ERM_FRAMES_INPUT = 1, // Frames input to the encoder rendition
+	BPM_ERM_FRAMES_SKIPPED,   // Frames skippped by the encoder rendition
+	BPM_ERM_FRAMES_OUTPUT // Frames output (encoded) by the encoder rendition
 };
 
 #define SEI_UUID_SIZE 16
-static const uint8_t ebt_uuid[SEI_UUID_SIZE] = {0x0a, 0xec, 0xff, 0xe7,
-						0x52, 0x72, 0x4e, 0x2f,
-						0xa6, 0x2f, 0xd1, 0x9c,
-						0xd6, 0x1a, 0x93, 0xb5};
-static const uint8_t ebsm_uuid[SEI_UUID_SIZE] = {0xca, 0x60, 0xe7, 0x1c,
-						 0x6a, 0x8b, 0x43, 0x88,
-						 0xa3, 0x77, 0x15, 0x1d,
-						 0xf7, 0xbf, 0x8a, 0xc2};
-static const uint8_t eberm_uuid[SEI_UUID_SIZE] = {0xf1, 0xfb, 0xc1, 0xd5,
-						  0x10, 0x1e, 0x4f, 0xb5,
-						  0xa6, 0x1e, 0xb8, 0xce,
-						  0x3c, 0x07, 0xb8, 0xc0};
+static const uint8_t bpm_ts_uuid[SEI_UUID_SIZE] = {0x0a, 0xec, 0xff, 0xe7,
+						   0x52, 0x72, 0x4e, 0x2f,
+						   0xa6, 0x2f, 0xd1, 0x9c,
+						   0xd6, 0x1a, 0x93, 0xb5};
+static const uint8_t bpm_sm_uuid[SEI_UUID_SIZE] = {0xca, 0x60, 0xe7, 0x1c,
+						   0x6a, 0x8b, 0x43, 0x88,
+						   0xa3, 0x77, 0x15, 0x1d,
+						   0xf7, 0xbf, 0x8a, 0xc2};
+static const uint8_t bpm_erm_uuid[SEI_UUID_SIZE] = {0xf1, 0xfb, 0xc1, 0xd5,
+						    0x10, 0x1e, 0x4f, 0xb5,
+						    0xa6, 0x1e, 0xb8, 0xce,
+						    0x3c, 0x07, 0xb8, 0xc0};
 
-void ebt_sei_render(struct metrics_data *m_track)
+void bpm_ts_sei_render(struct metrics_data *m_track)
 {
 	uint8_t num_timestamps = 0;
 	struct serializer s;
 
-	m_track->sei_rendered[EB_SEI_EBT] = false;
+	m_track->sei_rendered[BPM_TS_SEI] = false;
 
 	// Initialize the output array here; caller is responsible to free it
-	array_output_serializer_init(&s, &m_track->sei_payload[EB_SEI_EBT]);
+	array_output_serializer_init(&s, &m_track->sei_payload[BPM_TS_SEI]);
 
 	// Write the UUID for this SEI message
-	s_write(&s, ebt_uuid, sizeof(ebt_uuid));
+	s_write(&s, bpm_ts_uuid, sizeof(bpm_ts_uuid));
 
 	// Encode number of timestamps for this SEI
 	num_timestamps = 1;
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_timestamps - 1
 	s_w8(&s, (num_timestamps - 1) & 0x0F);
 	// Timestamp type
-	s_w8(&s, EB_TS_RFC3339);
+	s_w8(&s, BPM_TS_RFC3339);
 	// Write the timestamp name (Packet Interleave Request Timestamp)
-	s_write(&s, pirts_name, sizeof(pirts_name));
+	s_write(&s, pir_ts_name, sizeof(pir_ts_name));
 	// Write the RFC3339-formatted string, including the null terminator
 	s_write(&s, m_track->pirts.rfc3339_str,
 		strlen(m_track->pirts.rfc3339_str) + 1);
 
-	m_track->sei_rendered[EB_SEI_EBT] = true;
+	m_track->sei_rendered[BPM_TS_SEI] = true;
 }
 
-void ebsm_sei_render(struct metrics_data *m_track)
+void bpm_sm_sei_render(struct metrics_data *m_track)
 {
 	uint8_t num_timestamps = 0;
 	uint8_t num_counters = 0;
 	struct serializer s;
 
-	m_track->sei_rendered[EB_SEI_EBSM] = false;
+	m_track->sei_rendered[BPM_SM_SEI] = false;
 
 	// Initialize the output array here; caller is responsible to free it
-	array_output_serializer_init(&s, &m_track->sei_payload[EB_SEI_EBSM]);
+	array_output_serializer_init(&s, &m_track->sei_payload[BPM_SM_SEI]);
 
 	// Write the UUID for this SEI message
-	s_write(&s, ebsm_uuid, sizeof(ebsm_uuid));
+	s_write(&s, bpm_sm_uuid, sizeof(bpm_sm_uuid));
 
 	// Encode number of timestamps for this SEI
 	num_timestamps = 1;
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_timestamps - 1
 	s_w8(&s, (num_timestamps - 1) & 0x0F);
 	// Timestamp type
-	s_w8(&s, EB_TS_RFC3339);
+	s_w8(&s, BPM_TS_RFC3339);
 
-	// Write the timestamp name (Enhanced Broadcasting Session Metrics Timestamp)
-	s_write(&s, ebsm_ts_name, sizeof(ebsm_ts_name));
+	// Write the timestamp name
+	// Using the PIR_TS timestamp because the data was all collected at that time
+	s_write(&s, pir_ts_name, sizeof(pir_ts_name));
 	// Write the RFC3339-formatted string, including the null terminator
-	// Using the PIRTS timestamp because the data was all collected at that time
 	s_write(&s, m_track->pirts.rfc3339_str,
 		strlen(m_track->pirts.rfc3339_str) + 1);
 
@@ -2064,43 +2064,43 @@ void ebsm_sei_render(struct metrics_data *m_track)
 	// Send all the counters with a tag(8-bit):value(32-bit) configuration
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_counters - 1
 	s_w8(&s, (num_counters - 1) & 0x0F);
-	s_w8(&s, EB_SM_FRAMES_RENDERED);
+	s_w8(&s, BPM_SM_FRAMES_RENDERED);
 	s_wb32(&s, m_track->session_frames_rendered.diff);
-	s_w8(&s, EB_SM_FRAMES_LAGGED);
+	s_w8(&s, BPM_SM_FRAMES_LAGGED);
 	s_wb32(&s, m_track->session_frames_lagged.diff);
-	s_w8(&s, EB_SM_FRAMES_SKIPPED);
+	s_w8(&s, BPM_SM_FRAMES_SKIPPED);
 	s_wb32(&s, m_track->session_frames_skipped.diff);
-	s_w8(&s, EB_SM_FRAMES_OUTPUT);
+	s_w8(&s, BPM_SM_FRAMES_OUTPUT);
 	s_wb32(&s, m_track->session_frames_output.diff);
 
-	m_track->sei_rendered[EB_SEI_EBSM] = true;
+	m_track->sei_rendered[BPM_SM_SEI] = true;
 }
 
-void eberm_sei_render(struct metrics_data *m_track)
+void bpm_erm_sei_render(struct metrics_data *m_track)
 {
 	uint8_t num_timestamps = 0;
 	uint8_t num_counters = 0;
 	struct serializer s;
 
-	m_track->sei_rendered[EB_SEI_EBERM] = false;
+	m_track->sei_rendered[BPM_ERM_SEI] = false;
 
 	// Initialize the output array here; caller is responsible to free it
-	array_output_serializer_init(&s, &m_track->sei_payload[EB_SEI_EBERM]);
+	array_output_serializer_init(&s, &m_track->sei_payload[BPM_ERM_SEI]);
 
 	// Write the UUID for this SEI message
-	s_write(&s, eberm_uuid, sizeof(eberm_uuid));
+	s_write(&s, bpm_erm_uuid, sizeof(bpm_erm_uuid));
 
 	// Encode number of timestamps for this SEI
 	num_timestamps = 1;
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_timestamps - 1
 	s_w8(&s, (num_timestamps - 1) & 0x0F);
 	// Timestamp type
-	s_w8(&s, EB_TS_RFC3339);
+	s_w8(&s, BPM_TS_RFC3339);
 
-	// Write the timestamp name (Enhanced Broadcasting Encoder Rendition Metrics Timestamp)
-	s_write(&s, eberm_ts_name, sizeof(eberm_ts_name));
-	// Write the RFC3339-formatted string, including the null terminator
+	// Write the timestamp name
 	// Using the PIRTS timestamp because the data was all collected at that time
+	s_write(&s, pir_ts_name, sizeof(pir_ts_name));
+	// Write the RFC3339-formatted string, including the null terminator
 	s_write(&s, m_track->pirts.rfc3339_str,
 		strlen(m_track->pirts.rfc3339_str) + 1);
 
@@ -2109,12 +2109,12 @@ void eberm_sei_render(struct metrics_data *m_track)
 	// Send all the counters with a tag(8-bit):value(32-bit) configuration
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_counters - 1
 	s_w8(&s, (num_counters - 1) & 0x0F);
-	s_w8(&s, EB_ERM_FRAMES_INPUT);
+	s_w8(&s, BPM_ERM_FRAMES_INPUT);
 	s_wb32(&s, m_track->rendition_frames_input.diff);
-	s_w8(&s, EB_ERM_FRAMES_SKIPPED);
+	s_w8(&s, BPM_ERM_FRAMES_SKIPPED);
 	s_wb32(&s, m_track->rendition_frames_skipped.diff);
 
-	m_track->sei_rendered[EB_SEI_EBERM] = true;
+	m_track->sei_rendered[BPM_ERM_SEI] = true;
 }
 
 // process_metrics() will update and insert unregistered SEI messages into the encoded video bitstream.
@@ -2192,12 +2192,12 @@ static bool process_metrics(struct obs_output *output,
 	da_push_back_array(out_data, out->data, out->size);
 
 	// Build the SEI metrics message payload
-	ebt_sei_render(m_track);
-	ebsm_sei_render(m_track);
-	eberm_sei_render(m_track);
+	bpm_ts_sei_render(m_track);
+	bpm_sm_sei_render(m_track);
+	bpm_erm_sei_render(m_track);
 
-	// Iterate over all the EB SEI types
-	for (uint8_t i = 0; i < EB_SEI_MAX; ++i) {
+	// Iterate over all the BPM SEI types
+	for (uint8_t i = 0; i < BPM_MAX_SEI; ++i) {
 		// Create and inject the syntax specific SEI messages in the bitstream if the rendering was successful
 		if (m_track->sei_rendered[i] == true) {
 			// Send one SEI message per NALU or OBU
