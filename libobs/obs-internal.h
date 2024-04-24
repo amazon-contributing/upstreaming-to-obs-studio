@@ -1104,10 +1104,11 @@ struct metrics_time {
 	char rfc3339_str[RFC3339_MAX_LENGTH];
 };
 
-enum eb_sei_types {
-	BPM_TS_SEI = 0, // Broadcast Performance Metrics Timestamp SEI
-	BPM_SM_SEI,    // Broadcast Performance Metrics Session Metrics SEI
-	BPM_ERM_SEI,   // Broadcast Performance Metrics Encoded Rendition Metrics SEI
+// Broadcast Performance Metrics SEI types
+enum bpm_sei_types {
+	BPM_TS_SEI = 0, // BPM Timestamp SEI
+	BPM_SM_SEI,     // BPM Session Metrics SEI
+	BPM_ERM_SEI,    // BPM Encoded Rendition Metrics SEI
 	BPM_MAX_SEI
 };
 
