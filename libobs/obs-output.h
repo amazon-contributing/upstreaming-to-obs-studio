@@ -33,7 +33,6 @@ extern "C" {
 #define OBS_OUTPUT_MULTI_TRACK_VIDEO (1 << 6)
 #define OBS_OUTPUT_MULTI_TRACK_AV \
 	(OBS_OUTPUT_MULTI_TRACK_AUDIO | OBS_OUTPUT_MULTI_TRACK_VIDEO)
-#define OBS_OUTPUT_METRICS (1 << 7)
 
 #define MAX_OUTPUT_AUDIO_ENCODERS 6
 #define MAX_OUTPUT_VIDEO_ENCODERS 10
@@ -45,6 +44,9 @@ struct obs_output_info {
 	const char *id;
 
 	uint32_t flags;
+
+	/* Broadcast Performance Metrics control */
+	bool enable_bpm;
 
 	const char *(*get_name)(void *type_data);
 

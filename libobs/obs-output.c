@@ -125,11 +125,6 @@ static inline bool log_flag_service(const struct obs_output *output,
 	return ret;
 }
 
-static inline bool flag_metrics(const struct obs_output *output)
-{
-	return (output->info.flags & OBS_OUTPUT_METRICS) != 0;
-}
-
 const struct obs_output_info *find_output(const char *id)
 {
 	size_t i;
@@ -1401,6 +1396,24 @@ void obs_output_set_audio_conversion(
 	output->audio_conversion_set = true;
 }
 
+// Enable or disable broadcast performance metrics reporting
+void obs_output_enable_bpm(obs_output_t *output, bool bpm_enable)
+{
+	if (!obs_output_valid(output, "obs_output_enable_bpm"))
+		return;
+	if (!log_flag_service(output, __FUNCTION__))
+		return;
+	if (active(output))
+		return;
+
+	os_atomic_set_bool(&output->info.enable_bpm, bpm_enable);
+}
+
+static inline bool bpm_enabled(const struct obs_output *output)
+{
+	return os_atomic_load_bool(&output->info.enable_bpm);
+}
+
 static inline bool video_valid(const struct obs_output *output)
 {
 	if (flag_encoded(output)) {
@@ -2374,7 +2387,7 @@ static inline void send_interleaved(struct obs_output *output)
 
 		// Insert SEI metrics only when a keyframe is detected
 		// and only for services that enabled metrics delivery
-		if (out.keyframe && (flag_metrics(output) == true)) {
+		if (out.keyframe && (bpm_enabled(output) == true)) {
 			struct metrics_data *m_track =
 				output->metrics_tracks[out.track_idx];
 			pthread_mutex_lock(&m_track->metrics_mutex);
@@ -3966,16 +3979,4 @@ const char *obs_get_output_supported_audio_codecs(const char *id)
 {
 	const struct obs_output_info *info = find_output(id);
 	return info ? info->encoded_audio_codecs : NULL;
-}
-
-void obs_output_enable_metrics(obs_output_t *output)
-{
-	if (!obs_output_valid(output, "obs_output_enable_metrics"))
-		return;
-	if (!log_flag_service(output, __FUNCTION__))
-		return;
-	if (active(output))
-		return;
-
-	output->info.flags |= OBS_OUTPUT_METRICS;
 }

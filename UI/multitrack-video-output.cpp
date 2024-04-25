@@ -833,7 +833,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 		obs_output_set_service(output, multitrack_video_service);
 
 		// Enable metrics delivery over SEI for multitrack live services
-		obs_output_enable_metrics(output);
+		obs_output_enable_bpm(output, true);
 
 		OBSSignal start_streaming;
 		OBSSignal stop_streaming;
