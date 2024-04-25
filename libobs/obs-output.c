@@ -1877,13 +1877,20 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 	return false;
 }
 
-static bool update_metrics(struct obs_output *output,
-			   struct metrics_data *m_track, const video_t *video,
-			   bool set_ref)
+static bool update_metrics(struct obs_output *output, size_t track_idx,
+			   const video_t *video, bool set_ref)
+
 {
-	// Sample and update track metrics data
-	if (!m_track)
+	if (!output)
 		return false;
+
+	struct metrics_data *m_track = output->metrics_tracks[track_idx];
+	if (!m_track) {
+		blog(LOG_DEBUG,
+		     "Metrics track for index: %lu had not be initialized",
+		     track_idx);
+		return false;
+	}
 
 	// Get the timestamp
 	os_nstime_to_timespec(os_gettime_ns(), &m_track->pirts.tspec);
@@ -1895,14 +1902,27 @@ static bool update_metrics(struct obs_output *output,
 		obs_output_get_frames_dropped(output);
 	m_track->session_frames_rendered.curr = obs_get_total_frames();
 	m_track->session_frames_lagged.curr = obs_get_lagged_frames();
+
 	if (video) {
+		// video_output_get_total_frames() returns the number of frames
+		// before the framerate decimator. For example, if the OBS session
+		// is rendering at 60fps, and the rendition is set for 30 fps,
+		// the counter will increment by 60 per second, not 30 per second.
+		// For metrics we will consider this value to be the number of
+		// frames input to the obs_encoder_t instance.
 		m_track->rendition_frames_input.curr =
 			video_output_get_total_frames(video);
 		m_track->rendition_frames_skipped.curr =
 			video_output_get_skipped_frames(video);
+		// obs_encoder_get_encoded_frames() returns the number of frames
+		// successfully encoded by the obs_encoder_t instance.
+		m_track->rendition_frames_output.curr =
+			obs_encoder_get_encoded_frames(
+				output->video_encoders[track_idx]);
 	} else {
 		m_track->rendition_frames_input.curr = 0;
 		m_track->rendition_frames_skipped.curr = 0;
+		m_track->rendition_frames_output.curr = 0;
 		blog(LOG_ERROR, "update_metrics(): *video_t==null");
 	}
 
@@ -1914,6 +1934,7 @@ static bool update_metrics(struct obs_output *output,
 		m_track->session_frames_lagged.ref = 0;
 		m_track->rendition_frames_input.ref = 0;
 		m_track->rendition_frames_skipped.ref = 0;
+		m_track->rendition_frames_output.ref = 0;
 		blog(LOG_DEBUG, "update_metrics(): Setting references to 0");
 	}
 
@@ -1936,6 +1957,9 @@ static bool update_metrics(struct obs_output *output,
 	m_track->rendition_frames_skipped.diff =
 		m_track->rendition_frames_skipped.curr -
 		m_track->rendition_frames_skipped.ref;
+	m_track->rendition_frames_output.diff =
+		m_track->rendition_frames_output.curr -
+		m_track->rendition_frames_output.ref;
 
 	// Update the reference values
 	m_track->session_frames_output.ref =
@@ -1950,6 +1974,8 @@ static bool update_metrics(struct obs_output *output,
 		m_track->rendition_frames_input.curr;
 	m_track->rendition_frames_skipped.ref =
 		m_track->rendition_frames_skipped.curr;
+	m_track->rendition_frames_output.ref =
+		m_track->rendition_frames_output.curr;
 
 	// Convert the timespec to an RFC3339 string, to be used in SEI messages
 	memset(&m_track->pirts.rfc3339_str, 0,
@@ -2104,8 +2130,8 @@ void bpm_erm_sei_render(struct metrics_data *m_track)
 	s_write(&s, m_track->pirts.rfc3339_str,
 		strlen(m_track->pirts.rfc3339_str) + 1);
 
-	// Encoder rendition metrics has 2 counters
-	num_counters = 2;
+	// Encoder rendition metrics has 3 counters
+	num_counters = 3;
 	// Send all the counters with a tag(8-bit):value(32-bit) configuration
 	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_counters - 1
 	s_w8(&s, (num_counters - 1) & 0x0F);
@@ -2113,6 +2139,8 @@ void bpm_erm_sei_render(struct metrics_data *m_track)
 	s_wb32(&s, m_track->rendition_frames_input.diff);
 	s_w8(&s, BPM_ERM_FRAMES_SKIPPED);
 	s_wb32(&s, m_track->rendition_frames_skipped.diff);
+	s_w8(&s, BPM_ERM_FRAMES_OUTPUT);
+	s_wb32(&s, m_track->rendition_frames_output.diff);
 
 	m_track->sei_rendered[BPM_ERM_SEI] = true;
 }
@@ -2150,8 +2178,8 @@ static bool process_metrics(struct obs_output *output,
 	}
 
 	// Update the metrics for this track
-	if (!update_metrics(output, m_track, obs_encoder_video(out->encoder),
-			    (out->pts == 0))) {
+	if (!update_metrics(output, out->track_idx,
+			    obs_encoder_video(out->encoder), (out->pts == 0))) {
 		// Something went wrong; log it and return
 		blog(LOG_DEBUG, "update_metrics() for track index: %lu failed",
 		     out->track_idx);
