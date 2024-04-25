@@ -1891,7 +1891,7 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 }
 
 static bool update_metrics(struct obs_output *output, size_t track_idx,
-			   const video_t *video, bool set_ref)
+			   const video_t *video, bool init)
 
 {
 	if (!output)
@@ -1939,40 +1939,40 @@ static bool update_metrics(struct obs_output *output, size_t track_idx,
 		blog(LOG_ERROR, "update_metrics(): *video_t==null");
 	}
 
-	// If flagged, set the ref values to 0
-	if (set_ref == true) {
-		m_track->session_frames_output.ref = 0;
-		m_track->session_frames_skipped.ref = 0;
-		m_track->session_frames_rendered.ref = 0;
-		m_track->session_frames_lagged.ref = 0;
-		m_track->rendition_frames_input.ref = 0;
-		m_track->rendition_frames_skipped.ref = 0;
-		m_track->rendition_frames_output.ref = 0;
-		blog(LOG_DEBUG, "update_metrics(): Setting references to 0");
+	// If initialization is flagged, set the diff values to 0
+	if (init == true) {
+		m_track->session_frames_output.diff = 0;
+		m_track->session_frames_skipped.diff = 0;
+		m_track->session_frames_rendered.diff = 0;
+		m_track->session_frames_lagged.diff = 0;
+		m_track->rendition_frames_input.diff = 0;
+		m_track->rendition_frames_skipped.diff = 0;
+		m_track->rendition_frames_output.diff = 0;
+		blog(LOG_DEBUG, "update_metrics(): Setting diffs to 0");
+	} else {
+		// Calculate diff's
+		m_track->session_frames_output.diff =
+			m_track->session_frames_output.curr -
+			m_track->session_frames_output.ref;
+		m_track->session_frames_skipped.diff =
+			m_track->session_frames_skipped.curr -
+			m_track->session_frames_skipped.ref;
+		m_track->session_frames_rendered.diff =
+			m_track->session_frames_rendered.curr -
+			m_track->session_frames_rendered.ref;
+		m_track->session_frames_lagged.diff =
+			m_track->session_frames_lagged.curr -
+			m_track->session_frames_lagged.ref;
+		m_track->rendition_frames_input.diff =
+			m_track->rendition_frames_input.curr -
+			m_track->rendition_frames_input.ref;
+		m_track->rendition_frames_skipped.diff =
+			m_track->rendition_frames_skipped.curr -
+			m_track->rendition_frames_skipped.ref;
+		m_track->rendition_frames_output.diff =
+			m_track->rendition_frames_output.curr -
+			m_track->rendition_frames_output.ref;
 	}
-
-	// Calculate diff's
-	m_track->session_frames_output.diff =
-		m_track->session_frames_output.curr -
-		m_track->session_frames_output.ref;
-	m_track->session_frames_skipped.diff =
-		m_track->session_frames_skipped.curr -
-		m_track->session_frames_skipped.ref;
-	m_track->session_frames_rendered.diff =
-		m_track->session_frames_rendered.curr -
-		m_track->session_frames_rendered.ref;
-	m_track->session_frames_lagged.diff =
-		m_track->session_frames_lagged.curr -
-		m_track->session_frames_lagged.ref;
-	m_track->rendition_frames_input.diff =
-		m_track->rendition_frames_input.curr -
-		m_track->rendition_frames_input.ref;
-	m_track->rendition_frames_skipped.diff =
-		m_track->rendition_frames_skipped.curr -
-		m_track->rendition_frames_skipped.ref;
-	m_track->rendition_frames_output.diff =
-		m_track->rendition_frames_output.curr -
-		m_track->rendition_frames_output.ref;
 
 	// Update the reference values
 	m_track->session_frames_output.ref =
