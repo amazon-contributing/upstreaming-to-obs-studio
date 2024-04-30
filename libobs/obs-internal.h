@@ -26,6 +26,7 @@
 #include "util/profiler.h"
 #include "util/task.h"
 #include "util/uthash.h"
+#include "util/array-serializer.h"
 #include "callback/signal.h"
 #include "callback/proc.h"
 
@@ -1091,6 +1092,40 @@ struct caption_track_data {
 	struct deque caption_data;
 };
 
+struct counter_data {
+	uint32_t diff;
+	uint32_t ref;
+	uint32_t curr;
+};
+
+#define RFC3339_MAX_LENGTH (64)
+struct metrics_time {
+	struct timespec tspec;
+	char rfc3339_str[RFC3339_MAX_LENGTH];
+};
+
+// Broadcast Performance Metrics SEI types
+enum bpm_sei_types {
+	BPM_TS_SEI = 0, // BPM Timestamp SEI
+	BPM_SM_SEI,     // BPM Session Metrics SEI
+	BPM_ERM_SEI,    // BPM Encoded Rendition Metrics SEI
+	BPM_MAX_SEI
+};
+
+struct metrics_data {
+	pthread_mutex_t metrics_mutex;
+	struct counter_data rendition_frames_input;
+	struct counter_data rendition_frames_output;
+	struct counter_data rendition_frames_skipped;
+	struct counter_data session_frames_rendered;
+	struct counter_data session_frames_output;
+	struct counter_data session_frames_skipped;
+	struct counter_data session_frames_lagged;
+	struct array_output_data sei_payload[BPM_MAX_SEI];
+	bool sei_rendered[BPM_MAX_SEI];
+	struct metrics_time pirts; // Packet Interleave Request Time
+};
+
 struct pause_data {
 	pthread_mutex_t mutex;
 	uint64_t last_video_ts;
@@ -1185,6 +1220,10 @@ struct obs_output {
 
 	// captions are output per track
 	struct caption_track_data *caption_tracks[MAX_OUTPUT_VIDEO_ENCODERS];
+
+	// Per-track metrics are modelled as a stream of data to allow
+	// flexible insertion frequency.
+	struct metrics_data *metrics_tracks[MAX_OUTPUT_VIDEO_ENCODERS];
 
 	bool valid;
 
@@ -1296,6 +1335,9 @@ struct obs_encoder {
 	uint32_t frame_rate_divisor;
 	uint32_t frame_rate_divisor_counter; // only used for GPU encoders
 	video_t *fps_override;
+
+	// Number of frames successfully encoded
+	uint32_t encoded_frames;
 
 	/* Regions of interest to prioritize during encoding */
 	pthread_mutex_t roi_mutex;
