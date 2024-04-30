@@ -1940,7 +1940,7 @@ static bool update_metrics(struct obs_output *output, size_t track_idx,
 	}
 
 	// If initialization is flagged, set the diff values to 0
-	if (init == true) {
+	if (init) {
 		m_track->session_frames_output.diff = 0;
 		m_track->session_frames_skipped.diff = 0;
 		m_track->session_frames_rendered.diff = 0;
@@ -2240,7 +2240,7 @@ static bool process_metrics(struct obs_output *output,
 	// Iterate over all the BPM SEI types
 	for (uint8_t i = 0; i < BPM_MAX_SEI; ++i) {
 		// Create and inject the syntax specific SEI messages in the bitstream if the rendering was successful
-		if (m_track->sei_rendered[i] == true) {
+		if (m_track->sei_rendered[i]) {
 			// Send one SEI message per NALU or OBU
 			sei_init(&sei, 0.0);
 
@@ -2387,12 +2387,12 @@ static inline void send_interleaved(struct obs_output *output)
 
 		// Insert SEI metrics only when a keyframe is detected
 		// and only for services that enabled metrics delivery
-		if (out.keyframe && (bpm_enabled(output) == true)) {
+		if (out.keyframe && bpm_enabled(output)) {
 			struct metrics_data *m_track =
 				output->metrics_tracks[out.track_idx];
 			pthread_mutex_lock(&m_track->metrics_mutex);
 			// Update the metrics and generate SEI packets
-			if (process_metrics(output, &out) == false) {
+			if (!process_metrics(output, &out)) {
 				blog(LOG_DEBUG,
 				     "process_metrics(): SEI-based metrics injection failed");
 			}
