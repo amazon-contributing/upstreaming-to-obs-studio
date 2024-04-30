@@ -2001,16 +2001,19 @@ static bool update_metrics(struct obs_output *output, size_t track_idx,
 	return true;
 }
 
-// Packet Interleave Request time stamp name
-static const uint8_t pir_ts_name[] = "PIR_TS";
-// Composition time stamp name
-//static const uint8_t cts_name[] = "CTS";
-
 // Broadcast Performance Metrics timestamp types
 enum bpm_ts_type {
 	BPM_TS_RFC3339 = 1, // RFC3339 timestamp string
 	BPM_TS_DURATION,    // Duration since epoch in milliseconds (64-bit)
 	BPM_TS_DELTA        // Delta timestamp in nanoseconds (64-bit)
+};
+
+// Broadcast Performance Metrics timestamp event tags
+enum bpm_ts_event_tag {
+	BPM_TS_EVENT_CTS = 1, // Composition Time Event
+	BPM_TS_EVENT_FER,     // Frame Encode Request Event
+	BPM_TS_EVENT_FEC,     // Frame Encode Complete Event
+	BPM_TS_EVENT_PIR      // Packet Interleave Request Event
 };
 
 // Broadcast Performance Session Metrics types
@@ -2061,8 +2064,8 @@ void bpm_ts_sei_render(struct metrics_data *m_track)
 	s_w8(&s, (num_timestamps - 1) & 0x0F);
 	// Timestamp type
 	s_w8(&s, BPM_TS_RFC3339);
-	// Write the timestamp name (Packet Interleave Request Timestamp)
-	s_write(&s, pir_ts_name, sizeof(pir_ts_name));
+	// Write the timestamp event tag (Packet Interleave Request Event)
+	s_w8(&s, BPM_TS_EVENT_PIR);
 	// Write the RFC3339-formatted string, including the null terminator
 	s_write(&s, m_track->pirts.rfc3339_str,
 		strlen(m_track->pirts.rfc3339_str) + 1);
@@ -2091,9 +2094,9 @@ void bpm_sm_sei_render(struct metrics_data *m_track)
 	// Timestamp type
 	s_w8(&s, BPM_TS_RFC3339);
 
-	// Write the timestamp name
+	// Write the timestamp event tag (Packet Interleave Request Event)
 	// Using the PIR_TS timestamp because the data was all collected at that time
-	s_write(&s, pir_ts_name, sizeof(pir_ts_name));
+	s_w8(&s, BPM_TS_EVENT_PIR);
 	// Write the RFC3339-formatted string, including the null terminator
 	s_write(&s, m_track->pirts.rfc3339_str,
 		strlen(m_track->pirts.rfc3339_str) + 1);
@@ -2136,9 +2139,9 @@ void bpm_erm_sei_render(struct metrics_data *m_track)
 	// Timestamp type
 	s_w8(&s, BPM_TS_RFC3339);
 
-	// Write the timestamp name
+	// Write the timestamp event tag (Packet Interleave Request Event)
 	// Using the PIRTS timestamp because the data was all collected at that time
-	s_write(&s, pir_ts_name, sizeof(pir_ts_name));
+	s_w8(&s, BPM_TS_EVENT_PIR);
 	// Write the RFC3339-formatted string, including the null terminator
 	s_write(&s, m_track->pirts.rfc3339_str,
 		strlen(m_track->pirts.rfc3339_str) + 1);
