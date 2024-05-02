@@ -1003,7 +1003,7 @@ static inline bool send_footers(struct rtmp_stream *stream)
 		if (!encoder)
 			continue;
 
-		if (stream->video_codec[i] == CODEC_H264)
+		if (i == 0 && stream->video_codec[i] == CODEC_H264)
 			continue;
 
 		if (!send_video_footer(stream, i))
