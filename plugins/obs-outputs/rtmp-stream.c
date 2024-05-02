@@ -788,8 +788,7 @@ static bool send_meta_data(struct rtmp_stream *stream)
 	return success;
 }
 
-static bool send_audio_header(struct rtmp_stream *stream, size_t idx,
-			      bool *next)
+static bool send_audio_header(struct rtmp_stream *stream, size_t idx)
 {
 	obs_output_t *context = stream->output;
 	obs_encoder_t *aencoder = obs_output_get_audio_encoder(context, idx);
@@ -799,7 +798,6 @@ static bool send_audio_header(struct rtmp_stream *stream, size_t idx,
 					.timebase_den = 1};
 
 	if (!aencoder) {
-		*next = false;
 		return true;
 	}
 
@@ -972,25 +970,26 @@ static bool send_video_footer(struct rtmp_stream *stream, size_t idx)
 static inline bool send_headers(struct rtmp_stream *stream)
 {
 	stream->sent_headers = true;
-	size_t i = 0;
-	bool next = true;
 
-	if (!send_audio_header(stream, i++, &next))
-		return false;
-	if (!send_video_metadata(stream, 0) || !send_video_header(stream, 0))
-		return false;
+	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
+		obs_encoder_t *enc =
+			obs_output_get_audio_encoder(stream->output, i);
+		if (!enc)
+			continue;
 
-	while (next) {
-		if (!send_audio_header(stream, i++, &next))
+		if (!send_audio_header(stream, i))
 			return false;
 	}
 
-	i = 1;
-	while (obs_output_get_video_encoder2(stream->output, i) != NULL) {
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		obs_encoder_t *enc =
+			obs_output_get_video_encoder2(stream->output, i);
+		if (!enc)
+			continue;
+
 		if (!send_video_metadata(stream, i) ||
 		    !send_video_header(stream, i))
 			return false;
-		i += 1;
 	}
 
 	return true;
@@ -1002,7 +1001,7 @@ static inline bool send_footers(struct rtmp_stream *stream)
 		obs_encoder_t *encoder =
 			obs_output_get_video_encoder2(stream->output, i);
 		if (!encoder)
-			return true;
+			continue;
 
 		if (stream->video_codec[i] == CODEC_H264)
 			continue;
