@@ -6432,7 +6432,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track1_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack1->isChecked() ||
-					       vod_track_idx_enabled(1));
+					       vod_track_idx_enabled(0));
 		auto track1_disabled = track1_warning_visible &&
 				       !ui->advOutRecTrack1->isChecked();
 		ui->multitrackVideoDisabledSettingsAdvAudioTrack1->setVisible(
@@ -6442,7 +6442,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track2_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack2->isChecked() ||
-					       vod_track_idx_enabled(2));
+					       vod_track_idx_enabled(1));
 		auto track2_disabled = track2_warning_visible &&
 				       !ui->advOutRecTrack2->isChecked();
 		ui->multitrackVideoDisabledSettingsAdvAudioTrack2->setVisible(
@@ -6452,7 +6452,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track3_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack3->isChecked() ||
-					       vod_track_idx_enabled(3));
+					       vod_track_idx_enabled(2));
 		auto track3_disabled = track3_warning_visible &&
 				       !ui->advOutRecTrack3->isChecked();
 		ui->multitrackVideoDisabledSettingsAdvAudioTrack3->setVisible(
@@ -6462,7 +6462,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track4_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack4->isChecked() ||
-					       vod_track_idx_enabled(4));
+					       vod_track_idx_enabled(3));
 		auto track4_disabled = track4_warning_visible &&
 				       !ui->advOutRecTrack4->isChecked();
 		ui->multitrackVideoDisabledSettingsAdvAudioTrack4->setVisible(
@@ -6472,7 +6472,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track5_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack5->isChecked() ||
-					       vod_track_idx_enabled(5));
+					       vod_track_idx_enabled(4));
 		auto track5_disabled = track5_warning_visible &&
 				       !ui->advOutRecTrack5->isChecked();
 		ui->multitrackVideoDisabledSettingsAdvAudioTrack5->setVisible(
@@ -6482,7 +6482,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track6_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack6->isChecked() ||
-					       vod_track_idx_enabled(6));
+					       vod_track_idx_enabled(5));
 		auto track6_disabled = track6_warning_visible &&
 				       !ui->advOutRecTrack6->isChecked();
 		ui->multitrackVideoDisabledSettingsAdvAudioTrack6->setVisible(
