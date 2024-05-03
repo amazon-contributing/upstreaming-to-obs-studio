@@ -69,10 +69,11 @@ void HandleGoLiveApiErrors(QWidget *parent, obs_data_t *config_data)
 }
 
 OBSDataAutoRelease DownloadGoLiveConfig(QWidget *parent, QString url,
-					obs_data_t *postData_)
+					const GoLiveApi::PostData &post_data)
 {
+	json post_data_json = post_data;
 	blog(LOG_INFO, "Go live POST data: %s",
-	     censoredJson(postData_).toUtf8().constData());
+	     censoredJson(post_data_json).toUtf8().constData());
 
 	if (url.isEmpty())
 		throw MultitrackVideoError::critical(
@@ -91,7 +92,7 @@ OBSDataAutoRelease DownloadGoLiveConfig(QWidget *parent, QString url,
 		libraryError, // out params
 		nullptr,
 		nullptr, // out params (response code and content type)
-		"POST", obs_data_get_json(postData_), headers,
+		"POST", post_data_json.dump().c_str(), headers,
 		nullptr, // signature
 		5);      // timeout in seconds
 

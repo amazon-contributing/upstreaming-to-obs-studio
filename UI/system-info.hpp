@@ -1,7 +1,5 @@
 #pragma once
 
-#include <obs.hpp>
-#include <string>
+#include "models/multitrack-video.hpp"
 
-OBSDataArrayAutoRelease system_gpu_data();
-OBSDataAutoRelease system_info();
+void system_info(GoLiveApi::Capabilities &capabilities);

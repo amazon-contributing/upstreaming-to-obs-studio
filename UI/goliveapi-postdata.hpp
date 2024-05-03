@@ -5,9 +5,9 @@
 #include <map>
 #include <QString>
 
-struct MultitrackVideoViewInfo;
+#include "models/multitrack-video.hpp"
 
-OBSDataAutoRelease
+GoLiveApi::PostData
 constructGoLivePost(QString streamKey,
 		    const std::optional<uint64_t> &maximum_aggregate_bitrate,
 		    const std::optional<uint32_t> &maximum_video_tracks,
