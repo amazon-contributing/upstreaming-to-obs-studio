@@ -2217,7 +2217,7 @@ AdvancedOutput::VodTrackMixerIdx(obs_service_t *service)
 	}
 
 	if (vodTrackEnabled && streamTrackIndex != vodTrackIndex)
-		return {vodTrackIndex};
+		return {vodTrackIndex - 1};
 	return std::nullopt;
 }
 
