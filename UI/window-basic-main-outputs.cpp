@@ -2699,14 +2699,6 @@ FutureHolder<std::optional<bool>> BasicOutputHandler::SetupMultitrackVideo(
 	}
 
 	std::optional<std::string> custom_rtmp_url;
-	if (custom_config.has_value()) {
-		custom_rtmp_url = obs_service_get_connect_info(
-			service, OBS_SERVICE_CONNECT_INFO_SERVER_URL);
-		blog(LOG_INFO,
-		     "Custom config enabled, ignoring server from custom config (using '%s' instead)",
-		     custom_rtmp_url->c_str());
-	}
-
 	auto server = obs_data_get_string(settings, "server");
 	if (strcmp(server, "auto") != 0) {
 		custom_rtmp_url = server;
