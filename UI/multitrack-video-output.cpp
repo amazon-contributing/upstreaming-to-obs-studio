@@ -121,43 +121,42 @@ create_service(const QString &device_id, const QString &obs_session_id,
 {
 	const char *url = nullptr;
 	QString stream_key = in_stream_key;
-	if (rtmp_url.has_value()) {
-		url = rtmp_url->c_str();
 
+	OBSDataArrayAutoRelease ingest_endpoints =
+		obs_data_get_array(go_live_config, "ingest_endpoints");
+	for (size_t i = 0; i < obs_data_array_count(ingest_endpoints); i++) {
+		OBSDataAutoRelease item =
+			obs_data_array_item(ingest_endpoints, i);
+		if (qstrnicmp("RTMP", obs_data_get_string(item, "protocol"), 4))
+			continue;
+
+		url = obs_data_get_string(item, "url_template");
+		const char *sk = obs_data_get_string(item, "authentication");
+		if (sk && *sk) {
+			blog(LOG_INFO,
+			     "Using stream key supplied by autoconfig");
+			stream_key = sk;
+		}
+		break;
+	}
+
+	if (rtmp_url.has_value()) {
 		// Despite being set by user, it was set to a ""
 		if (rtmp_url->empty()) {
 			throw MultitrackVideoError::warning(QTStr(
 				"FailedToStartStream.NoCustomRTMPURLInSettings"));
 		}
+
+		url = rtmp_url->c_str();
 		blog(LOG_INFO, "Using custom rtmp URL: '%s'", url);
 	} else {
-		OBSDataArrayAutoRelease ingest_endpoints =
-			obs_data_get_array(go_live_config, "ingest_endpoints");
-		for (size_t i = 0; i < obs_data_array_count(ingest_endpoints);
-		     i++) {
-			OBSDataAutoRelease item =
-				obs_data_array_item(ingest_endpoints, i);
-			if (qstrnicmp("RTMP",
-				      obs_data_get_string(item, "protocol"), 4))
-				continue;
-
-			url = obs_data_get_string(item, "url_template");
-			blog(LOG_INFO, "Using URL template: '%s'", url);
-			const char *sk =
-				obs_data_get_string(item, "authentication");
-			if (sk && *sk) {
-				blog(LOG_INFO,
-				     "Using stream key supplied by autoconfig");
-				stream_key = sk;
-			}
-			break;
-		}
-
 		if (!url) {
 			blog(LOG_ERROR, "No RTMP URL in go live config");
 			throw MultitrackVideoError::warning(
 				QTStr("FailedToStartStream.NoRTMPURLInConfig"));
 		}
+
+		blog(LOG_INFO, "Using URL template: '%s'", url);
 	}
 
 	DStr str;
