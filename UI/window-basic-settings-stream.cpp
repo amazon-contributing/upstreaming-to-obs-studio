@@ -120,10 +120,6 @@ void OBSBasicSettings::LoadStream1Settings()
 		obs_data_has_user_value(settings, "custom_server")
 			? obs_data_get_string(settings, "custom_server")
 			: nullptr;
-	const char *custom_stream_key =
-		obs_data_has_user_value(settings, "custom_stream_key")
-			? obs_data_get_string(settings, "custom_stream_key")
-			: nullptr;
 	protocol = QT_UTF8(obs_service_get_protocol(service_obj));
 	const char *bearer_token =
 		obs_data_get_string(settings, "bearer_token");
@@ -220,8 +216,6 @@ void OBSBasicSettings::LoadStream1Settings()
 
 	if (custom_server)
 		ui->serviceCustomServer->setText(custom_server);
-	if (custom_stream_key)
-		ui->serviceCustomStreamKey->setText(custom_stream_key);
 
 	if (is_whip)
 		ui->key->setText(bearer_token);
@@ -1029,19 +1023,6 @@ void OBSBasicSettings::on_server_currentIndexChanged(int /*index*/)
 
 	ui->serviceCustomServerLabel->setVisible(server_is_custom);
 	ui->serviceCustomServer->setVisible(server_is_custom);
-	ui->serviceCustomStreamKeyLabel->setVisible(server_is_custom);
-	ui->serviceCustomStreamKeyWidget->setVisible(server_is_custom);
-}
-
-void OBSBasicSettings::on_serviceCustomStreamKeyShow_clicked()
-{
-	if (ui->serviceCustomStreamKey->echoMode() == QLineEdit::Password) {
-		ui->serviceCustomStreamKey->setEchoMode(QLineEdit::Normal);
-		ui->serviceCustomStreamKeyShow->setText(QTStr("Hide"));
-	} else {
-		ui->serviceCustomStreamKey->setEchoMode(QLineEdit::Password);
-		ui->serviceCustomStreamKeyShow->setText(QTStr("Show"));
-	}
 }
 
 void OBSBasicSettings::UpdateVodTrackSetting()
