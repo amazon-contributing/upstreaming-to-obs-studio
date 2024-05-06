@@ -5462,6 +5462,7 @@ void OBSBasicSettings::SimpleRecordingQualityChanged()
 	ui->simpleOutRecFormat->setVisible(!losslessQuality);
 	ui->simpleOutRecFormatLabel->setVisible(!losslessQuality);
 
+	UpdateMultitrackVideo();
 	SimpleRecordingEncoderChanged();
 	SimpleReplayBufferChanged();
 }
