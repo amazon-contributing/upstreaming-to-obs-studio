@@ -17,6 +17,9 @@
 
 #include "obs-internal.h"
 
+void handle_encoder_group_reconfigure_request(obs_encoder_t *encoder,
+					      uint64_t frame_timestamp);
+
 #define NBSP "\xC2\xA0"
 static const char *gpu_encode_frame_name = "gpu_encode_frame";
 static void *gpu_encode_thread(void *data)
@@ -121,12 +124,6 @@ static void *gpu_encode_thread(void *data)
 			if (video_pause_check(&encoder->pause, timestamp))
 				continue;
 
-			if (encoder->reconfigure_requested) {
-				encoder->reconfigure_requested = false;
-				encoder->info.update(encoder->context.data,
-						     encoder->context.settings);
-			}
-
 			// an explicit counter is used instead of remainder calculation
 			// to allow multiple encoders started at the same time to start on
 			// the same frame
@@ -136,6 +133,15 @@ static void *gpu_encode_thread(void *data)
 				encoder->frame_rate_divisor_counter = 0;
 			if (skip)
 				continue;
+
+			handle_encoder_group_reconfigure_request(encoder,
+								 timestamp);
+
+			if (encoder->reconfigure_requested) {
+				encoder->reconfigure_requested = false;
+				encoder->info.update(encoder->context.data,
+						     encoder->context.settings);
+			}
 
 			if (!encoder->start_ts)
 				encoder->start_ts = timestamp;
