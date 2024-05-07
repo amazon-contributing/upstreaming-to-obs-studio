@@ -2476,6 +2476,14 @@ EXPORT bool obs_encoder_set_frame_rate_divisor(obs_encoder_t *encoder,
  */
 EXPORT bool obs_encoder_add_roi(obs_encoder_t *encoder,
 				const struct obs_encoder_roi *roi);
+
+/**
+ * For audio encoders, sets a different speaker layout.
+ *
+ * Can not be changed on the fly.
+ */
+EXPORT bool obs_encoder_set_speaker_layout(obs_encoder_t *encoder,
+					   enum speaker_layout speakers);
 /** For video encoders, returns true if any ROIs were set */
 EXPORT bool obs_encoder_has_roi(const obs_encoder_t *encoder);
 /** Clear all regions */

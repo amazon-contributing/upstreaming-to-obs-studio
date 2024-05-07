@@ -1336,6 +1336,10 @@ struct obs_encoder {
 	uint32_t frame_rate_divisor_counter; // only used for GPU encoders
 	video_t *fps_override;
 
+	// allow changing speaker layout per encoder
+	enum speaker_layout speakers;
+	audio_t *speakers_override;
+
 	// Number of frames successfully encoded
 	uint32_t encoded_frames;
 
