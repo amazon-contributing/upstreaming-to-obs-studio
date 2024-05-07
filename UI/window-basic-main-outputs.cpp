@@ -2698,35 +2698,18 @@ FutureHolder<std::optional<bool>> BasicOutputHandler::SetupMultitrackVideo(
 		service_name = obs_data_get_string(settings, "service");
 	}
 
-	auto custom_rtmp_url =
-		is_custom && obs_data_has_user_value(settings, "server")
-			? std::make_optional<std::string>(
-				  obs_data_get_string(settings, "server"))
-			: std::nullopt;
-
-	if (custom_config.has_value()) {
-		custom_rtmp_url = obs_service_get_connect_info(
-			service, OBS_SERVICE_CONNECT_INFO_SERVER_URL);
-		blog(LOG_INFO,
-		     "Custom config enabled, ignoring server from custom config (using '%s' instead)",
-		     custom_rtmp_url->c_str());
+	std::optional<std::string> custom_rtmp_url;
+	auto server = obs_data_get_string(settings, "server");
+	if (strcmp(server, "auto") != 0) {
+		custom_rtmp_url = server;
 	}
 
-	if (!is_custom && obs_data_has_user_value(settings, "custom_server")) {
-		custom_rtmp_url = std::make_optional<std::string>(
-			obs_data_get_string(settings, "custom_server"));
-		blog(LOG_INFO, "Using service custom server '%s'",
+	auto service_custom_server =
+		obs_data_get_bool(settings, "using custom server");
+	if (custom_rtmp_url.has_value()) {
+		blog(LOG_INFO, "Using %sserver '%s'",
+		     service_custom_server ? "custom " : "",
 		     custom_rtmp_url->c_str());
-	}
-
-	if (!is_custom &&
-	    obs_data_has_user_value(settings, "custom_stream_key")) {
-		const char *custom_key =
-			obs_data_get_string(settings, "custom_stream_key");
-		if (custom_key && *custom_key) {
-			key = custom_key;
-			blog(LOG_INFO, "Using service custom stream key");
-		}
 	}
 
 	auto maximum_aggregate_bitrate =

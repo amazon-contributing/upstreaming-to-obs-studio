@@ -121,43 +121,42 @@ create_service(const QString &device_id, const QString &obs_session_id,
 {
 	const char *url = nullptr;
 	QString stream_key = in_stream_key;
-	if (rtmp_url.has_value()) {
-		url = rtmp_url->c_str();
 
+	OBSDataArrayAutoRelease ingest_endpoints =
+		obs_data_get_array(go_live_config, "ingest_endpoints");
+	for (size_t i = 0; i < obs_data_array_count(ingest_endpoints); i++) {
+		OBSDataAutoRelease item =
+			obs_data_array_item(ingest_endpoints, i);
+		if (qstrnicmp("RTMP", obs_data_get_string(item, "protocol"), 4))
+			continue;
+
+		url = obs_data_get_string(item, "url_template");
+		const char *sk = obs_data_get_string(item, "authentication");
+		if (sk && *sk) {
+			blog(LOG_INFO,
+			     "Using stream key supplied by autoconfig");
+			stream_key = sk;
+		}
+		break;
+	}
+
+	if (rtmp_url.has_value()) {
 		// Despite being set by user, it was set to a ""
 		if (rtmp_url->empty()) {
 			throw MultitrackVideoError::warning(QTStr(
 				"FailedToStartStream.NoCustomRTMPURLInSettings"));
 		}
+
+		url = rtmp_url->c_str();
 		blog(LOG_INFO, "Using custom rtmp URL: '%s'", url);
 	} else {
-		OBSDataArrayAutoRelease ingest_endpoints =
-			obs_data_get_array(go_live_config, "ingest_endpoints");
-		for (size_t i = 0; i < obs_data_array_count(ingest_endpoints);
-		     i++) {
-			OBSDataAutoRelease item =
-				obs_data_array_item(ingest_endpoints, i);
-			if (qstrnicmp("RTMP",
-				      obs_data_get_string(item, "protocol"), 4))
-				continue;
-
-			url = obs_data_get_string(item, "url_template");
-			blog(LOG_INFO, "Using URL template: '%s'", url);
-			const char *sk =
-				obs_data_get_string(item, "authentication");
-			if (sk && *sk) {
-				blog(LOG_INFO,
-				     "Using stream key supplied by autoconfig");
-				stream_key = sk;
-			}
-			break;
-		}
-
 		if (!url) {
 			blog(LOG_ERROR, "No RTMP URL in go live config");
 			throw MultitrackVideoError::warning(
 				QTStr("FailedToStartStream.NoRTMPURLInConfig"));
 		}
+
+		blog(LOG_INFO, "Using URL template: '%s'", url);
 	}
 
 	DStr str;
@@ -674,6 +673,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 	auto attempt_start_time = GenerateStreamAttemptStartTime();
 	OBSDataAutoRelease go_live_post;
 	OBSDataAutoRelease go_live_config;
+	OBSDataAutoRelease custom;
 	quint64 download_time_elapsed = 0;
 	bool is_custom_config = custom_config.has_value();
 	auto auto_config_url = MultitrackVideoAutoConfigURL(service);
@@ -744,7 +744,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 		download_time_elapsed = attempt_start_time.MSecsElapsed();
 
 		if (custom_config.has_value()) {
-			OBSDataAutoRelease custom = obs_data_create_from_json(
+			custom = obs_data_create_from_json(
 				custom_config->c_str());
 			if (!custom)
 				throw MultitrackVideoError::critical(QTStr(
@@ -784,7 +784,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 
 			blog(LOG_INFO, "Using custom go live config: %s",
 			     obs_data_get_json_pretty(custom));
-			go_live_config = std::move(custom);
 		}
 
 		// Put the config_id (whether we created it or downloaded it) on all
@@ -808,10 +807,10 @@ void MultitrackVideoOutput::PrepareStreaming(
 		auto video_encoders = std::vector<OBSEncoderAutoRelease>();
 		OBSEncoderAutoRelease audio_encoder = nullptr;
 		auto outputs = SetupOBSOutput(dump_stream_to_file_config,
-					      go_live_config, audio_encoders,
-					      video_encoders, audio_encoder_id,
-					      audio_bitrate, vod_track_mixer,
-					      extra_views_);
+					      custom ? custom : go_live_config,
+					      audio_encoders, video_encoders,
+					      audio_encoder_id, audio_bitrate,
+					      vod_track_mixer, extra_views_);
 		auto output = std::move(outputs.output);
 		auto recording_output = std::move(outputs.recording_output);
 		if (!output)
@@ -896,7 +895,8 @@ void MultitrackVideoOutput::PrepareStreaming(
 					    go_live_post =
 						    OBSData{go_live_post},
 					    go_live_config =
-						    OBSData{go_live_config}](
+						    OBSData{custom ? custom
+								   : go_live_config}](
 						   bool success,
 						   std::optional<int>
 							   connect_time_ms) {
@@ -939,8 +939,9 @@ void MultitrackVideoOutput::PrepareStreaming(
 		auto start_streaming_returned =
 			attempt_start_time.MSecsElapsed();
 		auto event = MakeEvent_ivs_obs_stream_start_failed(
-			go_live_post, go_live_config, attempt_start_time,
-			download_time_elapsed, start_streaming_returned);
+			go_live_post, custom ? custom : go_live_config,
+			attempt_start_time, download_time_elapsed,
+			start_streaming_returned);
 		submit_event(berryessa_.get(), "ivs_obs_stream_start_failed",
 			     event);
 

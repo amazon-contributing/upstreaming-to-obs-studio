@@ -290,7 +290,6 @@ private slots:
 	void on_useStreamKey_clicked();
 	void on_useAuth_toggled();
 	void on_server_currentIndexChanged(int index);
-	void on_serviceCustomStreamKeyShow_clicked();
 
 	void on_hotkeyFilterReset_clicked();
 	void on_hotkeyFilterSearch_textChanged(const QString text);

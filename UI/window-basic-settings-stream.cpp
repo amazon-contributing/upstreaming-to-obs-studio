@@ -116,14 +116,8 @@ void OBSBasicSettings::LoadStream1Settings()
 	const char *service = obs_data_get_string(settings, "service");
 	const char *server = obs_data_get_string(settings, "server");
 	const char *key = obs_data_get_string(settings, "key");
-	const char *custom_server =
-		obs_data_has_user_value(settings, "custom_server")
-			? obs_data_get_string(settings, "custom_server")
-			: nullptr;
-	const char *custom_stream_key =
-		obs_data_has_user_value(settings, "custom_stream_key")
-			? obs_data_get_string(settings, "custom_stream_key")
-			: nullptr;
+	bool use_custom_server =
+		obs_data_get_bool(settings, "using_custom_server");
 	protocol = QT_UTF8(obs_service_get_protocol(service_obj));
 	const char *bearer_token =
 		obs_data_get_string(settings, "bearer_token");
@@ -202,13 +196,12 @@ void OBSBasicSettings::LoadStream1Settings()
 	UpdateServerList();
 
 	if (is_rtmp_common) {
-		auto maybe_uuid = QUuid::fromString(QT_UTF8(server));
-
 		int idx = -1;
-		if (maybe_uuid.isNull())
-			idx = ui->server->findData(server);
-		else
-			idx = ui->server->findData(maybe_uuid);
+		if (use_custom_server) {
+			idx = ui->server->findData(CustomServerUUID());
+		} else {
+			idx = ui->server->findData(QString::fromUtf8(server));
+		}
 
 		if (idx == -1) {
 			if (server && *server)
@@ -218,10 +211,8 @@ void OBSBasicSettings::LoadStream1Settings()
 		ui->server->setCurrentIndex(idx);
 	}
 
-	if (custom_server)
-		ui->serviceCustomServer->setText(custom_server);
-	if (custom_stream_key)
-		ui->serviceCustomStreamKey->setText(custom_stream_key);
+	if (use_custom_server)
+		ui->serviceCustomServer->setText(server);
 
 	if (is_whip)
 		ui->key->setText(bearer_token);
@@ -290,17 +281,18 @@ void OBSBasicSettings::SaveStream1Settings()
 		obs_data_set_string(settings, "service",
 				    QT_TO_UTF8(ui->service->currentText()));
 		obs_data_set_string(settings, "protocol", QT_TO_UTF8(protocol));
-		obs_data_set_string(
-			settings, "server",
-			QT_TO_UTF8(ui->server->currentData().toString()));
-
 		if (ui->server->currentData() == CustomServerUUID()) {
+			obs_data_set_bool(settings, "using_custom_server",
+					  true);
+
 			obs_data_set_string(
-				settings, "custom_server",
+				settings, "server",
 				QT_TO_UTF8(ui->serviceCustomServer->text()));
+		} else {
 			obs_data_set_string(
-				settings, "custom_stream_key",
-				QT_TO_UTF8(ui->serviceCustomStreamKey->text()));
+				settings, "server",
+				QT_TO_UTF8(
+					ui->server->currentData().toString()));
 		}
 	} else {
 		obs_data_set_string(
@@ -1029,19 +1021,6 @@ void OBSBasicSettings::on_server_currentIndexChanged(int /*index*/)
 
 	ui->serviceCustomServerLabel->setVisible(server_is_custom);
 	ui->serviceCustomServer->setVisible(server_is_custom);
-	ui->serviceCustomStreamKeyLabel->setVisible(server_is_custom);
-	ui->serviceCustomStreamKeyWidget->setVisible(server_is_custom);
-}
-
-void OBSBasicSettings::on_serviceCustomStreamKeyShow_clicked()
-{
-	if (ui->serviceCustomStreamKey->echoMode() == QLineEdit::Password) {
-		ui->serviceCustomStreamKey->setEchoMode(QLineEdit::Normal);
-		ui->serviceCustomStreamKeyShow->setText(QTStr("Hide"));
-	} else {
-		ui->serviceCustomStreamKey->setEchoMode(QLineEdit::Password);
-		ui->serviceCustomStreamKeyShow->setText(QTStr("Show"));
-	}
 }
 
 void OBSBasicSettings::UpdateVodTrackSetting()
