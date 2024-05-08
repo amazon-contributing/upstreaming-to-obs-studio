@@ -11,6 +11,10 @@
 #include <QMessageBox>
 #include <QThreadPool>
 
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
+
 struct ReturnValues {
 	std::string encodeConfigText;
 	std::string libraryError;
@@ -108,8 +112,34 @@ OBSDataAutoRelease DownloadGoLiveConfig(QWidget *parent, QString url,
 		}
 #endif
 
-	encodeConfigObsData =
-		obs_data_create_from_json(encodeConfigText.c_str());
+	auto config = [&] {
+		auto config =
+			json::parse(encodeConfigText.c_str(), nullptr, false);
+		if (config.is_discarded()) {
+			blog(LOG_WARNING,
+			     "Failed to parse go live config using nlohmann json, "
+			     "ABR bitrate interpolation points not available");
+			return config;
+		}
+
+		auto ec = config.find("encoder_configurations");
+		if (ec == config.end())
+			return config;
+
+		for (auto &encoder_config : *ec) {
+			auto interpolation_points = encoder_config.find(
+				"bitrate_interpolation_points");
+			if (interpolation_points == encoder_config.end())
+				continue;
+
+			*interpolation_points = interpolation_points->dump();
+		}
+		return config;
+	}();
+
+	encodeConfigObsData = obs_data_create_from_json(
+		config.is_discarded() ? encodeConfigText.c_str()
+				      : config.dump().c_str());
 	blog(LOG_INFO, "Go live Response data: %s",
 	     censoredJson(encodeConfigObsData, true).toUtf8().constData());
 
