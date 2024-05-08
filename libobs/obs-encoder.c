@@ -352,11 +352,12 @@ static void remove_connection(struct obs_encoder *encoder, bool shutdown)
 	}
 
 	if (encoder->encoder_group) {
-		pthread_mutex_lock(&encoder->encoder_group->mutex);
-		encoder->encoder_group->encoders_ready -= 1;
-		if (encoder->encoder_group->encoders_ready == 0)
-			encoder->encoder_group->start_timestamp = 0;
-		pthread_mutex_unlock(&encoder->encoder_group->mutex);
+		struct encoder_group *group = encoder->encoder_group;
+		pthread_mutex_lock(&group->mutex);
+		group->encoders_ready -= 1;
+		if (group->encoders_ready == 0)
+			group->start_timestamp = 0;
+		pthread_mutex_unlock(&group->mutex);
 	}
 
 	/* obs_encoder_shutdown locks init_mutex, so don't call it on encode
