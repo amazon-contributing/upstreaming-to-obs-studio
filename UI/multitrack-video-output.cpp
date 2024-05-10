@@ -9,6 +9,8 @@
 #include <obs.hpp>
 #include <remote-text.hpp>
 
+#include "window-basic-main.hpp"
+
 #include <algorithm>
 #include <cinttypes>
 #include <cmath>
@@ -35,7 +37,7 @@
 #include "goliveapi-network.hpp"
 #include "multitrack-video-error.hpp"
 #include "qt-helpers.hpp"
-#include "window-basic-main.hpp"
+#include "models/multitrack-video.hpp"
 
 using json = nlohmann::json;
 
@@ -79,27 +81,26 @@ static void add_always_string(BerryessaSubmitter *berryessa, const char *name,
 }
 
 static OBSServiceAutoRelease
-create_service(obs_data_t *go_live_config,
+create_service(const GoLiveApi::Config &go_live_config,
 	       const std::optional<std::string> &rtmp_url,
 	       const QString &in_stream_key)
 {
 	const char *url = nullptr;
 	QString stream_key = in_stream_key;
 
-	OBSDataArrayAutoRelease ingest_endpoints =
-		obs_data_get_array(go_live_config, "ingest_endpoints");
-	for (size_t i = 0; i < obs_data_array_count(ingest_endpoints); i++) {
-		OBSDataAutoRelease item =
-			obs_data_array_item(ingest_endpoints, i);
-		if (qstrnicmp("RTMP", obs_data_get_string(item, "protocol"), 4))
+	const auto &ingest_endpoints = go_live_config.ingest_endpoints;
+
+	for (auto &endpoint : ingest_endpoints) {
+		if (qstrnicmp("RTMP", endpoint.protocol.c_str(), 4))
 			continue;
 
-		url = obs_data_get_string(item, "url_template");
-		const char *sk = obs_data_get_string(item, "authentication");
-		if (sk && *sk) {
+		url = endpoint.url_template.c_str();
+		if (endpoint.authentication &&
+		    !endpoint.authentication->empty()) {
 			blog(LOG_INFO,
 			     "Using stream key supplied by autoconfig");
-			stream_key = sk;
+			stream_key = QString::fromStdString(
+				*endpoint.authentication);
 		}
 		break;
 	}
@@ -126,28 +127,22 @@ create_service(obs_data_t *go_live_config,
 	DStr str;
 	dstr_cat(str, url);
 
-	{
-		// dstr_find does not protect against null, and dstr_cat will
-		// not inialize str if cat'ing with a null url
-		if (!dstr_is_empty(str)) {
-			auto found = dstr_find(str, "/{stream_key}");
-			if (found)
-				dstr_remove(str, found - str->array,
-					    str->len - (found - str->array));
-		}
+	// dstr_find does not protect against null, and dstr_cat will
+	// not inialize str if cat'ing with a null url
+	if (!dstr_is_empty(str)) {
+		auto found = dstr_find(str, "/{stream_key}");
+		if (found)
+			dstr_remove(str, found - str->array,
+				    str->len - (found - str->array));
 	}
 
 	QUrl parsed_url{url};
 	QUrlQuery parsed_query{parsed_url};
 
-	OBSDataAutoRelease go_live_meta =
-		obs_data_get_obj(go_live_config, "meta");
-	if (go_live_meta) {
-		const char *config_id =
-			obs_data_get_string(go_live_meta, "config_id");
-		if (config_id && *config_id) {
-			parsed_query.addQueryItem("obsConfigId", config_id);
-		}
+	if (!go_live_config.meta.config_id.empty()) {
+		parsed_query.addQueryItem(
+			"obsConfigId",
+			QString::fromStdString(go_live_config.meta.config_id));
 	}
 
 	auto key_with_param = stream_key + "?" + parsed_query.toString();
@@ -223,86 +218,31 @@ static OBSOutputAutoRelease create_recording_output(obs_data_t *settings)
 	return output;
 }
 
-static void data_item_release(obs_data_item_t *item)
+static void adjust_video_encoder_scaling(
+	const char *view_name, const obs_video_info *ovi,
+	const video_output_info *voi, obs_encoder_t *video_encoder,
+	const GoLiveApi::VideoEncoderConfiguration &encoder_config,
+	size_t encoder_index)
 {
-	obs_data_item_release(&item);
-}
-
-using OBSDataItemAutoRelease =
-	OBSRefAutoRelease<obs_data_item_t *, data_item_release>;
-
-static obs_scale_type load_gpu_scale_type(obs_data_t *encoder_config)
-{
-	const auto default_scale_type = OBS_SCALE_BICUBIC;
-
-	OBSDataItemAutoRelease item =
-		obs_data_item_byname(encoder_config, "gpu_scale_type");
-	if (!item)
-		return default_scale_type;
-
-	switch (obs_data_item_gettype(item)) {
-	case OBS_DATA_NUMBER: {
-		auto val = obs_data_item_get_int(item);
-		if (val < OBS_SCALE_POINT || val > OBS_SCALE_AREA) {
-			blog(LOG_WARNING,
-			     "load_gpu_scale_type: scale type out of range %lld (must be 1 <= value <= 5)",
-			     val);
-			break;
-		}
-		return static_cast<obs_scale_type>(val);
-	}
-
-	case OBS_DATA_STRING: {
-		auto val = obs_data_item_get_string(item);
-		if (strncmp(val, "OBS_SCALE_POINT", 16) == 0)
-			return OBS_SCALE_POINT;
-		if (strncmp(val, "OBS_SCALE_BICUBIC", 18) == 0)
-			return OBS_SCALE_BICUBIC;
-		if (strncmp(val, "OBS_SCALE_BILINEAR", 19) == 0)
-			return OBS_SCALE_BILINEAR;
-		if (strncmp(val, "OBS_SCALE_LANCZOS", 18) == 0)
-			return OBS_SCALE_LANCZOS;
-		if (strncmp(val, "OBS_SCALE_AREA", 15) == 0)
-			return OBS_SCALE_AREA;
-		blog(LOG_WARNING,
-		     "load_gpu_scale_type: unknown scaling type: '%s'", val);
-		break;
-	}
-
-	default:
-		blog(LOG_WARNING, "load_gpu_scale_type: unknown data type: %d",
-		     obs_data_item_gettype(item));
-	}
-
-	return default_scale_type;
-}
-
-static void adjust_video_encoder_scaling(const char *view_name,
-					 const obs_video_info *ovi,
-					 const struct video_output_info *voi,
-					 obs_encoder_t *video_encoder,
-					 obs_data_t *encoder_config,
-					 size_t encoder_index)
-{
-	uint64_t requested_width = obs_data_get_int(encoder_config, "width");
-	uint64_t requested_height = obs_data_get_int(encoder_config, "height");
+	auto requested_width = encoder_config.width;
+	auto requested_height = encoder_config.height;
 
 	auto width = ovi ? ovi->base_width : voi->width;
 	auto height = ovi ? ovi->base_height : voi->height;
 
 	if (width < requested_width || height < requested_height) {
 		blog(LOG_WARNING,
-		     "Requested resolution exceeds canvas/available resolution for encoder %zu: %" PRIu64
-		     "x%" PRIu64 " > %" PRIu32 "x%" PRIu32 " (canvas: %s)",
+		     "Requested resolution exceeds canvas/available resolution for encoder %zu: %" PRIu32
+		     "x%" PRIu32 " > %" PRIu32 "x%" PRIu32 " (canvas: %s)",
 		     encoder_index, requested_width, requested_height, width,
-		     height, view_name ? view_name : "obs base");
+		     height, view_name ? view_name : "obs_base");
 	}
 
-	obs_encoder_set_scaled_size(video_encoder,
-				    static_cast<uint32_t>(requested_width),
-				    static_cast<uint32_t>(requested_height));
-	obs_encoder_set_gpu_scale_type(video_encoder,
-				       load_gpu_scale_type(encoder_config));
+	obs_encoder_set_scaled_size(video_encoder, requested_width,
+				    requested_height);
+	obs_encoder_set_gpu_scale_type(
+		video_encoder,
+		encoder_config.gpu_scale_type.value_or(OBS_SCALE_BICUBIC));
 }
 
 static uint32_t closest_divisor(const obs_video_info &ovi,
@@ -313,19 +253,17 @@ static uint32_t closest_divisor(const obs_video_info &ovi,
 	return std::max(1u, static_cast<uint32_t>(source / target));
 }
 
-static void adjust_encoder_frame_rate_divisor(const obs_video_info &ovi,
-					      obs_encoder_t *video_encoder,
-					      obs_data_t *encoder_config,
-					      const size_t encoder_index)
+static void adjust_encoder_frame_rate_divisor(
+	const obs_video_info &ovi, obs_encoder_t *video_encoder,
+	const GoLiveApi::VideoEncoderConfiguration &encoder_config,
+	const size_t encoder_index)
 {
-	media_frames_per_second requested_fps;
-	const char *option = nullptr;
-	if (!obs_data_get_frames_per_second(encoder_config, "framerate",
-					    &requested_fps, &option)) {
+	if (!encoder_config.framerate) {
 		blog(LOG_WARNING, "`framerate` not specified for encoder %zu",
 		     encoder_index);
 		return;
 	}
+	media_frames_per_second requested_fps = *encoder_config.framerate;
 
 	if (ovi.fps_num == requested_fps.numerator &&
 	    ovi.fps_den == requested_fps.denominator)
@@ -366,12 +304,13 @@ static bool encoder_available(const char *type)
 			    }) != std::end(encoders);
 }
 
-static OBSEncoderAutoRelease
-create_video_encoder(DStr &name_buffer, size_t encoder_index,
-		     obs_data_t *encoder_config,
-		     const std::map<std::string, video_t *> &extra_views)
+static OBSEncoderAutoRelease create_video_encoder(
+	DStr &name_buffer, size_t encoder_index,
+	const GoLiveApi::EncoderConfiguration<
+		GoLiveApi::VideoEncoderConfiguration> &encoder_config,
+	const std::map<std::string, video_t *> &extra_views)
 {
-	auto encoder_type = obs_data_get_string(encoder_config, "type");
+	auto encoder_type = encoder_config.config.type.c_str();
 	if (!encoder_available(encoder_type)) {
 		blog(LOG_ERROR, "Encoder type '%s' not available",
 		     encoder_type);
@@ -383,20 +322,12 @@ create_video_encoder(DStr &name_buffer, size_t encoder_index,
 	dstr_printf(name_buffer, "multitrack video video encoder %zu",
 		    encoder_index);
 
-	if (obs_data_has_user_value(encoder_config, "keyInt_sec") &&
-	    !obs_data_has_user_value(encoder_config, "keyint_sec")) {
-		blog(LOG_INFO,
-		     "Fixing Go Live Config for encoder '%s': keyInt_sec -> keyint_sec",
-		     name_buffer->array);
-		obs_data_set_int(encoder_config, "keyint_sec",
-				 obs_data_get_int(encoder_config,
-						  "keyInt_sec"));
-	}
-
-	obs_data_set_bool(encoder_config, "disable_scenecut", true);
+	OBSDataAutoRelease encoder_settings =
+		obs_data_create_from_json(encoder_config.data.dump().c_str());
+	obs_data_set_bool(encoder_settings, "disable_scenecut", true);
 
 	OBSEncoderAutoRelease video_encoder = obs_video_encoder_create(
-		encoder_type, name_buffer, encoder_config, nullptr);
+		encoder_type, name_buffer, encoder_settings, nullptr);
 	if (!video_encoder) {
 		blog(LOG_ERROR, "failed to create video encoder '%s'",
 		     name_buffer->array);
@@ -418,8 +349,8 @@ create_video_encoder(DStr &name_buffer, size_t encoder_index,
 
 	const char *view_name = nullptr;
 	video_t *video = nullptr;
-	if (obs_data_has_user_value(encoder_config, "view")) {
-		view_name = obs_data_get_string(encoder_config, "view");
+	if (encoder_config.config.view.has_value()) {
+		view_name = encoder_config.config.view->c_str();
 		auto it = extra_views.find(view_name);
 		if (it != extra_views.end()) {
 			video = it->second;
@@ -431,22 +362,20 @@ create_video_encoder(DStr &name_buffer, size_t encoder_index,
 
 	auto voi = video ? video_output_get_info(video) : nullptr;
 	adjust_video_encoder_scaling(view_name, ovi, voi, video_encoder,
-				     encoder_config, encoder_index);
+				     encoder_config.config, encoder_index);
 	adjust_encoder_frame_rate_divisor(ovi_storage, video_encoder,
-					  encoder_config, encoder_index);
+					  encoder_config.config, encoder_index);
 
 	return video_encoder;
 }
 
-static OBSEncoderAutoRelease
-create_audio_encoder(const char *name, const char *audio_encoder_id,
-		     std::optional<int> audio_bitrate, size_t mixer_idx)
+static OBSEncoderAutoRelease create_audio_encoder(const char *name,
+						  const char *audio_encoder_id,
+						  uint32_t audio_bitrate,
+						  size_t mixer_idx)
 {
-	OBSDataAutoRelease settings = nullptr;
-	if (audio_bitrate.has_value()) {
-		settings = obs_data_create();
-		obs_data_set_int(settings, "bitrate", *audio_bitrate);
-	}
+	OBSDataAutoRelease settings = obs_data_create();
+	obs_data_set_int(settings, "bitrate", audio_bitrate);
 
 	OBSEncoderAutoRelease audio_encoder = obs_audio_encoder_create(
 		audio_encoder_id, name, settings, mixer_idx, nullptr);
@@ -465,10 +394,10 @@ struct OBSOutputs {
 
 static OBSOutputs
 SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
-	       obs_data_t *go_live_config,
+	       const GoLiveApi::Config &go_live_config,
 	       std::vector<OBSEncoderAutoRelease> &audio_encoders,
 	       std::vector<OBSEncoderAutoRelease> &video_encoders,
-	       const char *audio_encoder_id, std::optional<int> audio_bitrate,
+	       const char *audio_encoder_id,
 	       std::optional<size_t> vod_track_mixer,
 	       const std::map<std::string, video_t *> &extra_views);
 static void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self,
@@ -586,7 +515,7 @@ check_plugin_hash_mismatches(const char *text)
 void MultitrackVideoOutput::PrepareStreaming(
 	QWidget *parent, const char *service_name, obs_service_t *service,
 	const std::optional<std::string> &rtmp_url, const QString &stream_key,
-	const char *audio_encoder_id, int audio_bitrate,
+	const char *audio_encoder_id,
 	std::optional<uint32_t> maximum_aggregate_bitrate,
 	std::optional<uint32_t> maximum_video_tracks,
 	std::optional<std::string> custom_config,
@@ -627,9 +556,8 @@ void MultitrackVideoOutput::PrepareStreaming(
 				std::nullopt);
 	}
 
-	OBSDataAutoRelease go_live_post;
-	OBSDataAutoRelease go_live_config;
-	OBSDataAutoRelease custom;
+	std::optional<GoLiveApi::Config> go_live_config;
+	std::optional<GoLiveApi::Config> custom;
 	bool is_custom_config = custom_config.has_value();
 	auto auto_config_url = MultitrackVideoAutoConfigURL(service);
 
@@ -681,80 +609,82 @@ void MultitrackVideoOutput::PrepareStreaming(
 
 	auto views_guard = qScopeGuard([this] { StopExtraViews(); });
 
-	go_live_post = constructGoLivePost(
-		stream_key, maximum_aggregate_bitrate, maximum_video_tracks,
-		vod_track_mixer.has_value(), extra_views_);
+	const bool custom_config_only =
+		auto_config_url.isEmpty() &&
+		MultitrackVideoDeveloperModeEnabled() &&
+		custom_config.has_value() &&
+		strcmp(obs_service_get_id(service), "rtmp_custom") == 0;
 
-	go_live_config =
-		DownloadGoLiveConfig(parent, auto_config_url, go_live_post);
-	if (!go_live_config)
-		throw MultitrackVideoError::warning(
-			QTStr("FailedToStartStream.FallbackToDefault")
-				.arg(multitrack_video_name));
+	if (!custom_config_only) {
+		auto go_live_post = constructGoLivePost(
+			stream_key, maximum_aggregate_bitrate,
+			maximum_video_tracks, vod_track_mixer.has_value(),
+			extra_views_);
 
-	if (custom_config.has_value()) {
-		custom = obs_data_create_from_json(custom_config->c_str());
-		if (!custom)
-			throw MultitrackVideoError::critical(QTStr(
-				"FailedToStartStream.InvalidCustomConfig"));
+		go_live_config = DownloadGoLiveConfig(parent, auto_config_url,
+						      go_live_post,
+						      multitrack_video_name);
 
-		// copy unique ID from go live request
-		OBSDataAutoRelease go_live_meta =
-			obs_data_get_obj(go_live_config, "meta");
-		auto uuid = obs_data_get_string(go_live_meta, "config_id");
-
-		QByteArray generated_uuid_storage;
-
-		if (!uuid || !uuid[0]) {
-			QString generated_uuid = QUuid::createUuid().toString(
-				QUuid::WithoutBraces);
-			generated_uuid_storage = generated_uuid.toUtf8();
-			uuid = generated_uuid_storage.constData();
-			blog(LOG_INFO,
-			     "Failed to copy config_id from go live config, using: %s",
-			     uuid);
-		} else {
-			blog(LOG_INFO,
-			     "Using config_id from go live config with custom config: %s",
-			     uuid);
-		}
-
-		OBSDataAutoRelease meta = obs_data_get_obj(custom, "meta");
-		if (!meta) {
-			meta = obs_data_create();
-			obs_data_set_obj(custom, "meta", meta);
-		}
-		obs_data_set_string(meta, "config_id", uuid);
-
-		blog(LOG_INFO, "Using custom go live config: %s",
-		     obs_data_get_json_pretty(custom));
-	}
-
-	// Put the config_id (whether we created it or downloaded it) on all
-	// Berryessa submissions from this point
-	OBSDataAutoRelease goLiveMeta =
-		obs_data_get_obj(go_live_config, "meta");
-	if (goLiveMeta) {
-		const char *s = obs_data_get_string(goLiveMeta, "config_id");
-		blog(LOG_INFO, "Enhanced broadcasting config_id: '%s'", s);
-		if (s && *s && berryessa_) {
-			add_always_string(berryessa_.get(), "config_id", s);
+		blog(LOG_INFO, "Enhanced broadcasting config_id: '%s'",
+		     go_live_config->meta.config_id.c_str());
+		if (berryessa_) {
+			add_always_string(
+				berryessa_.get(), "config_id",
+				go_live_config->meta.config_id.c_str());
 		}
 	}
+
 	auto berryessa_guard = qScopeGuard([&] {
 		if (berryessa_)
 			berryessa_->unsetAlways("config_id");
 	});
+
+	if (custom_config.has_value()) {
+		GoLiveApi::Config parsed_custom;
+		try {
+			parsed_custom = nlohmann::json::parse(*custom_config);
+		} catch (const nlohmann::json::exception &exception) {
+			blog(LOG_WARNING, "Failed to parse custom config: %s",
+			     exception.what());
+			throw MultitrackVideoError::critical(QTStr(
+				"FailedToStartStream.InvalidCustomConfig"));
+		}
+
+		// copy unique ID from go live request
+		if (go_live_config.has_value()) {
+			parsed_custom.meta.config_id =
+				go_live_config->meta.config_id;
+			blog(LOG_INFO,
+			     "Using config_id from go live config with custom config: %s",
+			     parsed_custom.meta.config_id.c_str());
+		}
+
+		nlohmann::json custom_data = parsed_custom;
+		blog(LOG_INFO, "Using custom go live config: %s",
+		     custom_data.dump(4).c_str());
+
+		custom.emplace(std::move(parsed_custom));
+	}
+
 	add_always_bool(berryessa_.get(), "config_custom", is_custom_config);
+
+	if (!go_live_config && !custom) {
+		blog(LOG_ERROR,
+		     "MultitrackVideoOutput: no config set, this should never happen");
+		throw MultitrackVideoError::warning(
+			QTStr("FailedToStartStream.NoConfig"));
+	}
+
+	const auto &output_config = custom ? *custom : *go_live_config;
+	const auto &service_config = go_live_config ? *go_live_config : *custom;
 
 	auto audio_encoders = std::vector<OBSEncoderAutoRelease>();
 	auto video_encoders = std::vector<OBSEncoderAutoRelease>();
 	OBSEncoderAutoRelease audio_encoder = nullptr;
-	auto outputs = SetupOBSOutput(dump_stream_to_file_config,
-				      custom ? custom : go_live_config,
+	auto outputs = SetupOBSOutput(dump_stream_to_file_config, output_config,
 				      audio_encoders, video_encoders,
-				      audio_encoder_id, audio_bitrate,
-				      vod_track_mixer, extra_views_);
+				      audio_encoder_id, vod_track_mixer,
+				      extra_views_);
 	auto output = std::move(outputs.output);
 	auto recording_output = std::move(outputs.recording_output);
 	if (!output)
@@ -763,7 +693,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 				.arg(multitrack_video_name));
 
 	auto multitrack_video_service =
-		create_service(go_live_config, rtmp_url, stream_key);
+		create_service(service_config, rtmp_url, stream_key);
 	if (!multitrack_video_service)
 		throw MultitrackVideoError::warning(
 			QTStr("FailedToStartStream.FallbackToDefault")
@@ -1033,31 +963,26 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 }
 
 static bool
-create_video_encoders(obs_data_t *go_live_config,
+create_video_encoders(const GoLiveApi::Config &go_live_config,
 		      std::vector<OBSEncoderAutoRelease> &video_encoders,
 		      obs_output_t *output, obs_output_t *recording_output,
 		      const std::map<std::string, video_t *> &extra_views,
 		      json &bitrate_interpolation_array)
 {
-	OBSDataArrayAutoRelease encoder_configs =
-		obs_data_get_array(go_live_config, "encoder_configurations");
 	DStr video_encoder_name_buffer;
 	obs_encoder_t *first_encoder = nullptr;
-	const size_t num_encoder_configs =
-		obs_data_array_count(encoder_configs);
-	if (num_encoder_configs < 1) {
+	if (go_live_config.encoder_configurations.empty()) {
 		blog(LOG_WARNING,
 		     "MultitrackVideoOutput: Missing video encoder configurations");
 		throw MultitrackVideoError::warning(
 			QTStr("FailedToStartStream.MissingEncoderConfigs"));
 	}
 
-	for (size_t i = 0; i < num_encoder_configs; i++) {
-		OBSDataAutoRelease encoder_config =
-			obs_data_array_item(encoder_configs, i);
-		auto encoder = create_video_encoder(video_encoder_name_buffer,
-						    i, encoder_config,
-						    extra_views);
+	for (size_t i = 0; i < go_live_config.encoder_configurations.size();
+	     i++) {
+		auto encoder = create_video_encoder(
+			video_encoder_name_buffer, i,
+			go_live_config.encoder_configurations[i], extra_views);
 		if (!encoder)
 			return false;
 
@@ -1073,34 +998,22 @@ create_video_encoders(obs_data_t *go_live_config,
 						      i);
 		video_encoders.emplace_back(std::move(encoder));
 
-		if (obs_data_has_user_value(encoder_config,
-					    "bitrate_interpolation_points")) {
-			auto parsed = json::parse(
-				obs_data_get_string(
-					encoder_config,
-					"bitrate_interpolation_points"),
-				nullptr, false);
-			if (parsed.is_discarded())
-				blog(LOG_WARNING,
-				     "MultitrackVideoOutput: ABR bitrate "
-				     "interpolation points not available for encoder '%s'",
-				     video_encoder_name_buffer->array);
-			bitrate_interpolation_array.push_back(
-				parsed.is_discarded() ? json::array() : parsed);
-		} else {
+		auto &data = go_live_config.encoder_configurations[i]
+				     .config.bitrate_interpolation_points;
+		if (data.has_value())
+			bitrate_interpolation_array.push_back(*data);
+		else
 			bitrate_interpolation_array.push_back(json::array());
-		}
 	}
 
 	return true;
 }
 
 static void
-create_audio_encoders(obs_data_t *go_live_config,
+create_audio_encoders(const GoLiveApi::Config &go_live_config,
 		      std::vector<OBSEncoderAutoRelease> &audio_encoders,
 		      obs_output_t *output, obs_output_t *recording_output,
 		      const char *audio_encoder_id,
-		      std::optional<int> audio_bitrate,
 		      std::optional<size_t> vod_track_mixer)
 {
 	speaker_layout speakers = SPEAKERS_UNKNOWN;
@@ -1137,29 +1050,15 @@ create_audio_encoders(obs_data_t *go_live_config,
 		     obs_encoder_get_name(encoder), channels);
 	};
 
-	OBSDataAutoRelease audio_configs =
-		obs_data_get_obj(go_live_config, "audio_configurations");
-	if (!audio_configs) {
-		OBSEncoderAutoRelease audio_encoder = create_audio_encoder(
-			"multitrack video live audio", audio_encoder_id,
-			audio_bitrate, 0);
-
-		obs_output_set_audio_encoder(output, audio_encoder, 0);
-		if (recording_output)
-			obs_output_set_audio_encoder(recording_output,
-						     audio_encoder, 0);
-
-		audio_encoders.emplace_back(std::move(audio_encoder));
-		return;
-	}
-
+	using encoder_configs_type =
+		decltype(go_live_config.audio_configurations.live);
 	DStr encoder_name_buffer;
 	size_t output_encoder_index = 0;
 
 	auto create_encoders = [&](const char *name_prefix,
-				   obs_data_array_t *config, size_t mixer_idx) {
-		size_t num_audio_encoders = obs_data_array_count(config);
-		if (num_audio_encoders < 1) {
+				   const encoder_configs_type &configs,
+				   size_t mixer_idx) {
+		if (configs.empty()) {
 			blog(LOG_WARNING,
 			     "MultitrackVideoOutput: Missing audio encoder configurations (for '%s')",
 			     name_prefix);
@@ -1167,24 +1066,17 @@ create_audio_encoders(obs_data_t *go_live_config,
 				"FailedToStartStream.MissingEncoderConfigs"));
 		}
 
-		for (size_t i = 0; i < num_audio_encoders; i++) {
-			OBSDataAutoRelease encoder_config =
-				obs_data_array_item(config, i);
+		for (size_t i = 0; i < configs.size(); i++) {
 			dstr_printf(encoder_name_buffer, "%s %zu", name_prefix,
 				    i);
 			OBSEncoderAutoRelease audio_encoder =
-				create_audio_encoder(
-					encoder_name_buffer->array,
-					audio_encoder_id,
-					obs_data_get_int(encoder_config,
-							 "bitrate"),
-					mixer_idx);
+				create_audio_encoder(encoder_name_buffer->array,
+						     audio_encoder_id,
+						     configs[i].config.bitrate,
+						     mixer_idx);
 
-			if (obs_data_has_user_value(encoder_config, "channels"))
-				sanitize_audio_channels(
-					audio_encoder,
-					obs_data_get_int(encoder_config,
-							 "channels"));
+			sanitize_audio_channels(audio_encoder,
+						configs[i].config.channels);
 
 			obs_output_set_audio_encoder(output, audio_encoder,
 						     output_encoder_index);
@@ -1197,16 +1089,14 @@ create_audio_encoders(obs_data_t *go_live_config,
 		}
 	};
 
-	OBSDataArrayAutoRelease live_config =
-		obs_data_get_array(audio_configs, "live");
-	create_encoders("multitrack video live audio", live_config, 0);
+	create_encoders("multitrack video live audio",
+			go_live_config.audio_configurations.live, 0);
 
 	if (!vod_track_mixer.has_value())
 		return;
 
-	OBSDataArrayAutoRelease vod_config =
-		obs_data_get_array(audio_configs, "vod");
-	create_encoders("multitrack video vod audio", vod_config,
+	create_encoders("multitrack video vod audio",
+			go_live_config.audio_configurations.vod,
 			*vod_track_mixer);
 
 	return;
@@ -1214,10 +1104,10 @@ create_audio_encoders(obs_data_t *go_live_config,
 
 static OBSOutputs
 SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
-	       obs_data_t *go_live_config,
+	       const GoLiveApi::Config &go_live_config,
 	       std::vector<OBSEncoderAutoRelease> &audio_encoders,
 	       std::vector<OBSEncoderAutoRelease> &video_encoders,
-	       const char *audio_encoder_id, std::optional<int> audio_bitrate,
+	       const char *audio_encoder_id,
 	       std::optional<size_t> vod_track_mixer,
 	       const std::map<std::string, video_t *> &extra_views)
 {
@@ -1240,7 +1130,7 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 	obs_output_update(output, settings);
 
 	create_audio_encoders(go_live_config, audio_encoders, output,
-			      recording_output, audio_encoder_id, audio_bitrate,
+			      recording_output, audio_encoder_id,
 			      vod_track_mixer);
 
 	return {std::move(output), std::move(recording_output)};

@@ -100,7 +100,7 @@ protected:
 
 	FutureHolder<std::optional<bool>>
 	SetupMultitrackVideo(obs_service_t *service,
-			     std::string audio_encoder_id, int audio_bitrate,
+			     std::string audio_encoder_id,
 			     std::optional<size_t> vod_track_mixer);
 	OBSDataAutoRelease GenerateMultitrackVideoStreamDumpConfig();
 };

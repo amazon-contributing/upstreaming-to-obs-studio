@@ -52,7 +52,7 @@ public:
 			      obs_service_t *service,
 			      const std::optional<std::string> &rtmp_url,
 			      const QString &stream_key,
-			      const char *audio_encoder_id, int audio_bitrate,
+			      const char *audio_encoder_id,
 			      std::optional<uint32_t> maximum_aggregate_bitrate,
 			      std::optional<uint32_t> maximum_video_tracks,
 			      std::optional<std::string> custom_config,

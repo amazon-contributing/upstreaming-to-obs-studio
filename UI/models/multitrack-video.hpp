@@ -19,6 +19,8 @@
 #include <string>
 #include <optional>
 
+#include <obs.h>
+
 #include <nlohmann/json.hpp>
 
 /* From whatsnew.hpp */
@@ -36,6 +38,30 @@
 		NLOHMANN_JSON_EXPAND(                                         \
 			NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, __VA_ARGS__)) \
 	}
+#endif
+
+#ifndef NLOHMANN_JSON_FROM_WITH_DEFAULT
+#define NLOHMANN_JSON_FROM_WITH_DEFAULT(v1) \
+	nlohmann_json_t.v1 =                \
+		nlohmann_json_j.value(#v1, nlohmann_json_default_obj.v1);
+#endif
+
+#ifndef NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT
+#define NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Type, ...)              \
+	friend void to_json(nlohmann::json &nlohmann_json_j,                \
+			    const Type &nlohmann_json_t)                    \
+	{                                                                   \
+		NLOHMANN_JSON_EXPAND(                                       \
+			NLOHMANN_JSON_PASTE(NLOHMANN_JSON_TO, __VA_ARGS__)) \
+	}                                                                   \
+	friend void from_json(const nlohmann::json &nlohmann_json_j,        \
+			      Type &nlohmann_json_t)                        \
+	{                                                                   \
+		Type nlohmann_json_default_obj;                             \
+		NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(                   \
+			NLOHMANN_JSON_FROM_WITH_DEFAULT, __VA_ARGS__))      \
+	}
+
 #endif
 
 /*
@@ -62,9 +88,23 @@ template<typename T> struct nlohmann::adl_serializer<std::optional<T>> {
 	}
 };
 
+NLOHMANN_JSON_SERIALIZE_ENUM(obs_scale_type,
+			     {
+				     {OBS_SCALE_DISABLE, "OBS_SCALE_DISABLE"},
+				     {OBS_SCALE_POINT, "OBS_SCALE_POINT"},
+				     {OBS_SCALE_BICUBIC, "OBS_SCALE_BICUBIC"},
+				     {OBS_SCALE_BILINEAR, "OBS_SCALE_BILINEAR"},
+				     {OBS_SCALE_LANCZOS, "OBS_SCALE_LANCZOS"},
+				     {OBS_SCALE_AREA, "OBS_SCALE_AREA"},
+			     })
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(media_frames_per_second, numerator,
+				   denominator)
+
 namespace GoLiveApi {
 using std::string;
 using std::optional;
+using json = nlohmann::json;
 
 struct Client {
 	string name = "obs-studio";
@@ -190,4 +230,109 @@ struct PostData {
 				       preferences)
 };
 
+// Config Response
+
+struct Meta {
+	string service;
+	string schema_version;
+	string config_id;
+
+	NLOHMANN_DEFINE_TYPE_INTRUSIVE(Meta, service, schema_version, config_id)
+};
+
+enum struct StatusResult {
+	Unknown,
+	Success,
+	Warning,
+	Error,
+};
+
+NLOHMANN_JSON_SERIALIZE_ENUM(StatusResult,
+			     {
+				     {StatusResult::Unknown, nullptr},
+				     {StatusResult::Success, "success"},
+				     {StatusResult::Warning, "warning"},
+				     {StatusResult::Error, "error"},
+			     })
+
+struct Status {
+	StatusResult result = StatusResult::Unknown;
+	optional<string> html_en_us;
+	NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Status, result, html_en_us)
+};
+
+struct IngestEndpoint {
+	string protocol;
+	string url_template;
+	optional<string> authentication;
+
+	NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(IngestEndpoint, protocol,
+						    url_template,
+						    authentication)
+};
+
+struct VideoEncoderConfiguration {
+	string type;
+	uint32_t width;
+	uint32_t height;
+	uint32_t bitrate;
+	optional<media_frames_per_second> framerate;
+	optional<obs_scale_type> gpu_scale_type;
+	optional<string> view;
+	optional<json> bitrate_interpolation_points;
+
+	NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(
+		VideoEncoderConfiguration, type, width, height, bitrate,
+		framerate, gpu_scale_type, view, bitrate_interpolation_points)
+};
+
+struct AudioEncoderConfiguration {
+	string codec;
+	uint32_t track_id;
+	uint32_t channels;
+	uint32_t bitrate;
+
+	NLOHMANN_DEFINE_TYPE_INTRUSIVE(AudioEncoderConfiguration, codec,
+				       track_id, channels, bitrate)
+};
+
+template<typename T> struct EncoderConfiguration {
+	T config;
+	json data;
+
+	friend void to_json(nlohmann::json &nlohmann_json_j,
+			    const EncoderConfiguration<T> &nlohmann_json_t)
+	{
+		nlohmann_json_j = nlohmann_json_t.data;
+		to_json(nlohmann_json_j, nlohmann_json_t.config);
+	}
+	friend void from_json(const nlohmann::json &nlohmann_json_j,
+			      EncoderConfiguration<T> &nlohmann_json_t)
+	{
+		nlohmann_json_t.data = nlohmann_json_j;
+		nlohmann_json_j.get_to(nlohmann_json_t.config);
+	}
+};
+
+struct AudioConfigurations {
+	std::vector<EncoderConfiguration<AudioEncoderConfiguration>> live;
+	std::vector<EncoderConfiguration<AudioEncoderConfiguration>> vod;
+
+	NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(AudioConfigurations, live,
+						    vod)
+};
+
+struct Config {
+	Meta meta;
+	optional<Status> status;
+	std::vector<IngestEndpoint> ingest_endpoints;
+	std::vector<EncoderConfiguration<VideoEncoderConfiguration>>
+		encoder_configurations;
+	AudioConfigurations audio_configurations;
+
+	NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Config, meta, status,
+						    ingest_endpoints,
+						    encoder_configurations,
+						    audio_configurations)
+};
 } // namespace GoLiveApi
