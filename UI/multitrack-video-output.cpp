@@ -1226,6 +1226,39 @@ create_audio_encoders(obs_data_t *go_live_config,
 		      std::optional<int> audio_bitrate,
 		      std::optional<size_t> vod_track_mixer)
 {
+	speaker_layout speakers = SPEAKERS_UNKNOWN;
+	obs_audio_info oai = {};
+	if (obs_get_audio_info(&oai))
+		speakers = oai.speakers;
+
+	auto sanitize_audio_channels = [&](obs_encoder_t *encoder,
+					   uint32_t channels) {
+		speaker_layout target_speakers = SPEAKERS_UNKNOWN;
+		for (size_t i = 0; i <= (size_t)SPEAKERS_7POINT1; i++) {
+			if (get_audio_channels((speaker_layout)i) != channels)
+				continue;
+
+			target_speakers = (speaker_layout)i;
+			break;
+		}
+		if (target_speakers == SPEAKERS_UNKNOWN) {
+			blog(LOG_WARNING,
+			     "MultitrackVideoOutput: Could not find "
+			     "speaker layout for %" PRIu32 "channels "
+			     "while configuring encoder '%s'",
+			     channels, obs_encoder_get_name(encoder));
+			return;
+		}
+		if (speakers != SPEAKERS_UNKNOWN &&
+		    channels > get_audio_channels(speakers))
+			return;
+
+		obs_encoder_set_speaker_layout(encoder, target_speakers);
+		blog(LOG_INFO,
+		     "MultitrackVideoOutput: settings encoder '%s' "
+		     "to %" PRIu32 " channels ",
+		     obs_encoder_get_name(encoder), channels);
+	};
 
 	OBSDataAutoRelease audio_configs =
 		obs_data_get_obj(go_live_config, "audio_configurations");
@@ -1269,6 +1302,13 @@ create_audio_encoders(obs_data_t *go_live_config,
 					obs_data_get_int(encoder_config,
 							 "bitrate"),
 					mixer_idx);
+
+			if (obs_data_has_user_value(encoder_config, "channels"))
+				sanitize_audio_channels(
+					audio_encoder,
+					obs_data_get_int(encoder_config,
+							 "channels"));
+
 			obs_output_set_audio_encoder(output, audio_encoder,
 						     output_encoder_index);
 			if (recording_output)
