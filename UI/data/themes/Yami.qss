@@ -1033,6 +1033,11 @@ QLabel#errorLabel {
     font-weight: bold;
 }
 
+QFrame [themeID="notice"] {
+    background: #13141A;
+    border-radius: 4px;
+}
+
 /* About dialog */
 
 * [themeID="aboutName"] {

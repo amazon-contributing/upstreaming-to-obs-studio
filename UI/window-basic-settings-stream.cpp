@@ -45,7 +45,7 @@ enum class Section : int {
 	StreamKey,
 };
 
-inline bool OBSBasicSettings::IsCustomService() const
+bool OBSBasicSettings::IsCustomService() const
 {
 	return ui->service->currentData().toInt() == (int)ListOpt::Custom;
 }
@@ -693,8 +693,8 @@ void OBSBasicSettings::ServiceChanged(bool resetFields)
 	ui->authPwWidget->setVisible(custom);
 
 	if (custom || whip) {
-		ui->streamkeyPageLayout->insertRow(1, ui->serverLabel,
-						   ui->serverStackedWidget);
+		ui->destinationLayout->insertRow(1, ui->serverLabel,
+						 ui->serverStackedWidget);
 
 		ui->serverStackedWidget->setCurrentIndex(1);
 		ui->serverStackedWidget->setVisible(true);

@@ -743,6 +743,11 @@ QLabel#errorLabel {
     font-weight: bold;
 }
 
+QFrame [themeID="notice"] {
+    background: rgb(76,76,76);
+    border-radius: 4px;
+}
+
 /* About dialog */
 
 * [themeID="aboutName"] {
