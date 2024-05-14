@@ -1067,7 +1067,7 @@ std::optional<int> MultitrackVideoOutput::ConnectTimeMs()
 
 bool MultitrackVideoOutput::HandleIncompatibleSettings(
 	QWidget *parent, config_t *config, obs_service_t *service,
-	bool &useDelay, bool &enableNewSocketLoop, bool &enableDynBitrate)
+	bool &useDelay, bool &enableNewSocketLoop)
 {
 	QString incompatible_settings;
 	QString where_to_disable;
@@ -1099,9 +1099,6 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 		      "Basic.Settings.Advanced.StreamDelay");
 	check_setting(enableNewSocketLoop,
 		      "Basic.Settings.Advanced.Network.EnableNewSocketLoop",
-		      "Basic.Settings.Advanced.Network");
-	check_setting(enableDynBitrate,
-		      "Basic.Settings.Output.DynamicBitrate.Beta",
 		      "Basic.Settings.Advanced.Network");
 
 	if (incompatible_settings.isEmpty())
@@ -1155,10 +1152,8 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 	    mb.clickedButton() == all_streams) {
 		useDelay = false;
 		enableNewSocketLoop = false;
-		enableDynBitrate = false;
 		useDelay = false;
 		enableNewSocketLoop = false;
-		enableDynBitrate = false;
 
 		if (mb.clickedButton() == all_streams) {
 			config_set_bool(config, "Output", "DelayEnable", false);
