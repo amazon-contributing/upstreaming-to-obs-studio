@@ -4123,8 +4123,13 @@ RTMP_SendPacket(RTMP *r, RTMPPacket *packet, int queue)
                 && packet->m_headerType == RTMP_PACKET_SIZE_MEDIUM)
             packet->m_headerType = RTMP_PACKET_SIZE_SMALL;
 
+        /* this comparison doesn't necessarily make too much sense, timestamp
+         * equality is only useful when the previous packet was a type 0 chunk,
+         * for all other chunk sizes the delta would be more relevant
+         */
         if (prevPacket->m_nTimeStamp == packet->m_nTimeStamp
-                && packet->m_headerType == RTMP_PACKET_SIZE_SMALL)
+                && packet->m_headerType == RTMP_PACKET_SIZE_SMALL
+                && prevPacket->m_headerType == RTMP_PACKET_SIZE_LARGE)
             packet->m_headerType = RTMP_PACKET_SIZE_MINIMUM;
         last = prevPacket->m_nTimeStamp;
     }
