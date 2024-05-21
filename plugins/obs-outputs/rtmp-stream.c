@@ -22,6 +22,8 @@
 #include <obs-avc.h>
 #include <obs-hevc.h>
 
+#include <jansson.h>
+
 #ifdef _WIN32
 #include <util/windows/win-version.h>
 #endif
@@ -135,6 +137,7 @@ static void rtmp_stream_destroy(void *data)
 	deque_free(&stream->droptest_info);
 #endif
 	deque_free(&stream->dbr_frames);
+	da_free(stream->dbr_interpolation_table);
 	pthread_mutex_destroy(&stream->dbr_mutex);
 
 	os_event_destroy(stream->buffer_space_available_event);
@@ -1281,6 +1284,83 @@ static int try_connect(struct rtmp_stream *stream)
 	return init_send(stream);
 }
 
+static bool build_dbr_interpolation_table(struct rtmp_stream *stream,
+					  const char *interpolation_data)
+{
+	json_error_t error;
+	json_t *root =
+		json_loads(interpolation_data, JSON_REJECT_DUPLICATES, &error);
+	if (!root) {
+		warn("loading dbr interpolation table failed: %s", error.text);
+		return false;
+	}
+
+	size_t all_array_size = 0;
+	bool malformed_data = false;
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		obs_encoder_t *enc =
+			obs_output_get_video_encoder2(stream->output, i);
+		if (!enc)
+			continue;
+
+		const char *name = obs_encoder_get_name(enc);
+		const json_t *array = json_array_get(root, i);
+		if (!array) {
+			warn("missing bitrate interpolation data for "
+			     "encoder '%s'",
+			     name);
+			malformed_data = true;
+			continue;
+		}
+
+		size_t size = json_array_size(array);
+		if (!all_array_size) {
+			all_array_size = size;
+			continue;
+		}
+
+		if (all_array_size != size) {
+			warn("size %zu of bitrate interpolation data for "
+			     "encoder '%s' does not match overall size %zu",
+			     size, name, all_array_size);
+			malformed_data = true;
+		}
+	}
+
+	if (malformed_data)
+		goto error;
+
+	da_clear(stream->dbr_interpolation_table);
+	da_reserve(stream->dbr_interpolation_table, all_array_size);
+	for (size_t i = 0; i < all_array_size; i++) {
+		struct dbr_interpolation_point *dbr_point =
+			da_push_back_new(stream->dbr_interpolation_table);
+		for (size_t j = 0; j < MAX_OUTPUT_VIDEO_ENCODERS; j++) {
+			const json_t *array = json_array_get(root, j);
+			if (!array)
+				continue;
+
+			const json_t *entry = json_array_get(array, i);
+			if (!json_is_integer(entry)) {
+				warn("interpolation entry %zu for track %zu is not an integer (type: %d)",
+				     i, j, json_typeof(entry));
+				malformed_data = true;
+				continue;
+			}
+			dbr_point->bitrates[j] =
+				(long)json_integer_value(entry);
+		}
+	}
+
+	json_decref(root);
+	return true;
+
+error:
+
+	json_decref(root);
+	return false;
+}
+
 static bool init_connect(struct rtmp_stream *stream)
 {
 	obs_service_t *service;
@@ -1289,7 +1369,6 @@ static bool init_connect(struct rtmp_stream *stream)
 	const char *ip_family;
 	int64_t drop_p;
 	int64_t drop_b;
-	uint32_t caps;
 
 	if (stopping(stream)) {
 		pthread_join(stream->send_thread, NULL);
@@ -1328,56 +1407,89 @@ static bool init_connect(struct rtmp_stream *stream)
 	stream->max_shutdown_time_sec =
 		(int)obs_data_get_int(settings, OPT_MAX_SHUTDOWN_TIME_SEC);
 
-	obs_encoder_t *venc = obs_output_get_video_encoder(stream->output);
-	obs_encoder_t *aenc = obs_output_get_audio_encoder(stream->output, 0);
-	obs_data_t *vsettings = obs_encoder_get_settings(venc);
-	obs_data_t *asettings = obs_encoder_get_settings(aenc);
+	long long overall_audio_bitrate = 0;
+	long long overall_video_bitrate = 0;
+	bool dbr_capable = true;
 	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
 		obs_encoder_t *enc =
 			obs_output_get_audio_encoder(stream->output, i);
-		if (enc) {
-			const char *codec = obs_encoder_get_codec(enc);
-			stream->audio_codec[i] = to_audio_type(codec);
-		}
+		if (!enc)
+			continue;
+
+		const char *codec = obs_encoder_get_codec(enc);
+		stream->audio_codec[i] = to_audio_type(codec);
+
+		obs_data_t *settings = obs_encoder_get_settings(enc);
+		overall_audio_bitrate += obs_data_get_int(settings, "bitrate");
+		obs_data_release(settings);
 	}
 
+	da_reserve(stream->dbr_interpolation_table, 2);
+	da_push_back_new(stream->dbr_interpolation_table);
+	struct dbr_interpolation_point *dbr_point =
+		da_push_back_new(stream->dbr_interpolation_table);
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
 		obs_encoder_t *enc =
 			obs_output_get_video_encoder2(stream->output, i);
+		if (!enc)
+			continue;
 
-		if (enc) {
-			const char *codec = obs_encoder_get_codec(enc);
-			stream->video_codec[i] = to_video_type(codec);
+		const char *codec = obs_encoder_get_codec(enc);
+		stream->video_codec[i] = to_video_type(codec);
+
+		if ((obs_encoder_get_caps(enc) & OBS_ENCODER_CAP_DYN_BITRATE) ==
+		    0) {
+			dbr_capable = false;
+			info("Dynamic bitrate disabled. "
+			     "The encoder '%s' does not support on-the-fly "
+			     "bitrate reconfiguration.",
+			     obs_encoder_get_name(enc));
+			continue;
 		}
+
+		obs_data_t *settings = obs_encoder_get_settings(enc);
+		long long bitrate = obs_data_get_int(settings, "bitrate");
+		overall_video_bitrate += bitrate;
+		dbr_point->bitrates[i] = (long)bitrate;
+		obs_data_release(settings);
 	}
 
 	deque_free(&stream->dbr_frames);
-	stream->audio_bitrate = (long)obs_data_get_int(asettings, "bitrate");
+	stream->audio_bitrate = (long)overall_audio_bitrate;
 	stream->dbr_data_size = 0;
-	stream->dbr_orig_bitrate = (long)obs_data_get_int(vsettings, "bitrate");
+	stream->dbr_orig_bitrate = (long)overall_video_bitrate;
 	stream->dbr_cur_bitrate = stream->dbr_orig_bitrate;
 	stream->dbr_est_bitrate = 0;
 	stream->dbr_inc_bitrate = stream->dbr_orig_bitrate / 10;
 	stream->dbr_inc_timeout = 0;
-	stream->dbr_enabled = obs_data_get_bool(settings, OPT_DYN_BITRATE);
-
-	caps = obs_encoder_get_caps(venc);
-	if ((caps & OBS_ENCODER_CAP_DYN_BITRATE) == 0) {
-		stream->dbr_enabled = false;
-		info("Dynamic bitrate disabled. "
-		     "The encoder does not support on-the-fly bitrate reconfiguration.");
-	}
+	stream->dbr_enabled = dbr_capable &&
+			      obs_data_get_bool(settings, OPT_DYN_BITRATE);
 
 	if (obs_output_get_delay(stream->output) != 0) {
 		stream->dbr_enabled = false;
 	}
 
+	if (stream->dbr_enabled &&
+	    !obs_data_has_user_value(
+		    settings, OPT_DYN_BITRATE_INTERPOLATION_TABLE_DATA)) {
+		info("Dynamic bitrate using default interpolation");
+	} else if (obs_data_has_user_value(
+			   settings,
+			   OPT_DYN_BITRATE_INTERPOLATION_TABLE_DATA)) {
+		const char *dbr_interpolation_data = obs_data_get_string(
+			settings, OPT_DYN_BITRATE_INTERPOLATION_TABLE_DATA);
+		if (!build_dbr_interpolation_table(stream,
+						   dbr_interpolation_data)) {
+			warn("Loading interpolation settings failed, disabling dynamic bitrate");
+			stream->dbr_enabled = false;
+		} else {
+			info("Successfully loaded dynamic bitrate interpolation settings");
+		}
+	}
+
 	if (stream->dbr_enabled) {
 		info("Dynamic bitrate enabled.  Dropped frames begone!");
 	}
-
-	obs_data_release(vsettings);
-	obs_data_release(asettings);
 
 	if (drop_p < (drop_b + 200))
 		drop_p = drop_b + 200;
@@ -1620,15 +1732,69 @@ static bool dbr_bitrate_lowered(struct rtmp_stream *stream)
 	return true;
 }
 
+#ifndef min
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
 static void dbr_set_bitrate(struct rtmp_stream *stream)
 {
-	obs_encoder_t *vencoder = obs_output_get_video_encoder(stream->output);
-	obs_data_t *settings = obs_encoder_get_settings(vencoder);
+	if (stream->dbr_interpolation_table.array == NULL ||
+	    stream->dbr_interpolation_table.num == 0)
+		return;
 
-	obs_data_set_int(settings, "bitrate", stream->dbr_cur_bitrate);
-	obs_encoder_update(vencoder, settings);
+	size_t dbr_base_column = stream->dbr_interpolation_table.num - 1;
+	for (size_t column = 0; column < stream->dbr_interpolation_table.num;
+	     column++) {
+		struct dbr_interpolation_point *dbr_point =
+			&stream->dbr_interpolation_table.array[column];
+		long column_bitrate = 0;
+		for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+			column_bitrate += dbr_point->bitrates[i];
+		}
+		if (column_bitrate > stream->dbr_cur_bitrate)
+			break;
 
-	obs_data_release(settings);
+		dbr_base_column = column;
+	}
+
+	size_t dbr_upper_column = dbr_base_column + 1;
+	if (dbr_upper_column >= stream->dbr_interpolation_table.num)
+		dbr_upper_column = stream->dbr_interpolation_table.num - 1;
+
+	struct dbr_interpolation_point *dbr_base_point =
+		&stream->dbr_interpolation_table.array[dbr_base_column];
+	struct dbr_interpolation_point *dbr_upper_point =
+		&stream->dbr_interpolation_table.array[dbr_upper_column];
+	long deltas[MAX_OUTPUT_VIDEO_ENCODERS] = {0};
+	long remaining_bitrate = stream->dbr_cur_bitrate;
+	long overall_delta = 0;
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		deltas[i] = dbr_upper_point->bitrates[i] -
+			    dbr_base_point->bitrates[i];
+		overall_delta += deltas[i];
+		remaining_bitrate -= dbr_base_point->bitrates[i];
+	}
+
+	if (overall_delta < 1)
+		overall_delta = 1;
+	double delta_scale =
+		min(1.0, remaining_bitrate / (double)overall_delta);
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		obs_encoder_t *enc =
+			obs_output_get_video_encoder2(stream->output, i);
+		if (!enc)
+			continue;
+
+		long bitrate = dbr_base_point->bitrates[i] +
+			       (long)(deltas[i] * delta_scale);
+
+		obs_data_t *settings = obs_encoder_get_settings(enc);
+		if (obs_data_get_int(settings, "bitrate") != bitrate) {
+			obs_data_set_int(settings, "bitrate", bitrate);
+			obs_encoder_update(enc, settings);
+		}
+		obs_data_release(settings);
+	}
 }
 
 static void dbr_inc_bitrate(struct rtmp_stream *stream)

@@ -38,6 +38,8 @@
 #include "qt-helpers.hpp"
 #include "window-basic-main.hpp"
 
+using json = nlohmann::json;
+
 Qt::ConnectionType BlockingConnectionTypeFor(QObject *object)
 {
 	return object->thread() == QThread::currentThread()
@@ -1065,7 +1067,7 @@ std::optional<int> MultitrackVideoOutput::ConnectTimeMs()
 
 bool MultitrackVideoOutput::HandleIncompatibleSettings(
 	QWidget *parent, config_t *config, obs_service_t *service,
-	bool &useDelay, bool &enableNewSocketLoop, bool &enableDynBitrate)
+	bool &useDelay, bool &enableNewSocketLoop)
 {
 	QString incompatible_settings;
 	QString where_to_disable;
@@ -1097,9 +1099,6 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 		      "Basic.Settings.Advanced.StreamDelay");
 	check_setting(enableNewSocketLoop,
 		      "Basic.Settings.Advanced.Network.EnableNewSocketLoop",
-		      "Basic.Settings.Advanced.Network");
-	check_setting(enableDynBitrate,
-		      "Basic.Settings.Output.DynamicBitrate.Beta",
 		      "Basic.Settings.Advanced.Network");
 
 	if (incompatible_settings.isEmpty())
@@ -1153,10 +1152,8 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 	    mb.clickedButton() == all_streams) {
 		useDelay = false;
 		enableNewSocketLoop = false;
-		enableDynBitrate = false;
 		useDelay = false;
 		enableNewSocketLoop = false;
-		enableDynBitrate = false;
 
 		if (mb.clickedButton() == all_streams) {
 			config_set_bool(config, "Output", "DelayEnable", false);
@@ -1178,7 +1175,8 @@ static bool
 create_video_encoders(obs_data_t *go_live_config,
 		      std::vector<OBSEncoderAutoRelease> &video_encoders,
 		      obs_output_t *output, obs_output_t *recording_output,
-		      const std::map<std::string, video_t *> &extra_views)
+		      const std::map<std::string, video_t *> &extra_views,
+		      json &bitrate_interpolation_array)
 {
 	OBSDataArrayAutoRelease encoder_configs =
 		obs_data_get_array(go_live_config, "encoder_configurations");
@@ -1213,6 +1211,24 @@ create_video_encoders(obs_data_t *go_live_config,
 			obs_output_set_video_encoder2(recording_output, encoder,
 						      i);
 		video_encoders.emplace_back(std::move(encoder));
+
+		if (obs_data_has_user_value(encoder_config,
+					    "bitrate_interpolation_points")) {
+			auto parsed = json::parse(
+				obs_data_get_string(
+					encoder_config,
+					"bitrate_interpolation_points"),
+				nullptr, false);
+			if (parsed.is_discarded())
+				blog(LOG_WARNING,
+				     "MultitrackVideoOutput: ABR bitrate "
+				     "interpolation points not available for encoder '%s'",
+				     video_encoder_name_buffer->array);
+			bitrate_interpolation_array.push_back(
+				parsed.is_discarded() ? json::array() : parsed);
+		} else {
+			bitrate_interpolation_array.push_back(json::array());
+		}
 	}
 
 	return true;
@@ -1351,9 +1367,16 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 		recording_output =
 			create_recording_output(dump_stream_to_file_config);
 
+	json bitrate_interpolation_array = json::array();
 	if (!create_video_encoders(go_live_config, video_encoders, output,
-				   recording_output, extra_views))
+				   recording_output, extra_views,
+				   bitrate_interpolation_array))
 		return {nullptr, nullptr};
+
+	OBSDataAutoRelease settings = obs_output_get_settings(output);
+	obs_data_set_string(settings, "interpolation_table_data",
+			    bitrate_interpolation_array.dump().c_str());
+	obs_output_update(output, settings);
 
 	create_audio_encoders(go_live_config, audio_encoders, output,
 			      recording_output, audio_encoder_id, audio_bitrate,

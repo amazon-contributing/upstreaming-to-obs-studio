@@ -1289,6 +1289,14 @@ struct encoder_group {
 	uint32_t encoders_added;
 	uint32_t encoders_ready;
 	uint64_t start_timestamp;
+
+	uint32_t frame_rate_divisors_lcm;
+
+	uint64_t reconfigure_request;
+	int64_t next_pts;
+	uint32_t encoders_updated_next_pts;
+	uint32_t encoders_reconfigured;
+	bool reconfigure_again;
 };
 
 struct obs_encoder {
@@ -1364,6 +1372,8 @@ struct obs_encoder {
 
 	/* track encoders that are part of a gop-aligned multitrack group */
 	struct encoder_group *encoder_group;
+	uint64_t last_reconfigure_request;
+	uint64_t last_handled_reconfigure_request;
 
 	pthread_mutex_t outputs_mutex;
 	DARRAY(obs_output_t *) outputs;

@@ -1248,9 +1248,9 @@ bool SimpleOutput::StartStreaming(obs_service_t *service)
 		config_get_bool(main->Config(), "Output", "DynamicBitrate");
 
 	if (multitrackVideo && multitrackVideoActive &&
-	    !multitrackVideo->HandleIncompatibleSettings(
-		    main, main->Config(), service, useDelay,
-		    enableNewSocketLoop, enableDynBitrate)) {
+	    !multitrackVideo->HandleIncompatibleSettings(main, main->Config(),
+							 service, useDelay,
+							 enableNewSocketLoop)) {
 		multitrackVideoActive = false;
 		return false;
 	}
@@ -2352,9 +2352,9 @@ bool AdvancedOutput::StartStreaming(obs_service_t *service)
 		config_get_bool(main->Config(), "Output", "DynamicBitrate");
 
 	if (multitrackVideo && multitrackVideoActive &&
-	    !multitrackVideo->HandleIncompatibleSettings(
-		    main, main->Config(), service, useDelay,
-		    enableNewSocketLoop, enableDynBitrate)) {
+	    !multitrackVideo->HandleIncompatibleSettings(main, main->Config(),
+							 service, useDelay,
+							 enableNewSocketLoop)) {
 		multitrackVideoActive = false;
 		return false;
 	}
