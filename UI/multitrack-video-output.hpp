@@ -14,14 +14,11 @@
 
 #define NOMINMAX
 
-#include "immutable-date-time.hpp"
-
 #include "berryessa-submitter.hpp"
 #include "berryessa-every-minute.hpp"
 
 class QString;
 
-void StreamStartHandler(void *arg, calldata_t *data);
 void StreamStopHandler(void *arg, calldata_t *data);
 void StreamDeactivateHandler(void *arg, calldata_t *data);
 
@@ -77,22 +74,13 @@ public:
 
 	void StopExtraViews();
 
-	const std::vector<OBSEncoderAutoRelease> &VideoEncoders() const;
-
 private:
-	const ImmutableDateTime &GenerateStreamAttemptStartTime();
-
 	std::unique_ptr<BerryessaSubmitter> berryessa_;
 	std::shared_ptr<std::optional<BerryessaEveryMinute>>
 		berryessa_every_minute_ =
 			std::make_shared<std::optional<BerryessaEveryMinute>>(
 				std::nullopt);
 	QFutureSynchronizer<void> berryessa_every_minute_initializer_;
-
-	std::function<void(bool success, std::optional<int> connect_time_ms)>
-		send_start_event;
-
-	std::optional<ImmutableDateTime> stream_attempt_start_time_;
 
 	struct OBSOutputObjects {
 		OBSOutputAutoRelease output_;
@@ -115,7 +103,6 @@ private:
 	std::mutex current_stream_dump_mutex;
 	std::optional<OBSOutputObjects> current_stream_dump;
 
-	friend void StreamStartHandler(void *arg, calldata_t *data);
 	friend void StreamStopHandler(void *arg, calldata_t *data);
 	friend void StreamDeactivateHandler(void *arg, calldata_t *data);
 	friend void RecordingStartHandler(void *arg, calldata_t *data);

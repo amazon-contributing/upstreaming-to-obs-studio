@@ -1,7 +1,6 @@
 
 #include "berryessa-submitter.hpp"
 #include "berryessa-every-minute.hpp"
-#include "immutable-date-time.hpp"
 #include "presentmon-csv-capture.hpp"
 
 #include <util/dstr.hpp>
@@ -169,10 +168,11 @@ void BerryessaEveryMinute::fire()
 				shared_counters->wmi_queries_->SummarizeData(
 					event);
 #endif
-
-			auto current_time = ImmutableDateTime::CurrentTimeUtc();
+			auto buffer = QDateTime::currentDateTimeUtc()
+					      .toString(Qt::ISODateWithMs)
+					      .toUtf8();
 			obs_data_set_string(event, "time_utc",
-					    current_time.CStr());
+					    buffer.constData());
 
 			QMetaObject::invokeMethod(berryessa, [event,
 							      berryessa] {

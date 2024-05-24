@@ -292,10 +292,6 @@ target_sources(
           goliveapi-network.hpp
           goliveapi-postdata.cpp
           goliveapi-postdata.hpp
-          immutable-date-time.cpp
-          immutable-date-time.hpp
-          ivs-events.cpp
-          ivs-events.hpp
           multitrack-video-error.cpp
           multitrack-video-error.hpp
           multitrack-video-output.cpp

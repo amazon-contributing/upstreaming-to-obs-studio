@@ -1,12 +1,10 @@
 #include "goliveapi-postdata.hpp"
 
-#include "immutable-date-time.hpp"
 #include "system-info.hpp"
 #include "multitrack-video-output.hpp"
 
 OBSDataAutoRelease
-constructGoLivePost(const ImmutableDateTime &attempt_start_time,
-		    QString streamKey,
+constructGoLivePost(QString streamKey,
 		    const std::optional<uint64_t> &maximum_aggregate_bitrate,
 		    const std::optional<uint32_t> &maximum_video_tracks,
 		    bool vod_track_enabled,
@@ -16,8 +14,6 @@ constructGoLivePost(const ImmutableDateTime &attempt_start_time,
 	OBSDataAutoRelease capabilitiesData = obs_data_create();
 	obs_data_set_string(postData, "service", "IVS");
 	obs_data_set_string(postData, "schema_version", "2023-05-10");
-	obs_data_set_string(postData, "stream_attempt_start_time",
-			    attempt_start_time.CStr());
 	obs_data_set_string(postData, "authentication",
 			    streamKey.toUtf8().constData());
 	obs_data_set_obj(postData, "capabilities", capabilitiesData);

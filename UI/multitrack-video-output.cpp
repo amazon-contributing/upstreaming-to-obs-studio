@@ -33,7 +33,6 @@
 #include "system-info.hpp"
 #include "goliveapi-postdata.hpp"
 #include "goliveapi-network.hpp"
-#include "ivs-events.hpp"
 #include "multitrack-video-error.hpp"
 #include "qt-helpers.hpp"
 #include "window-basic-main.hpp"
@@ -61,42 +60,6 @@ bool MultitrackVideoDeveloperModeEnabled()
 	return developer_mode;
 }
 
-static const QString &device_id()
-{
-	static const QString device_id_ = []() -> QString {
-		auto config = App()->GlobalConfig();
-		if (!config_has_user_value(config, "General", "DeviceID")) {
-
-			auto new_device_id = QUuid::createUuid().toString(
-				QUuid::WithoutBraces);
-			config_set_string(config, "General", "DeviceID",
-					  new_device_id.toUtf8().constData());
-		}
-		return config_get_string(config, "General", "DeviceID");
-	}();
-	return device_id_;
-}
-
-static const QString &obs_session_id()
-{
-	static const QString session_id_ =
-		QUuid::createUuid().toString(QUuid::WithoutBraces);
-	return session_id_;
-}
-
-static void submit_event(BerryessaSubmitter *berryessa, const char *event_name,
-			 obs_data_t *data)
-{
-	if (!berryessa) {
-		blog(LOG_WARNING,
-		     "MultitrackVideoOutput: not submitting event %s",
-		     event_name);
-		return;
-	}
-
-	berryessa->submit(event_name, data);
-}
-
 static void add_always_bool(BerryessaSubmitter *berryessa, const char *name,
 			    bool data)
 {
@@ -116,8 +79,7 @@ static void add_always_string(BerryessaSubmitter *berryessa, const char *name,
 }
 
 static OBSServiceAutoRelease
-create_service(const QString &device_id, const QString &obs_session_id,
-	       obs_data_t *go_live_config,
+create_service(obs_data_t *go_live_config,
 	       const std::optional<std::string> &rtmp_url,
 	       const QString &in_stream_key)
 {
@@ -177,9 +139,6 @@ create_service(const QString &device_id, const QString &obs_session_id,
 
 	QUrl parsed_url{url};
 	QUrlQuery parsed_query{parsed_url};
-
-	parsed_query.addQueryItem("deviceIdentifier", device_id);
-	parsed_query.addQueryItem("obsSessionId", obs_session_id);
 
 	OBSDataAutoRelease go_live_meta =
 		obs_data_get_obj(go_live_config, "meta");
@@ -641,10 +600,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 				berryessa_ = std::make_unique<BerryessaSubmitter>(
 					parent,
 					"https://data.stats.live-video.net/");
-				berryessa_->setAlwaysString("device_id",
-							    device_id());
-				berryessa_->setAlwaysString("obs_session_id",
-							    obs_session_id());
 			},
 			BlockingConnectionTypeFor(parent));
 	}
@@ -672,11 +627,9 @@ void MultitrackVideoOutput::PrepareStreaming(
 				std::nullopt);
 	}
 
-	auto attempt_start_time = GenerateStreamAttemptStartTime();
 	OBSDataAutoRelease go_live_post;
 	OBSDataAutoRelease go_live_config;
 	OBSDataAutoRelease custom;
-	quint64 download_time_elapsed = 0;
 	bool is_custom_config = custom_config.has_value();
 	auto auto_config_url = MultitrackVideoAutoConfigURL(service);
 
@@ -698,8 +651,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 
 	blog(LOG_INFO,
 	     "Preparing enhanced broadcasting stream for:\n"
-	     "    device_id:      %s\n"
-	     "    obs_session_id: %s\n"
 	     "    custom config:  %s\n"
 	     "    config url:     %s\n"
 	     "  settings:\n"
@@ -708,8 +659,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 	     "    max video tracks:      %s (%" PRIu32 ")\n"
 	     "    custom rtmp url:       %s ('%s')\n"
 	     "    vod track:             %s",
-	     device_id().toUtf8().constData(),
-	     obs_session_id().toUtf8().constData(),
 	     is_custom_config ? "Yes" : "No",
 	     !auto_config_url.isEmpty() ? auto_config_url_data.constData()
 					: "(null)",
@@ -731,10 +680,11 @@ void MultitrackVideoOutput::PrepareStreaming(
 	}
 
 	try {
-		go_live_post = constructGoLivePost(
-			attempt_start_time, stream_key,
-			maximum_aggregate_bitrate, maximum_video_tracks,
-			vod_track_mixer.has_value(), extra_views_);
+		go_live_post = constructGoLivePost(stream_key,
+						   maximum_aggregate_bitrate,
+						   maximum_video_tracks,
+						   vod_track_mixer.has_value(),
+						   extra_views_);
 
 		go_live_config = DownloadGoLiveConfig(parent, auto_config_url,
 						      go_live_post);
@@ -742,8 +692,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 			throw MultitrackVideoError::warning(
 				QTStr("FailedToStartStream.FallbackToDefault")
 					.arg(multitrack_video_name));
-
-		download_time_elapsed = attempt_start_time.MSecsElapsed();
 
 		if (custom_config.has_value()) {
 			custom = obs_data_create_from_json(
@@ -821,8 +769,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 					.arg(multitrack_video_name));
 
 		auto multitrack_video_service =
-			create_service(device_id(), obs_session_id(),
-				       go_live_config, rtmp_url, stream_key);
+			create_service(go_live_config, rtmp_url, stream_key);
 		if (!multitrack_video_service)
 			throw MultitrackVideoError::warning(
 				QTStr("FailedToStartStream.FallbackToDefault")
@@ -888,68 +835,10 @@ void MultitrackVideoOutput::PrepareStreaming(
 				std::move(deactivate_stream),
 			});
 		}
-
-		if (berryessa_) {
-			send_start_event = [berryessa = berryessa_.get(),
-					    attempt_start_time,
-					    download_time_elapsed,
-					    is_custom_config,
-					    go_live_post =
-						    OBSData{go_live_post},
-					    go_live_config =
-						    OBSData{custom ? custom
-								   : go_live_config}](
-						   bool success,
-						   std::optional<int>
-							   connect_time_ms) {
-				auto start_streaming_returned =
-					attempt_start_time.MSecsElapsed();
-
-				add_always_string(berryessa,
-						  "stream_attempt_start_time",
-						  attempt_start_time.CStr());
-
-				if (!success) {
-					auto event =
-						MakeEvent_ivs_obs_stream_start_failed(
-							go_live_post,
-							go_live_config,
-							attempt_start_time,
-							download_time_elapsed,
-							start_streaming_returned);
-					submit_event(
-						berryessa,
-						"ivs_obs_stream_start_failed",
-						event);
-				} else {
-					auto event =
-						MakeEvent_ivs_obs_stream_start(
-							go_live_post,
-							go_live_config,
-							attempt_start_time,
-							download_time_elapsed,
-							start_streaming_returned,
-							connect_time_ms);
-
-					submit_event(berryessa,
-						     "ivs_obs_stream_start",
-						     event);
-				}
-			};
-		}
 	} catch (...) {
-		auto start_streaming_returned =
-			attempt_start_time.MSecsElapsed();
-		auto event = MakeEvent_ivs_obs_stream_start_failed(
-			go_live_post, custom ? custom : go_live_config,
-			attempt_start_time, download_time_elapsed,
-			start_streaming_returned);
-		submit_event(berryessa_.get(), "ivs_obs_stream_start_failed",
-			     event);
 
 		if (berryessa_) {
 			berryessa_->unsetAlways("config_id");
-			berryessa_->unsetAlways("stream_attempt_start_time");
 		}
 
 		StopExtraViews();
@@ -977,12 +866,8 @@ signal_handler_t *MultitrackVideoOutput::StreamingSignalHandler()
 
 void MultitrackVideoOutput::StartedStreaming(QWidget *parent, bool success)
 {
-	if (!success) {
-		if (send_start_event)
-			send_start_event(false, std::nullopt);
-		send_start_event = {};
+	if (!success)
 		return;
-	}
 
 	OBSOutputAutoRelease dump_output = nullptr;
 	{
@@ -999,11 +884,6 @@ void MultitrackVideoOutput::StartedStreaming(QWidget *parent, bool success)
 		blog(LOG_INFO, "MultitrackVideoOutput: starting recording%s",
 		     result ? "" : " failed");
 	}
-
-	if (send_start_event)
-		send_start_event(true, ConnectTimeMs());
-
-	send_start_event = {};
 
 	if (berryessa_ && current) {
 		std::vector<OBSEncoder> video_encoders;
@@ -1036,9 +916,6 @@ void MultitrackVideoOutput::StopStreaming()
 
 	if (current_output) {
 		obs_output_stop(current_output);
-
-		submit_event(berryessa_.get(), "ivs_obs_stream_stop",
-			     MakeEvent_ivs_obs_stream_stop());
 	}
 
 	OBSOutputAutoRelease dump_output = nullptr;
@@ -1141,9 +1018,6 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 				.arg(incompatible_settings_list)
 				.arg(action)
 				.toUtf8();
-		auto ev = MakeEvent_ivs_obs_stream_stop();
-		obs_data_set_string(ev, "server_error", error.constData());
-		submit_event(berryessa_.get(), "ivs_obs_stream_stop", ev);
 		blog(LOG_INFO, "MultitrackVideoOutput: %s", error.constData());
 	}
 
@@ -1390,9 +1264,8 @@ void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self,
 {
 	auto handler = obs_output_get_signal_handler(output);
 
-	start.Connect(handler, "start",
-		      !recording ? StreamStartHandler : RecordingStartHandler,
-		      self);
+	if (recording)
+		start.Connect(handler, "start", RecordingStartHandler, self);
 
 	stop.Connect(handler, "stop",
 		     !recording ? StreamStopHandler : RecordingStopHandler,
@@ -1434,18 +1307,6 @@ void MultitrackVideoOutput::ReleaseOnMainThread(
 		[objects = std::move(objects)] {}, Qt::QueuedConnection);
 }
 
-void StreamStartHandler(void *arg, calldata_t * /* data */)
-{
-	auto self = static_cast<MultitrackVideoOutput *>(arg);
-
-	if (!self->stream_attempt_start_time_.has_value() || !self->berryessa_)
-		return;
-
-	auto event = MakeEvent_ivs_obs_stream_started(
-		self->stream_attempt_start_time_->MSecsElapsed());
-	self->berryessa_->submit("ivs_obs_stream_started", event);
-}
-
 void StreamStopHandler(void *arg, calldata_t *params)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
@@ -1463,12 +1324,6 @@ void StreamStopHandler(void *arg, calldata_t *params)
 	if (stream_dump_output)
 		obs_output_stop(stream_dump_output);
 
-	auto code = calldata_int(params, "code");
-	auto last_error = calldata_string(params, "last_error");
-
-	auto stopped_event = MakeEvent_ivs_obs_stream_stopped(
-		code == OBS_OUTPUT_SUCCESS ? nullptr : &code, last_error);
-
 	if (obs_output_active(static_cast<obs_output_t *>(
 		    calldata_ptr(params, "output"))))
 		return;
@@ -1478,11 +1333,7 @@ void StreamStopHandler(void *arg, calldata_t *params)
 		QApplication::instance()->thread(),
 		[berryessa = QPointer{self->berryessa_.get()},
 		 bem = std::move(self->berryessa_every_minute_),
-		 stopped_event = std::move(stopped_event),
 		 object_releaser = std::move(object_releaser)] {
-			submit_event(berryessa, "ivs_obs_stream_stopped",
-				     stopped_event);
-
 			if (berryessa) {
 				berryessa->unsetAlways("config_id");
 				berryessa->unsetAlways(
@@ -1535,10 +1386,4 @@ void RecordingDeactivateHandler(void *arg, calldata_t * /*data*/)
 
 	MultitrackVideoOutput::ReleaseOnMainThread(
 		self->take_current_stream_dump());
-}
-
-const ImmutableDateTime &MultitrackVideoOutput::GenerateStreamAttemptStartTime()
-{
-	stream_attempt_start_time_.emplace(ImmutableDateTime::CurrentTimeUtc());
-	return *stream_attempt_start_time_;
 }
