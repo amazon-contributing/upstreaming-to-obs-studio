@@ -61,29 +61,6 @@ bool MultitrackVideoDeveloperModeEnabled()
 	return developer_mode;
 }
 
-static const QString &device_id()
-{
-	static const QString device_id_ = []() -> QString {
-		auto config = App()->GlobalConfig();
-		if (!config_has_user_value(config, "General", "DeviceID")) {
-
-			auto new_device_id = QUuid::createUuid().toString(
-				QUuid::WithoutBraces);
-			config_set_string(config, "General", "DeviceID",
-					  new_device_id.toUtf8().constData());
-		}
-		return config_get_string(config, "General", "DeviceID");
-	}();
-	return device_id_;
-}
-
-static const QString &obs_session_id()
-{
-	static const QString session_id_ =
-		QUuid::createUuid().toString(QUuid::WithoutBraces);
-	return session_id_;
-}
-
 static void submit_event(BerryessaSubmitter *berryessa, const char *event_name,
 			 obs_data_t *data)
 {
@@ -116,8 +93,7 @@ static void add_always_string(BerryessaSubmitter *berryessa, const char *name,
 }
 
 static OBSServiceAutoRelease
-create_service(const QString &device_id, const QString &obs_session_id,
-	       obs_data_t *go_live_config,
+create_service(obs_data_t *go_live_config,
 	       const std::optional<std::string> &rtmp_url,
 	       const QString &in_stream_key)
 {
@@ -177,9 +153,6 @@ create_service(const QString &device_id, const QString &obs_session_id,
 
 	QUrl parsed_url{url};
 	QUrlQuery parsed_query{parsed_url};
-
-	parsed_query.addQueryItem("deviceIdentifier", device_id);
-	parsed_query.addQueryItem("obsSessionId", obs_session_id);
 
 	OBSDataAutoRelease go_live_meta =
 		obs_data_get_obj(go_live_config, "meta");
@@ -641,10 +614,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 				berryessa_ = std::make_unique<BerryessaSubmitter>(
 					parent,
 					"https://data.stats.live-video.net/");
-				berryessa_->setAlwaysString("device_id",
-							    device_id());
-				berryessa_->setAlwaysString("obs_session_id",
-							    obs_session_id());
 			},
 			BlockingConnectionTypeFor(parent));
 	}
@@ -698,8 +667,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 
 	blog(LOG_INFO,
 	     "Preparing enhanced broadcasting stream for:\n"
-	     "    device_id:      %s\n"
-	     "    obs_session_id: %s\n"
 	     "    custom config:  %s\n"
 	     "    config url:     %s\n"
 	     "  settings:\n"
@@ -708,8 +675,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 	     "    max video tracks:      %s (%" PRIu32 ")\n"
 	     "    custom rtmp url:       %s ('%s')\n"
 	     "    vod track:             %s",
-	     device_id().toUtf8().constData(),
-	     obs_session_id().toUtf8().constData(),
 	     is_custom_config ? "Yes" : "No",
 	     !auto_config_url.isEmpty() ? auto_config_url_data.constData()
 					: "(null)",
@@ -821,8 +786,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 					.arg(multitrack_video_name));
 
 		auto multitrack_video_service =
-			create_service(device_id(), obs_session_id(),
-				       go_live_config, rtmp_url, stream_key);
+			create_service(go_live_config, rtmp_url, stream_key);
 		if (!multitrack_video_service)
 			throw MultitrackVideoError::warning(
 				QTStr("FailedToStartStream.FallbackToDefault")
