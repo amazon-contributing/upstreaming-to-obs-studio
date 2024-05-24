@@ -11,7 +11,6 @@
 
 #include "goliveapi-postdata.hpp"
 #include "goliveapi-network.hpp"
-#include "immutable-date-time.hpp"
 #include "multitrack-video-error.hpp"
 
 #include "ui_AutoConfigStartPage.h"
@@ -423,7 +422,6 @@ bool AutoConfigStreamPage::validatePage()
 
 		std::map<std::string, video_t *> extra_views;
 		auto postData = constructGoLivePost(
-			ImmutableDateTime::CurrentTimeUtc(),
 			QString::fromStdString(wiz->key), std::nullopt,
 			std::nullopt, false, extra_views);
 
