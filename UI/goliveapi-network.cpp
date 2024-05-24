@@ -157,8 +157,12 @@ QString MultitrackVideoAutoConfigURL(obs_service_t *service)
 				return args[i + 1];
 			}
 		}
-		return obs_service_get_connect_info(
-			service, OBS_SERVICE_CONNECT_INFO_CONFIG_URL);
+		OBSDataAutoRelease settings = obs_service_get_settings(service);
+		if (!obs_data_has_user_value(
+			    settings, "multitrack_video_configuration_url"))
+			return {};
+		return obs_data_get_string(
+			settings, "multitrack_video_configuration_url");
 	}();
 
 	blog(LOG_INFO, "Go live URL: %s", url.toUtf8().constData());

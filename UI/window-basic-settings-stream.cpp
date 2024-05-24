@@ -96,6 +96,16 @@ void OBSBasicSettings::InitStreamPage()
 		&OBSBasicSettings::DisplayEnforceWarning);
 	connect(ui->ignoreRecommended, &QCheckBox::toggled, this,
 		&OBSBasicSettings::UpdateResFPSLimits);
+
+	connect(ui->enableMultitrackVideo, &QCheckBox::toggled, this,
+		&OBSBasicSettings::UpdateMultitrackVideo);
+	connect(ui->multitrackVideoMaximumAggregateBitrateAuto,
+		&QCheckBox::toggled, this,
+		&OBSBasicSettings::UpdateMultitrackVideo);
+	connect(ui->multitrackVideoMaximumVideoTracksAuto, &QCheckBox::toggled,
+		this, &OBSBasicSettings::UpdateMultitrackVideo);
+	connect(ui->multitrackVideoConfigOverrideEnable, &QCheckBox::toggled,
+		this, &OBSBasicSettings::UpdateMultitrackVideo);
 }
 
 void OBSBasicSettings::LoadStream1Settings()
@@ -646,29 +656,6 @@ void OBSBasicSettings::on_customServer_textChanged(const QString &)
 		lastCustomServer = ui->customServer->text();
 
 	SwapMultiTrack(QT_TO_UTF8(protocol));
-}
-
-void OBSBasicSettings::on_enableMultitrackVideo_toggled(bool /*enabled*/)
-{
-	UpdateMultitrackVideo();
-}
-
-void OBSBasicSettings::on_multitrackVideoMaximumAggregateBitrateAuto_toggled(
-	bool /*enabled*/)
-{
-	UpdateMultitrackVideo();
-}
-
-void OBSBasicSettings::on_multitrackVideoMaximumVideoTracksAuto_toggled(
-	bool /*enabled*/)
-{
-	UpdateMultitrackVideo();
-}
-
-void OBSBasicSettings::on_multitrackVideoConfigOverrideEnable_toggled(
-	bool /*enabled*/)
-{
-	UpdateMultitrackVideo();
 }
 
 void OBSBasicSettings::ServiceChanged(bool resetFields)

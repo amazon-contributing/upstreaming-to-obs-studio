@@ -16,7 +16,6 @@ struct rtmp_common {
 	char *protocol;
 	char *server;
 	char *key;
-	char *ertmp_config_url;
 
 	struct obs_service_resolution *supported_resolutions;
 	size_t supported_resolutions_count;
@@ -150,7 +149,6 @@ static void rtmp_common_update(void *data, obs_data_t *settings)
 	bfree(service->protocol);
 	bfree(service->server);
 	bfree(service->key);
-	bfree(service->ertmp_config_url);
 
 	service->service = bstrdup(obs_data_get_string(settings, "service"));
 	service->protocol = bstrdup(obs_data_get_string(settings, "protocol"));
@@ -162,7 +160,6 @@ static void rtmp_common_update(void *data, obs_data_t *settings)
 	service->supported_resolutions = NULL;
 	service->supported_resolutions_count = 0;
 	service->max_fps = 0;
-	service->ertmp_config_url = NULL;
 
 	json_t *root = open_services_file();
 	if (root) {
@@ -182,13 +179,6 @@ static void rtmp_common_update(void *data, obs_data_t *settings)
 		}
 
 		if (serv) {
-			const char *ertmp_config_url =
-				get_string_val(serv, "ertmp_configuration_url");
-			if (ertmp_config_url) {
-				service->ertmp_config_url =
-					bstrdup(ertmp_config_url);
-			}
-
 			copy_info_to_settings(serv, settings);
 
 			json_t *rec = json_object_get(serv, "recommended");
@@ -217,7 +207,6 @@ static void rtmp_common_destroy(void *data)
 	bfree(service->protocol);
 	bfree(service->server);
 	bfree(service->key);
-	bfree(service->ertmp_config_url);
 	bfree(service);
 }
 
@@ -608,19 +597,39 @@ static void copy_info_to_settings(json_t *service, obs_data_t *settings)
 {
 	const char *name = obs_data_get_string(settings, "service");
 
-	if (strncmp(name, "Twitch", 7) == 0) {
-		obs_data_set_string(
-			settings, "ertmp_multitrack_video_disclaimer",
-			obs_module_text("MultitrackVideo.TwitchDisclaimer"));
-		obs_data_set_string(settings, "ertmp_multitrack_video_name",
-				    "Enhanced Broadcasting");
-	}
 	fill_more_info_link(service, settings);
 	fill_stream_key_link(service, settings);
+	copy_string_from_json_if_available(
+		service, settings, "multitrack_video_configuration_url");
 	copy_string_from_json_if_available(service, settings,
-					   "ertmp_multitrack_video_disclaimer");
-	copy_string_from_json_if_available(service, settings,
-					   "ertmp_multitrack_video_name");
+					   "multitrack_video_name");
+	if (!obs_data_has_user_value(settings, "multitrack_video_name")) {
+		obs_data_set_string(settings, "multitrack_video_name",
+				    "Multitrack Video");
+	}
+
+	const char *learn_more_link_url =
+		get_string_val(service, "multitrack_video_learn_more_link");
+	struct dstr learn_more_link = {0};
+	if (learn_more_link_url) {
+		dstr_init_copy(
+			&learn_more_link,
+			obs_module_text("MultitrackVideo.LearnMoreLink"));
+		dstr_replace(&learn_more_link, "%1", learn_more_link_url);
+	}
+
+	struct dstr str;
+	dstr_init_copy(&str, obs_module_text("MultitrackVideo.Disclaimer"));
+	dstr_replace(&str, "%1",
+		     obs_data_get_string(settings, "multitrack_video_name"));
+	dstr_replace(&str, "%2", name);
+	if (learn_more_link.array) {
+		dstr_cat(&str, learn_more_link.array);
+	}
+	obs_data_set_string(settings, "multitrack_video_disclaimer", str.array);
+	dstr_free(&learn_more_link);
+	dstr_free(&str);
+
 	update_protocol(service, settings);
 }
 
@@ -1167,15 +1176,6 @@ static const char *rtmp_common_get_protocol(void *data)
 	return service->protocol ? service->protocol : "RTMP";
 }
 
-static const char *rtmp_common_get_config_url(struct rtmp_common *service)
-{
-	if (service->ertmp_config_url)
-		return service->ertmp_config_url;
-	if (service->service && strcmp(service->service, "Twitch") == 0)
-		return "https://ingest.twitch.tv/api/v3/GetClientConfiguration";
-	return NULL;
-}
-
 static const char *rtmp_common_get_connect_info(void *data, uint32_t type)
 {
 	switch ((enum obs_service_connect_info)type) {
@@ -1199,8 +1199,6 @@ static const char *rtmp_common_get_connect_info(void *data, uint32_t type)
 	}
 	case OBS_SERVICE_CONNECT_INFO_BEARER_TOKEN:
 		return NULL;
-	case OBS_SERVICE_CONNECT_INFO_CONFIG_URL:
-		return rtmp_common_get_config_url(data);
 	}
 
 	return NULL;
