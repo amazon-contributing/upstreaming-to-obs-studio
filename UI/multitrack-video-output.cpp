@@ -679,171 +679,159 @@ void MultitrackVideoOutput::PrepareStreaming(
 		extra_views_[video_output.name] = video;
 	}
 
-	try {
-		go_live_post = constructGoLivePost(stream_key,
-						   maximum_aggregate_bitrate,
-						   maximum_video_tracks,
-						   vod_track_mixer.has_value(),
-						   extra_views_);
+	auto views_guard = qScopeGuard([this] { StopExtraViews(); });
 
-		go_live_config = DownloadGoLiveConfig(parent, auto_config_url,
-						      go_live_post);
-		if (!go_live_config)
-			throw MultitrackVideoError::warning(
-				QTStr("FailedToStartStream.FallbackToDefault")
-					.arg(multitrack_video_name));
+	go_live_post = constructGoLivePost(
+		stream_key, maximum_aggregate_bitrate, maximum_video_tracks,
+		vod_track_mixer.has_value(), extra_views_);
 
-		if (custom_config.has_value()) {
-			custom = obs_data_create_from_json(
-				custom_config->c_str());
-			if (!custom)
-				throw MultitrackVideoError::critical(QTStr(
-					"FailedToStartStream.InvalidCustomConfig"));
+	go_live_config =
+		DownloadGoLiveConfig(parent, auto_config_url, go_live_post);
+	if (!go_live_config)
+		throw MultitrackVideoError::warning(
+			QTStr("FailedToStartStream.FallbackToDefault")
+				.arg(multitrack_video_name));
 
-			// copy unique ID from go live request
-			OBSDataAutoRelease go_live_meta =
-				obs_data_get_obj(go_live_config, "meta");
-			auto uuid =
-				obs_data_get_string(go_live_meta, "config_id");
+	if (custom_config.has_value()) {
+		custom = obs_data_create_from_json(custom_config->c_str());
+		if (!custom)
+			throw MultitrackVideoError::critical(QTStr(
+				"FailedToStartStream.InvalidCustomConfig"));
 
-			QByteArray generated_uuid_storage;
-
-			if (!uuid || !uuid[0]) {
-				QString generated_uuid =
-					QUuid::createUuid().toString(
-						QUuid::WithoutBraces);
-				generated_uuid_storage =
-					generated_uuid.toUtf8();
-				uuid = generated_uuid_storage.constData();
-				blog(LOG_INFO,
-				     "Failed to copy config_id from go live config, using: %s",
-				     uuid);
-			} else {
-				blog(LOG_INFO,
-				     "Using config_id from go live config with custom config: %s",
-				     uuid);
-			}
-
-			OBSDataAutoRelease meta =
-				obs_data_get_obj(custom, "meta");
-			if (!meta) {
-				meta = obs_data_create();
-				obs_data_set_obj(custom, "meta", meta);
-			}
-			obs_data_set_string(meta, "config_id", uuid);
-
-			blog(LOG_INFO, "Using custom go live config: %s",
-			     obs_data_get_json_pretty(custom));
-		}
-
-		// Put the config_id (whether we created it or downloaded it) on all
-		// Berryessa submissions from this point
-		OBSDataAutoRelease goLiveMeta =
+		// copy unique ID from go live request
+		OBSDataAutoRelease go_live_meta =
 			obs_data_get_obj(go_live_config, "meta");
-		if (goLiveMeta) {
-			const char *s =
-				obs_data_get_string(goLiveMeta, "config_id");
-			blog(LOG_INFO, "Enhanced broadcasting config_id: '%s'",
-			     s);
-			if (s && *s && berryessa_) {
-				add_always_string(berryessa_.get(), "config_id",
-						  s);
-			}
+		auto uuid = obs_data_get_string(go_live_meta, "config_id");
+
+		QByteArray generated_uuid_storage;
+
+		if (!uuid || !uuid[0]) {
+			QString generated_uuid = QUuid::createUuid().toString(
+				QUuid::WithoutBraces);
+			generated_uuid_storage = generated_uuid.toUtf8();
+			uuid = generated_uuid_storage.constData();
+			blog(LOG_INFO,
+			     "Failed to copy config_id from go live config, using: %s",
+			     uuid);
+		} else {
+			blog(LOG_INFO,
+			     "Using config_id from go live config with custom config: %s",
+			     uuid);
 		}
-		add_always_bool(berryessa_.get(), "config_custom",
-				is_custom_config);
 
-		auto audio_encoders = std::vector<OBSEncoderAutoRelease>();
-		auto video_encoders = std::vector<OBSEncoderAutoRelease>();
-		OBSEncoderAutoRelease audio_encoder = nullptr;
-		auto outputs = SetupOBSOutput(dump_stream_to_file_config,
-					      custom ? custom : go_live_config,
-					      audio_encoders, video_encoders,
-					      audio_encoder_id, audio_bitrate,
-					      vod_track_mixer, extra_views_);
-		auto output = std::move(outputs.output);
-		auto recording_output = std::move(outputs.recording_output);
-		if (!output)
-			throw MultitrackVideoError::warning(
-				QTStr("FailedToStartStream.FallbackToDefault")
-					.arg(multitrack_video_name));
+		OBSDataAutoRelease meta = obs_data_get_obj(custom, "meta");
+		if (!meta) {
+			meta = obs_data_create();
+			obs_data_set_obj(custom, "meta", meta);
+		}
+		obs_data_set_string(meta, "config_id", uuid);
 
-		auto multitrack_video_service =
-			create_service(go_live_config, rtmp_url, stream_key);
-		if (!multitrack_video_service)
-			throw MultitrackVideoError::warning(
-				QTStr("FailedToStartStream.FallbackToDefault")
-					.arg(multitrack_video_name));
+		blog(LOG_INFO, "Using custom go live config: %s",
+		     obs_data_get_json_pretty(custom));
+	}
 
-		obs_output_set_service(output, multitrack_video_service);
+	// Put the config_id (whether we created it or downloaded it) on all
+	// Berryessa submissions from this point
+	OBSDataAutoRelease goLiveMeta =
+		obs_data_get_obj(go_live_config, "meta");
+	if (goLiveMeta) {
+		const char *s = obs_data_get_string(goLiveMeta, "config_id");
+		blog(LOG_INFO, "Enhanced broadcasting config_id: '%s'", s);
+		if (s && *s && berryessa_) {
+			add_always_string(berryessa_.get(), "config_id", s);
+		}
+	}
+	auto berryessa_guard = qScopeGuard([&] {
+		if (berryessa_)
+			berryessa_->unsetAlways("config_id");
+	});
+	add_always_bool(berryessa_.get(), "config_custom", is_custom_config);
 
-		// Enable metrics delivery over SEI for multitrack live services
-		obs_output_enable_bpm(output, true);
+	auto audio_encoders = std::vector<OBSEncoderAutoRelease>();
+	auto video_encoders = std::vector<OBSEncoderAutoRelease>();
+	OBSEncoderAutoRelease audio_encoder = nullptr;
+	auto outputs = SetupOBSOutput(dump_stream_to_file_config,
+				      custom ? custom : go_live_config,
+				      audio_encoders, video_encoders,
+				      audio_encoder_id, audio_bitrate,
+				      vod_track_mixer, extra_views_);
+	auto output = std::move(outputs.output);
+	auto recording_output = std::move(outputs.recording_output);
+	if (!output)
+		throw MultitrackVideoError::warning(
+			QTStr("FailedToStartStream.FallbackToDefault")
+				.arg(multitrack_video_name));
 
-		OBSSignal start_streaming;
-		OBSSignal stop_streaming;
-		OBSSignal deactivate_stream;
-		SetupSignalHandlers(false, this, output, start_streaming,
-				    stop_streaming, deactivate_stream);
+	auto multitrack_video_service =
+		create_service(go_live_config, rtmp_url, stream_key);
+	if (!multitrack_video_service)
+		throw MultitrackVideoError::warning(
+			QTStr("FailedToStartStream.FallbackToDefault")
+				.arg(multitrack_video_name));
 
-		if (dump_stream_to_file_config && recording_output) {
-			OBSSignal start_recording;
-			OBSSignal stop_recording;
-			OBSSignal deactivate_recording;
-			SetupSignalHandlers(true, this, recording_output,
-					    start_recording, stop_recording,
-					    deactivate_recording);
+	obs_output_set_service(output, multitrack_video_service);
 
-			decltype(video_encoders) recording_video_encoders;
-			recording_video_encoders.reserve(video_encoders.size());
-			for (auto &encoder : video_encoders) {
-				recording_video_encoders.emplace_back(
-					obs_encoder_get_ref(encoder));
-			}
+	// Enable metrics delivery over SEI for multitrack live services
+	obs_output_enable_bpm(output, true);
 
-			decltype(audio_encoders) recording_audio_encoders;
-			recording_audio_encoders.reserve(audio_encoders.size());
-			for (auto &encoder : audio_encoders) {
-				recording_audio_encoders.emplace_back(
-					obs_encoder_get_ref(encoder));
-			}
+	OBSSignal start_streaming;
+	OBSSignal stop_streaming;
+	OBSSignal deactivate_stream;
+	SetupSignalHandlers(false, this, output, start_streaming,
+			    stop_streaming, deactivate_stream);
 
-			{
-				const std::lock_guard current_stream_dump_lock{
-					current_stream_dump_mutex};
-				current_stream_dump.emplace(OBSOutputObjects{
-					std::move(recording_output),
-					std::move(recording_video_encoders),
-					std::move(recording_audio_encoders),
-					nullptr,
-					std::move(start_recording),
-					std::move(stop_recording),
-					std::move(deactivate_recording),
-				});
-			}
+	if (dump_stream_to_file_config && recording_output) {
+		OBSSignal start_recording;
+		OBSSignal stop_recording;
+		OBSSignal deactivate_recording;
+		SetupSignalHandlers(true, this, recording_output,
+				    start_recording, stop_recording,
+				    deactivate_recording);
+
+		decltype(video_encoders) recording_video_encoders;
+		recording_video_encoders.reserve(video_encoders.size());
+		for (auto &encoder : video_encoders) {
+			recording_video_encoders.emplace_back(
+				obs_encoder_get_ref(encoder));
+		}
+
+		decltype(audio_encoders) recording_audio_encoders;
+		recording_audio_encoders.reserve(audio_encoders.size());
+		for (auto &encoder : audio_encoders) {
+			recording_audio_encoders.emplace_back(
+				obs_encoder_get_ref(encoder));
 		}
 
 		{
-			const std::lock_guard current_lock{current_mutex};
-			current.emplace(OBSOutputObjects{
-				std::move(output),
-				std::move(video_encoders),
-				std::move(audio_encoders),
-				std::move(multitrack_video_service),
-				std::move(start_streaming),
-				std::move(stop_streaming),
-				std::move(deactivate_stream),
+			const std::lock_guard current_stream_dump_lock{
+				current_stream_dump_mutex};
+			current_stream_dump.emplace(OBSOutputObjects{
+				std::move(recording_output),
+				std::move(recording_video_encoders),
+				std::move(recording_audio_encoders),
+				nullptr,
+				std::move(start_recording),
+				std::move(stop_recording),
+				std::move(deactivate_recording),
 			});
 		}
-	} catch (...) {
-
-		if (berryessa_) {
-			berryessa_->unsetAlways("config_id");
-		}
-
-		StopExtraViews();
-		throw;
 	}
+
+	{
+		const std::lock_guard current_lock{current_mutex};
+		current.emplace(OBSOutputObjects{
+			std::move(output),
+			std::move(video_encoders),
+			std::move(audio_encoders),
+			std::move(multitrack_video_service),
+			std::move(start_streaming),
+			std::move(stop_streaming),
+			std::move(deactivate_stream),
+		});
+	}
+
+	berryessa_guard.dismiss();
+	views_guard.dismiss();
 }
 
 void MultitrackVideoOutput::StopExtraViews()
