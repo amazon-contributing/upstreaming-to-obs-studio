@@ -61,7 +61,6 @@ public:
 	signal_handler_t *StreamingSignalHandler();
 	void StartedStreaming(QWidget *parent, bool success);
 	void StopStreaming();
-	std::optional<int> ConnectTimeMs();
 	bool HandleIncompatibleSettings(QWidget *parent, config_t *config,
 					obs_service_t *service, bool &useDelay,
 					bool &enableNewSocketLoop);

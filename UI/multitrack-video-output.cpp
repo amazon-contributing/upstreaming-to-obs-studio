@@ -404,13 +404,6 @@ static void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self,
 				obs_output_t *output, OBSSignal &start,
 				OBSSignal &stop, OBSSignal &deactivate);
 
-struct OutputObjects {
-	OBSOutputAutoRelease output;
-	std::vector<OBSEncoderAutoRelease> video_encoders;
-	OBSEncoderAutoRelease audio_encoder;
-	OBSServiceAutoRelease multitrack_video_service;
-};
-
 struct ModuleHash {
 	std::string Algorithm;
 	std::string Hash;
@@ -846,18 +839,6 @@ void MultitrackVideoOutput::StopStreaming()
 	}
 	if (dump_output)
 		obs_output_stop(dump_output);
-}
-
-std::optional<int> MultitrackVideoOutput::ConnectTimeMs()
-{
-	OBSOutputAutoRelease output = nullptr;
-	{
-		const std::lock_guard current_lock{current_mutex};
-		if (!current || !current->output_)
-			return std::nullopt;
-	}
-
-	return obs_output_get_connect_time_ms(output);
 }
 
 bool MultitrackVideoOutput::HandleIncompatibleSettings(
