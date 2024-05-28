@@ -1126,7 +1126,7 @@ FutureHolder<bool> SimpleOutput::SetupStreaming(obs_service_t *service)
 
 	auto holder = SetupMultitrackVideo(
 		service, GetSimpleAACEncoderForBitrate(audio_bitrate),
-		audio_bitrate, vod_track_mixer);
+		vod_track_mixer);
 	auto future = holder.future.then(main, [&](std::optional<bool>
 							   multitrackVideoResult) {
 		if (multitrackVideoResult.has_value())
@@ -2261,7 +2261,6 @@ FutureHolder<bool> AdvancedOutput::SetupStreaming(obs_service_t *service)
 		config_get_string(main->Config(), "AdvOut", "AudioEncoder");
 
 	auto holder = SetupMultitrackVideo(service, audio_encoder_id,
-					   GetAudioBitrate(0, audio_encoder_id),
 					   VodTrackMixerIdx(service));
 	auto future = holder.future.then(main, [&](std::optional<bool>
 							   multitrackVideoResult) {
@@ -2662,9 +2661,10 @@ std::string BasicOutputHandler::GetRecordingFilename(
 
 extern std::string DeserializeConfigText(const char *text);
 
-FutureHolder<std::optional<bool>> BasicOutputHandler::SetupMultitrackVideo(
-	obs_service_t *service, std::string audio_encoder_id, int audio_bitrate,
-	std::optional<size_t> vod_track_mixer)
+FutureHolder<std::optional<bool>>
+BasicOutputHandler::SetupMultitrackVideo(obs_service_t *service,
+					 std::string audio_encoder_id,
+					 std::optional<size_t> vod_track_mixer)
 {
 	if (!multitrackVideo)
 		return {[] {}, CreateFuture().then([] {
@@ -2741,7 +2741,7 @@ FutureHolder<std::optional<bool>> BasicOutputHandler::SetupMultitrackVideo(
 				multitrackVideo->PrepareStreaming(
 					main, service_name.c_str(), service,
 					custom_rtmp_url, key,
-					audio_encoder_id.c_str(), audio_bitrate,
+					audio_encoder_id.c_str(),
 					maximum_aggregate_bitrate,
 					maximum_video_tracks, custom_config,
 					stream_dump_config, vod_track_mixer);

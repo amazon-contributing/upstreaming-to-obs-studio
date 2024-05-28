@@ -425,57 +425,50 @@ bool AutoConfigStreamPage::validatePage()
 			QString::fromStdString(wiz->key), std::nullopt,
 			std::nullopt, false, extra_views);
 
+		OBSDataAutoRelease service_settings =
+			obs_service_get_settings(service);
+		auto multitrack_video_name =
+			QTStr("Basic.Settings.Stream.MultitrackVideoLabel");
+		if (obs_data_has_user_value(service_settings,
+					    "multitrack_video_name")) {
+			multitrack_video_name = obs_data_get_string(
+				service_settings, "multitrack_video_name");
+		}
+
 		try {
 			auto config = DownloadGoLiveConfig(
 				this, MultitrackVideoAutoConfigURL(service),
-				postData);
+				postData, multitrack_video_name);
 
-			OBSDataArrayAutoRelease ingest_endpoints =
-				obs_data_get_array(config, "ingest_endpoints");
-			auto count = obs_data_array_count(ingest_endpoints);
-			for (size_t i = 0; i < count; i++) {
-				OBSDataAutoRelease item = obs_data_array_item(
-					ingest_endpoints, i);
+			for (const auto &endpoint : config.ingest_endpoints) {
+				if (qstrnicmp("RTMP", endpoint.protocol.c_str(),
+					      4) != 0)
+					continue;
 
-				std::string address = obs_data_get_string(
-					item, "url_template");
+				std::string address = endpoint.url_template;
 				auto pos = address.find("/{stream_key}");
 				if (pos != address.npos)
 					address.erase(pos);
 
-				const char *name = address.c_str();
-				if (obs_data_has_user_value(item, "name")) {
-					name = obs_data_get_string(item,
-								   "name");
-				}
-
 				wiz->serviceConfigServers.push_back(
-					{name, std::move(address)});
+					{address, address});
 			}
 
-			OBSDataArrayAutoRelease encoder_configurations =
-				obs_data_get_array(config,
-						   "encoder_configurations");
 			int multitrackVideoBitrate = 0;
-			for (size_t i = 0, numConfigs = obs_data_array_count(
-						   encoder_configurations);
-			     i < numConfigs; i++) {
-				OBSDataAutoRelease encoder_configuration =
-					obs_data_array_item(
-						encoder_configurations, i);
-				multitrackVideoBitrate += obs_data_get_int(
-					encoder_configuration, "bitrate");
+			for (auto &encoder_config :
+			     config.encoder_configurations) {
+				multitrackVideoBitrate +=
+					encoder_config.config.bitrate;
 			}
 
 			// grab a streamkey from the go live config if we can
-			for (size_t i = 0;
-			     i < obs_data_array_count(ingest_endpoints); i++) {
-				OBSDataAutoRelease item = obs_data_array_item(
-					ingest_endpoints, i);
-				const char *p =
-					obs_data_get_string(item, "protocol");
-				const char *auth = obs_data_get_string(
-					item, "authentication");
+			for (auto &endpoint : config.ingest_endpoints) {
+				const char *p = endpoint.protocol.c_str();
+				const char *auth =
+					endpoint.authentication
+						? endpoint.authentication
+							  ->c_str()
+						: nullptr;
 				if (qstrnicmp("RTMP", p, 4) == 0 && auth &&
 				    *auth) {
 					wiz->key = auth;

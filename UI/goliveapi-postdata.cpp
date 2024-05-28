@@ -3,95 +3,65 @@
 #include "system-info.hpp"
 #include "multitrack-video-output.hpp"
 
-OBSDataAutoRelease
+#include "models/multitrack-video.hpp"
+
+GoLiveApi::PostData
 constructGoLivePost(QString streamKey,
 		    const std::optional<uint64_t> &maximum_aggregate_bitrate,
 		    const std::optional<uint32_t> &maximum_video_tracks,
 		    bool vod_track_enabled,
 		    const std::map<std::string, video_t *> &extra_views)
 {
-	OBSDataAutoRelease postData = obs_data_create();
-	OBSDataAutoRelease capabilitiesData = obs_data_create();
-	obs_data_set_string(postData, "service", "IVS");
-	obs_data_set_string(postData, "schema_version", "2023-05-10");
-	obs_data_set_string(postData, "authentication",
-			    streamKey.toUtf8().constData());
-	obs_data_set_obj(postData, "capabilities", capabilitiesData);
+	GoLiveApi::PostData post_data{};
+	post_data.service = "IVS";
+	post_data.schema_version = "2023-05-10";
+	post_data.authentication = streamKey.toStdString();
 
-	obs_data_set_bool(capabilitiesData, "plugin", true);
+	system_info(post_data.capabilities);
 
-	obs_data_set_array(capabilitiesData, "gpu", system_gpu_data());
+	auto &client = post_data.capabilities.client;
 
-	auto systemData = system_info();
-	obs_data_apply(capabilitiesData, systemData);
-
-	OBSDataAutoRelease clientData = obs_data_create();
-	obs_data_set_obj(capabilitiesData, "client", clientData);
-
-	obs_data_set_bool(clientData, "vod_track_audio", vod_track_enabled);
+	client.name = "obs-studio";
+	client.version = obs_get_version_string();
+	client.vod_track_audio = vod_track_enabled;
 
 	obs_video_info ovi;
 	if (obs_get_video_info(&ovi)) {
-		obs_data_set_string(clientData, "name", "obs-studio");
-		obs_data_set_string(clientData, "version",
-				    obs_get_version_string());
-		obs_data_set_int(clientData, "width", ovi.output_width);
-		obs_data_set_int(clientData, "height", ovi.output_height);
-		obs_data_set_int(clientData, "fps_numerator", ovi.fps_num);
-		obs_data_set_int(clientData, "fps_denominator", ovi.fps_den);
+		client.width = ovi.output_width;
+		client.height = ovi.output_height;
+		client.fps_numerator = ovi.fps_num;
+		client.fps_denominator = ovi.fps_den;
 
-		obs_data_set_int(clientData, "canvas_width", ovi.base_width);
-		obs_data_set_int(clientData, "canvas_height", ovi.base_height);
+		client.canvas_width = ovi.base_width;
+		client.canvas_height = ovi.base_height;
 	}
 
-	OBSDataArrayAutoRelease views = obs_data_array_create();
-	obs_data_set_array(capabilitiesData, "extra_views", views);
-	for (auto &video_output : extra_views) {
-		video_t *video = video_output.second;
-		if (!video)
-			continue;
-		const struct video_output_info *voi =
-			video_output_get_info(video);
-		if (!voi)
-			continue;
-		OBSDataAutoRelease view = obs_data_create();
-		obs_data_set_string(view, "name", video_output.first.c_str());
-		obs_data_set_int(view, "canvas_width", voi->width);
-		obs_data_set_int(view, "canvas_height", voi->height);
-		obs_data_set_int(view, "fps_numerator", voi->fps_num);
-		obs_data_set_int(view, "fps_denominator", voi->fps_den);
-		obs_data_array_push_back(views, view);
+	if (!extra_views.empty()) {
+		post_data.capabilities.extra_views.emplace();
+		auto &extra_views_capability =
+			*post_data.capabilities.extra_views;
+		extra_views_capability.reserve(extra_views.size());
+		for (auto &view : extra_views) {
+			video_t *video = view.second;
+			if (!video)
+				continue;
+			const struct video_output_info *voi =
+				video_output_get_info(video);
+			if (!voi)
+				continue;
+			extra_views_capability.push_back(GoLiveApi::ExtraView{
+				view.first, voi->width, voi->height,
+				media_frames_per_second{voi->fps_num,
+							voi->fps_den}});
+		}
 	}
 
-	OBSDataAutoRelease preferences = obs_data_create();
-	obs_data_set_obj(postData, "preferences", preferences);
+	auto &preferences = post_data.preferences;
 	if (maximum_aggregate_bitrate.has_value())
-		obs_data_set_int(preferences, "maximum_aggregate_bitrate",
-				 maximum_aggregate_bitrate.value());
+		preferences.maximum_aggregate_bitrate =
+			maximum_aggregate_bitrate.value();
 	if (maximum_video_tracks.has_value())
-		obs_data_set_int(preferences, "maximum_video_tracks",
-				 maximum_video_tracks.value());
+		preferences.maximum_video_tracks = maximum_video_tracks.value();
 
-#if 0
-	// XXX hardcoding the present-day AdvancedOutput behavior here..
-	// XXX include rescaled output size?
-	OBSData encodingData = AdvancedOutputStreamEncoderSettings();
-	obs_data_set_string(encodingData, "type",
-			    config_get_string(config, "AdvOut", "Encoder"));
-	unsigned int cx, cy;
-	AdvancedOutputGetRescaleRes(config, &cx, &cy);
-	if (cx && cy) {
-		obs_data_set_int(encodingData, "width", cx);
-		obs_data_set_int(encodingData, "height", cy);
-	}
-
-	OBSDataArray encodingDataArray = obs_data_array_create();
-	obs_data_array_push_back(encodingDataArray, encodingData);
-	obs_data_set_array(postData, "client_encoder_configurations",
-			   encodingDataArray);
-#endif
-
-	//XXX todo network.speed_limit
-
-	return postData;
+	return post_data;
 }

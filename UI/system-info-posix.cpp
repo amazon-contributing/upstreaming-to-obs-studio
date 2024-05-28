@@ -1,11 +1,6 @@
 #include "system-info.hpp"
 
-OBSDataArrayAutoRelease system_gpu_data()
+void system_info(GoLiveApi::Capabilities &capabilities)
 {
-	return nullptr;
-}
-
-OBSDataAutoRelease system_info()
-{
-	return nullptr;
+	UNUSED_PARAMETER(capabilities);
 }
