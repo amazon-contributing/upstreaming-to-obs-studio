@@ -1588,7 +1588,6 @@ static inline bool has_higher_opposing_ts(struct obs_output *output,
 			  output->highest_audio_ts > packet->dts_usec);
 }
 
-// FIXME: This function should probably be moved into the mpeg.c file with other sei_* API's
 static size_t extract_buffer_from_sei(sei_t *sei, uint8_t **data_out)
 {
 	if (!sei || !sei->head) {
@@ -1890,23 +1889,36 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 	return false;
 }
 
-static bool update_metrics(struct obs_output *output, size_t track_idx,
-			   const video_t *video, bool init)
-
+static void render_metrics_time(struct metrics_time *m_time)
 {
-	if (!output)
+	/* Generate the RFC3339 time string from the timespec struct, for example:
+	 *
+	 *   "2024-05-31T12:26:03.591Z"
+	 */
+	memset(&m_time->rfc3339_str, 0, sizeof(m_time->rfc3339_str));
+	strftime(m_time->rfc3339_str, sizeof(m_time->rfc3339_str),
+		 "%Y-%m-%dT%T", gmtime(&m_time->tspec.tv_sec));
+	sprintf(m_time->rfc3339_str + strlen(m_time->rfc3339_str), ".%03ldZ",
+		m_time->tspec.tv_nsec / 1000000);
+	m_time->valid = true;
+}
+
+static bool update_metrics(const struct obs_output *output,
+			   const struct encoder_packet *pkt)
+{
+	if (!output || !pkt)
 		return false;
 
-	struct metrics_data *m_track = output->metrics_tracks[track_idx];
+	struct metrics_data *m_track = output->metrics_tracks[pkt->track_idx];
 	if (!m_track) {
 		blog(LOG_DEBUG,
 		     "Metrics track for index: %lu had not be initialized",
-		     track_idx);
+		     pkt->track_idx);
 		return false;
 	}
 
-	// Get the timestamp
-	os_nstime_to_timespec(os_gettime_ns(), &m_track->pirts.tspec);
+	// Get the timestamp to be used for packet interleave request time
+	uint64_t cur_time = os_gettime_ns();
 
 	// Perform reads on all the counters as close together as possible
 	m_track->session_frames_output.curr =
@@ -1916,6 +1928,7 @@ static bool update_metrics(struct obs_output *output, size_t track_idx,
 	m_track->session_frames_rendered.curr = obs_get_total_frames();
 	m_track->session_frames_lagged.curr = obs_get_lagged_frames();
 
+	const video_t *video = obs_encoder_video(pkt->encoder);
 	if (video) {
 		// video_output_get_total_frames() returns the number of frames
 		// before the framerate decimator. For example, if the OBS session
@@ -1931,7 +1944,7 @@ static bool update_metrics(struct obs_output *output, size_t track_idx,
 		// successfully encoded by the obs_encoder_t instance.
 		m_track->rendition_frames_output.curr =
 			obs_encoder_get_encoded_frames(
-				output->video_encoders[track_idx]);
+				output->video_encoders[pkt->track_idx]);
 	} else {
 		m_track->rendition_frames_input.curr = 0;
 		m_track->rendition_frames_skipped.curr = 0;
@@ -1939,8 +1952,8 @@ static bool update_metrics(struct obs_output *output, size_t track_idx,
 		blog(LOG_ERROR, "update_metrics(): *video_t==null");
 	}
 
-	// If initialization is flagged, set the diff values to 0
-	if (init) {
+	// Set the diff values to 0 if PTS is 0
+	if (pkt->pts == 0) {
 		m_track->session_frames_output.diff = 0;
 		m_track->session_frames_skipped.diff = 0;
 		m_track->session_frames_rendered.diff = 0;
@@ -1990,13 +2003,81 @@ static bool update_metrics(struct obs_output *output, size_t track_idx,
 	m_track->rendition_frames_output.ref =
 		m_track->rendition_frames_output.curr;
 
-	// Convert the timespec to an RFC3339 string, to be used in SEI messages
-	memset(&m_track->pirts.rfc3339_str, 0,
-	       sizeof(m_track->pirts.rfc3339_str));
-	strftime(m_track->pirts.rfc3339_str, sizeof(m_track->pirts.rfc3339_str),
-		 "%Y-%m-%dT%T", gmtime(&m_track->pirts.tspec.tv_sec));
-	sprintf(m_track->pirts.rfc3339_str + strlen(m_track->pirts.rfc3339_str),
-		".%03ldZ", m_track->pirts.tspec.tv_nsec / 1000000);
+	/* BPM Timestamp Message */
+	m_track->cts.valid = false;
+	m_track->ferts.valid = false;
+	m_track->fercts.valid = false;
+
+	/* Iterate through the array of BPM frame timing metrics
+	 * to find a matching PTS entry, then copy it for metrics
+	 * message generation.
+	 */
+	bool found = false;
+	struct bpm_frame_time bpm_ft_local = {0};
+	pthread_mutex_lock(&pkt->encoder->bpm_ft_mutex);
+	for (size_t i = 0; i < pkt->encoder->bpm_frame_times.num; i++) {
+		struct bpm_frame_time *bpm_ft =
+			&pkt->encoder->bpm_frame_times.array[i];
+		if (bpm_ft->pts == pkt->pts) {
+			bpm_ft_local = *bpm_ft;
+			/* update_metrics() is only called on keyframes, so it
+                         * should be safe to assume that all timestamps up until
+                         * this timestamp have been processed already.
+                         */
+			da_erase_range(pkt->encoder->bpm_frame_times, 0, i + 1);
+			found = true;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&pkt->encoder->bpm_ft_mutex);
+
+	if (found == false) {
+		blog(LOG_DEBUG,
+		     "%s: BPM frame timing for PTS %" PRId64 " not found ",
+		     __FUNCTION__, pkt->pts);
+	} else {
+		/* Generate the timestamp representations for CTS, FER, and FERC.
+		 * Check if each is non-zero and that temporal consistency is correct:
+		 *   FEC > FERC > CTS
+		 * FEC and FERC depends on CTS, and FERC depends on FER, so ensure
+		 * we only signal an integral set of timestamps.
+		 */
+		os_nstime_to_timespec(bpm_ft_local.cts, &m_track->cts.tspec);
+		render_metrics_time(&m_track->cts);
+		if (bpm_ft_local.fer && (bpm_ft_local.fer > bpm_ft_local.cts)) {
+			os_nstime_to_timespec(bpm_ft_local.fer,
+					      &m_track->ferts.tspec);
+			render_metrics_time(&m_track->ferts);
+			if (bpm_ft_local.ferc &&
+			    (bpm_ft_local.ferc > bpm_ft_local.fer)) {
+				os_nstime_to_timespec(bpm_ft_local.ferc,
+						      &m_track->fercts.tspec);
+				render_metrics_time(&m_track->fercts);
+			}
+		}
+	}
+
+	// Always generate the timestamp representation for PIR
+	m_track->pirts.valid = false;
+	os_nstime_to_timespec(cur_time, &m_track->pirts.tspec);
+	render_metrics_time(&m_track->pirts);
+
+	/* For the EB beta, logging the BPM TS using
+	 * "--verbose" and "--unfiltered_log" in the startup arguments
+	 * gives visibility into the client latency.
+	 *
+	 * FIXME: This is OK for EB beta, but doubtful we can upstream
+	 * this as-is. Review/adjust as needed when we get there.
+	 */
+	blog(LOG_DEBUG,
+	     "BPM TS: %s, trk %lu: [CTS|FER-CTS|FERC-FER|PIR-CTS]:[%" PRIu64
+	     " ms|%" PRIu64 " ms|%" PRIu64 " us|%" PRIu64
+	     " ms], [dts|pts]:[%" PRId64 "|%" PRId64 "]",
+	     obs_encoder_get_name(pkt->encoder), pkt->track_idx,
+	     bpm_ft_local.cts / 1000000,
+	     (bpm_ft_local.fer - bpm_ft_local.cts) / 1000000,
+	     (bpm_ft_local.ferc - bpm_ft_local.fer) / 1000,
+	     (cur_time - bpm_ft_local.cts) / 1000000, pkt->dts, pkt->pts);
 
 	return true;
 }
@@ -2012,7 +2093,7 @@ enum bpm_ts_type {
 enum bpm_ts_event_tag {
 	BPM_TS_EVENT_CTS = 1, // Composition Time Event
 	BPM_TS_EVENT_FER,     // Frame Encode Request Event
-	BPM_TS_EVENT_FEC,     // Frame Encode Complete Event
+	BPM_TS_EVENT_FERC,    // Frame Encode Request Complete Event
 	BPM_TS_EVENT_PIR      // Packet Interleave Request Event
 };
 
@@ -2058,18 +2139,60 @@ void bpm_ts_sei_render(struct metrics_data *m_track)
 	// Write the UUID for this SEI message
 	s_write(&s, bpm_ts_uuid, sizeof(bpm_ts_uuid));
 
-	// Encode number of timestamps for this SEI
-	num_timestamps = 1;
-	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_timestamps - 1
-	s_w8(&s, (num_timestamps - 1) & 0x0F);
-	// Timestamp type
-	s_w8(&s, BPM_TS_RFC3339);
-	// Write the timestamp event tag (Packet Interleave Request Event)
-	s_w8(&s, BPM_TS_EVENT_PIR);
-	// Write the RFC3339-formatted string, including the null terminator
-	s_write(&s, m_track->pirts.rfc3339_str,
-		strlen(m_track->pirts.rfc3339_str) + 1);
+	// Determine how many timestamps are valid
+	if (m_track->cts.valid)
+		num_timestamps++;
+	if (m_track->ferts.valid)
+		num_timestamps++;
+	if (m_track->fercts.valid)
+		num_timestamps++;
+	if (m_track->pirts.valid)
+		num_timestamps++;
 
+	/* Encode number of timestamps for this SEI. Upper 4 bits are
+	 * set to b0000 (reserved); lower 4-bits num_timestamps - 1.
+	 */
+	s_w8(&s, (num_timestamps - 1) & 0x0F);
+
+	if (m_track->cts.valid) {
+		// Timestamp type
+		s_w8(&s, BPM_TS_RFC3339);
+		// Write the timestamp event tag (Composition Time Event)
+		s_w8(&s, BPM_TS_EVENT_CTS);
+		// Write the RFC3339-formatted string, including the null terminator
+		s_write(&s, m_track->cts.rfc3339_str,
+			strlen(m_track->cts.rfc3339_str) + 1);
+	}
+
+	if (m_track->ferts.valid) {
+		// Timestamp type
+		s_w8(&s, BPM_TS_RFC3339);
+		// Write the timestamp event tag (Frame Encode Request Event)
+		s_w8(&s, BPM_TS_EVENT_FER);
+		// Write the RFC3339-formatted string, including the null terminator
+		s_write(&s, m_track->ferts.rfc3339_str,
+			strlen(m_track->ferts.rfc3339_str) + 1);
+	}
+
+	if (m_track->fercts.valid) {
+		// Timestamp type
+		s_w8(&s, BPM_TS_RFC3339);
+		// Write the timestamp event tag (Frame Encode Request Complete Event)
+		s_w8(&s, BPM_TS_EVENT_FERC);
+		// Write the RFC3339-formatted string, including the null terminator
+		s_write(&s, m_track->fercts.rfc3339_str,
+			strlen(m_track->fercts.rfc3339_str) + 1);
+	}
+
+	if (m_track->pirts.valid) {
+		// Timestamp type
+		s_w8(&s, BPM_TS_RFC3339);
+		// Write the timestamp event tag (Packet Interleave Request Event)
+		s_w8(&s, BPM_TS_EVENT_PIR);
+		// Write the RFC3339-formatted string, including the null terminator
+		s_write(&s, m_track->pirts.rfc3339_str,
+			strlen(m_track->pirts.rfc3339_str) + 1);
+	}
 	m_track->sei_rendered[BPM_TS_SEI] = true;
 }
 
@@ -2162,7 +2285,6 @@ void bpm_erm_sei_render(struct metrics_data *m_track)
 }
 
 // process_metrics() will update and insert unregistered SEI messages into the encoded video bitstream.
-// FIXME: Refer to <TBD> for the definition of the SEI messages
 static bool process_metrics(struct obs_output *output,
 			    struct encoder_packet *out)
 {
@@ -2194,8 +2316,7 @@ static bool process_metrics(struct obs_output *output,
 	}
 
 	// Update the metrics for this track
-	if (!update_metrics(output, out->track_idx,
-			    obs_encoder_video(out->encoder), (out->pts == 0))) {
+	if (!update_metrics(output, out)) {
 		// Something went wrong; log it and return
 		blog(LOG_DEBUG, "update_metrics() for track index: %lu failed",
 		     out->track_idx);

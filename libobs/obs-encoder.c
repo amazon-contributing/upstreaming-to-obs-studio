@@ -53,6 +53,7 @@ static bool init_encoder(struct obs_encoder *encoder, const char *name,
 	pthread_mutex_init_value(&encoder->outputs_mutex);
 	pthread_mutex_init_value(&encoder->pause.mutex);
 	pthread_mutex_init_value(&encoder->roi_mutex);
+	pthread_mutex_init_value(&encoder->bpm_ft_mutex);
 
 	if (!obs_context_data_init(&encoder->context, OBS_OBJ_TYPE_ENCODER,
 				   settings, name, NULL, hotkey_data, false))
@@ -66,6 +67,8 @@ static bool init_encoder(struct obs_encoder *encoder, const char *name,
 	if (pthread_mutex_init(&encoder->pause.mutex, NULL) != 0)
 		return false;
 	if (pthread_mutex_init(&encoder->roi_mutex, NULL) != 0)
+		return false;
+	if (pthread_mutex_init(&encoder->bpm_ft_mutex, NULL) != 0)
 		return false;
 
 	if (encoder->orig_info.get_defaults) {
@@ -453,11 +456,13 @@ static void obs_encoder_actually_destroy(obs_encoder_t *encoder)
 			encoder->info.destroy(encoder->context.data);
 		da_free(encoder->callbacks);
 		da_free(encoder->roi);
+		da_free(encoder->bpm_frame_times);
 		pthread_mutex_destroy(&encoder->init_mutex);
 		pthread_mutex_destroy(&encoder->callbacks_mutex);
 		pthread_mutex_destroy(&encoder->outputs_mutex);
 		pthread_mutex_destroy(&encoder->pause.mutex);
 		pthread_mutex_destroy(&encoder->roi_mutex);
+		pthread_mutex_destroy(&encoder->bpm_ft_mutex);
 		obs_context_data_free(&encoder->context);
 		if (encoder->owns_info_id)
 			bfree((void *)encoder->info.id);
@@ -881,6 +886,10 @@ static inline bool obs_encoder_stop_internal(
 	}
 
 	pthread_mutex_unlock(&encoder->callbacks_mutex);
+
+	pthread_mutex_lock(&encoder->bpm_ft_mutex);
+	encoder->bpm_frame_times.num = 0;
+	pthread_mutex_unlock(&encoder->bpm_ft_mutex);
 
 	if (last) {
 		remove_connection(encoder, true);
@@ -1496,7 +1505,8 @@ void send_off_encoder_packet(obs_encoder_t *encoder, bool success,
 }
 
 static const char *do_encode_name = "do_encode";
-bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame)
+bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame,
+	       const uint64_t *frame_cts)
 {
 	profile_start(do_encode_name);
 	if (!encoder->profile_encoder_encode_name)
@@ -1518,10 +1528,36 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame)
 	pkt.timebase_den = encoder->timebase_den;
 	pkt.encoder = encoder;
 
+	/* Get the BPM frame encode request timestamp. This
+	 * needs to be read just before the encode request.
+	 */
+	uint64_t bpm_fer_ts = os_gettime_ns();
+
 	profile_start(encoder->profile_encoder_encode_name);
 	success = encoder->info.encode(encoder->context.data, frame, &pkt,
 				       &received);
 	profile_end(encoder->profile_encoder_encode_name);
+
+	/* Generate and enqueue the BPM frame timing metrics, namely
+	 * the CTS (composition time), FER (frame encode request), FERC
+	 * (frame encode request complete) and current PTS. PTS is used to
+	 * associate the BPM frame timing data with the encode packet. */
+	if (frame_cts) {
+		pthread_mutex_lock(&encoder->bpm_ft_mutex);
+		struct bpm_frame_time *bpm_ft =
+			da_push_back_new(encoder->bpm_frame_times);
+		// Get the frame encode request complete timestamp
+		if (success) {
+			bpm_ft->ferc = os_gettime_ns();
+		} else {
+			// Encode had error, set fec to 0
+			bpm_ft->ferc = 0;
+		}
+		bpm_ft->pts = frame->pts;
+		bpm_ft->cts = *frame_cts;
+		bpm_ft->fer = bpm_fer_ts;
+		pthread_mutex_unlock(&encoder->bpm_ft_mutex);
+	}
 	send_off_encoder_packet(encoder, success, received, &pkt);
 
 	profile_end(do_encode_name);
@@ -1661,7 +1697,7 @@ static void receive_video(void *param, struct video_data *frame)
 	enc_frame.frames = 1;
 	enc_frame.pts = encoder->cur_pts;
 
-	if (do_encode(encoder, &enc_frame))
+	if (do_encode(encoder, &enc_frame, &frame->timestamp))
 		encoder->cur_pts +=
 			encoder->timebase_num * encoder->frame_rate_divisor;
 
@@ -1796,7 +1832,7 @@ static bool send_audio_data(struct obs_encoder *encoder)
 	enc_frame.frames = (uint32_t)encoder->framesize;
 	enc_frame.pts = encoder->cur_pts;
 
-	if (!do_encode(encoder, &enc_frame))
+	if (!do_encode(encoder, &enc_frame, NULL))
 		return false;
 
 	encoder->cur_pts += encoder->framesize;
