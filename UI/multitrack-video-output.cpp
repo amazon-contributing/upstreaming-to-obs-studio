@@ -83,7 +83,7 @@ static void add_always_string(BerryessaSubmitter *berryessa, const char *name,
 static OBSServiceAutoRelease
 create_service(const GoLiveApi::Config &go_live_config,
 	       const std::optional<std::string> &rtmp_url,
-	       const QString &in_stream_key)
+	       const QString &in_stream_key, std::optional<bool> use_rtmps)
 {
 	const char *url = nullptr;
 	QString stream_key = in_stream_key;
@@ -92,6 +92,11 @@ create_service(const GoLiveApi::Config &go_live_config,
 
 	for (auto &endpoint : ingest_endpoints) {
 		if (qstrnicmp("RTMP", endpoint.protocol.c_str(), 4))
+			continue;
+
+		if (use_rtmps.has_value() &&
+		    *use_rtmps !=
+			    (qstricmp("RTMPS", endpoint.protocol.c_str()) == 0))
 			continue;
 
 		url = endpoint.url_template.c_str();
@@ -513,7 +518,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 	std::optional<uint32_t> maximum_video_tracks,
 	std::optional<std::string> custom_config,
 	obs_data_t *dump_stream_to_file_config,
-	std::optional<size_t> vod_track_mixer)
+	std::optional<size_t> vod_track_mixer, std::optional<bool> use_rtmps)
 {
 	if (!berryessa_) {
 		QMetaObject::invokeMethod(
@@ -686,7 +691,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 				.arg(multitrack_video_name));
 
 	auto multitrack_video_service =
-		create_service(service_config, rtmp_url, stream_key);
+		create_service(service_config, rtmp_url, stream_key, use_rtmps);
 	if (!multitrack_video_service)
 		throw MultitrackVideoError::warning(
 			QTStr("FailedToStartStream.FallbackToDefault")

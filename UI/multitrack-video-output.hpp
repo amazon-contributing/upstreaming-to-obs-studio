@@ -57,7 +57,8 @@ public:
 			      std::optional<uint32_t> maximum_video_tracks,
 			      std::optional<std::string> custom_config,
 			      obs_data_t *dump_stream_to_file_config,
-			      std::optional<size_t> vod_track_mixer);
+			      std::optional<size_t> vod_track_mixer,
+			      std::optional<bool> use_rtmps);
 	signal_handler_t *StreamingSignalHandler();
 	void StartedStreaming(QWidget *parent, bool success);
 	void StopStreaming();

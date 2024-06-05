@@ -2699,9 +2699,13 @@ BasicOutputHandler::SetupMultitrackVideo(obs_service_t *service,
 	}
 
 	std::optional<std::string> custom_rtmp_url;
+	std::optional<bool> use_rtmps;
 	auto server = obs_data_get_string(settings, "server");
 	if (strncmp(server, "auto", 4) != 0) {
 		custom_rtmp_url = server;
+	} else {
+		QString server_ = server;
+		use_rtmps = server_.contains("rtmps", Qt::CaseInsensitive);
 	}
 
 	auto service_custom_server =
@@ -2744,7 +2748,8 @@ BasicOutputHandler::SetupMultitrackVideo(obs_service_t *service,
 					audio_encoder_id.c_str(),
 					maximum_aggregate_bitrate,
 					maximum_video_tracks, custom_config,
-					stream_dump_config, vod_track_mixer);
+					stream_dump_config, vod_track_mixer,
+					use_rtmps);
 			} catch (const MultitrackVideoError &error) {
 				return error;
 			}
