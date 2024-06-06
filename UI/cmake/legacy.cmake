@@ -71,7 +71,7 @@ find_package(CURL REQUIRED)
 add_subdirectory(frontend-plugins)
 add_executable(obs)
 
-find_qt(COMPONENTS Widgets Network Svg Xml COMPONENTS_LINUX Gui)
+find_qt(COMPONENTS Widgets Network Svg Xml COMPONENTS_LINUX Gui DBus)
 
 target_link_libraries(obs PRIVATE Qt::Widgets Qt::Svg Qt::Xml Qt::Network)
 
@@ -101,6 +101,7 @@ target_sources(
           forms/OBSAbout.ui
           forms/OBSAdvAudio.ui
           forms/OBSBasic.ui
+          forms/OBSBasicControls.ui
           forms/OBSBasicFilters.ui
           forms/OBSBasicInteraction.ui
           forms/OBSBasicProperties.ui
@@ -133,6 +134,8 @@ target_sources(
           auth-listener.hpp
           obf.c
           obf.h
+          obs-app-theming.cpp
+          obs-app-theming.hpp
           obs-app.cpp
           obs-app.hpp
           obs-proxy-style.cpp
@@ -158,11 +161,15 @@ target_sources(
 
 target_sources(
   obs
-  PRIVATE adv-audio-control.cpp
+  PRIVATE absolute-slider.cpp
+          absolute-slider.hpp
+          adv-audio-control.cpp
           adv-audio-control.hpp
           audio-encoders.cpp
           audio-encoders.hpp
           balance-slider.hpp
+          basic-controls.cpp
+          basic-controls.hpp
           clickable-label.hpp
           double-slider.cpp
           double-slider.hpp
@@ -182,25 +189,20 @@ target_sources(
           log-viewer.hpp
           media-controls.cpp
           media-controls.hpp
-          media-slider.cpp
-          media-slider.hpp
           menu-button.cpp
           menu-button.hpp
           mute-checkbox.hpp
+          noncheckable-button.hpp
           plain-text-edit.cpp
           plain-text-edit.hpp
           properties-view.cpp
           properties-view.hpp
           properties-view.moc.hpp
-          record-button.cpp
-          record-button.hpp
           remote-text.cpp
           remote-text.hpp
           scene-tree.cpp
           scene-tree.hpp
           screenshot-obj.hpp
-          slider-absoluteset-style.cpp
-          slider-absoluteset-style.hpp
           slider-ignorewheel.cpp
           slider-ignorewheel.hpp
           source-label.cpp
@@ -250,6 +252,7 @@ target_sources(
           window-basic-settings.cpp
           window-basic-settings.hpp
           window-basic-settings-a11y.cpp
+          window-basic-settings-appearance.cpp
           window-basic-settings-stream.cpp
           window-basic-source-select.cpp
           window-basic-source-select.hpp
@@ -488,7 +491,9 @@ elseif(OS_MACOS)
 
 elseif(OS_POSIX)
   target_sources(obs PRIVATE platform-x11.cpp)
-  target_link_libraries(obs PRIVATE Qt::GuiPrivate)
+  target_link_libraries(obs PRIVATE Qt::GuiPrivate Qt::DBus)
+
+  target_sources(obs PRIVATE system-info-posix.cpp)
 
   target_sources(obs PRIVATE system-info-posix.cpp)
 
@@ -506,18 +511,25 @@ elseif(OS_POSIX)
 
   if(OS_FREEBSD)
     target_link_libraries(obs PRIVATE procstat)
+    target_compile_options(obs PRIVATE -Wno-unqualified-std-cast-call)
   endif()
 
-  if(OS_LINUX AND ENABLE_WHATSNEW)
-    find_package(MbedTLS)
-    find_package(nlohmann_json REQUIRED)
-    if(NOT MBEDTLS_FOUND)
-      obs_status(FATAL_ERROR "mbedTLS not found, but required for WhatsNew support on Linux")
+  if(OS_LINUX)
+    if(USE_XDG)
+      target_compile_definitions(obs PRIVATE USE_XDG)
     endif()
 
-    target_sources(obs PRIVATE update/crypto-helpers.hpp update/crypto-helpers-mbedtls.cpp update/shared-update.cpp
-                               update/shared-update.hpp update/update-helpers.cpp update/update-helpers.hpp)
-    target_link_libraries(obs PRIVATE Mbedtls::Mbedtls nlohmann_json::nlohmann_json OBS::blake2)
+    if(ENABLE_WHATSNEW)
+      find_package(MbedTLS)
+      find_package(nlohmann_json REQUIRED)
+      if(NOT MBEDTLS_FOUND)
+        obs_status(FATAL_ERROR "mbedTLS not found, but required for WhatsNew support on Linux")
+      endif()
+
+      target_sources(obs PRIVATE update/crypto-helpers.hpp update/crypto-helpers-mbedtls.cpp update/shared-update.cpp
+                                 update/shared-update.hpp update/update-helpers.cpp update/update-helpers.hpp)
+      target_link_libraries(obs PRIVATE Mbedtls::Mbedtls nlohmann_json::nlohmann_json OBS::blake2)
+    endif()
   endif()
 endif()
 

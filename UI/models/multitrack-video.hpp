@@ -218,14 +218,12 @@ struct Preferences {
 struct PostData {
 	string service = "IVS";
 	string schema_version = "2023-05-10";
-	string stream_attempt_start_time;
 	string authentication;
 
 	Capabilities capabilities;
 	Preferences preferences;
 
 	NLOHMANN_DEFINE_TYPE_INTRUSIVE(PostData, service, schema_version,
-				       stream_attempt_start_time,
 				       authentication, capabilities,
 				       preferences)
 };

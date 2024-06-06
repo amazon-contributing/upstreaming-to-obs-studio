@@ -22,6 +22,7 @@
 #include "graphics/math-extra.h"
 #include "obs.h"
 #include "obs-internal.h"
+#include "obs-av1.h"
 
 #include <caption/caption.h>
 #include <caption/mpeg.h>
@@ -1594,14 +1595,13 @@ static size_t extract_buffer_from_sei(sei_t *sei, uint8_t **data_out)
 	if (!sei || !sei->head) {
 		return 0;
 	}
-	// We should only need to get one payload, because the sei
-	// that was generated should only have one msg, so no need to
-	// iterate, and if we did iterate, I think we would need to generate
-	// multiple obus.
+	/* We should only need to get one payload, because the SEI that was
+	 * generated should only have one message, so no need to iterate. If
+	 * we did iterate, we would need to generate multiple OBUs. */
 	sei_message_t *msg = sei_message_head(sei);
 	int payload_size = (int)sei_message_size(msg);
 	uint8_t *payload_data = sei_message_data(msg);
-	*data_out = malloc(payload_size);
+	*data_out = bmalloc(payload_size);
 	memcpy(*data_out, payload_data, payload_size);
 	return payload_size;
 }
@@ -1704,10 +1704,10 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 	bool hevc = false;
 	bool av1 = false;
 
-	// Instead of exiting early for unsupported codecs, we will continue
-	// processing to allow the freeing of caption data even if the captions
-	// will not be included in the bitstream due to being unimplemented in
-	// the a given codec.
+	/* Instead of exiting early for unsupported codecs, we will continue
+	 * processing to allow the freeing of caption data even if the captions
+	 * will not be included in the bitstream due to being unimplemented in
+	 * the given codec. */
 	if (strcmp(out->encoder->info.codec, "h264") == 0) {
 		avc = true;
 	} else if (strcmp(out->encoder->info.codec, "av1") == 0) {
@@ -1727,7 +1727,7 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 		output->caption_tracks[out->track_idx];
 	if (!ctrack) {
 		blog(LOG_DEBUG,
-		     "Caption track for index: %lu had not be initialized",
+		     "Caption track for index: %lu has not been initialized",
 		     out->track_idx);
 		return false;
 	}
@@ -1736,23 +1736,23 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 	uint8_t hevc_nal_header[2];
 	if (hevc) {
 		size_t nal_header_index_start = 4;
-		// Skipping past the annex-b start code
+		// Skip past the annex-b start code
 		if (memcmp(out->data, nal_start + 1, 3) == 0) {
 			nal_header_index_start = 3;
 		} else if (memcmp(out->data, nal_start, 4) == 0) {
 			nal_header_index_start = 4;
 
 		} else {
-			// We shouldn't ever see this unless we start getting
-			// packets without annex-b start codes
+			/* We shouldn't ever see this unless we start getting
+			 * packets without annex-b start codes. */
 			blog(LOG_DEBUG,
-			     "Annex-B start code not found, we may not "
-			     "generate a valid hevc nal unit header "
+			     "Annex-B start code not found. We may not "
+			     "generate a valid HEVC NAL unit header "
 			     "for our caption");
 			return false;
 		}
-		// We will use the same 2 byte nal unit header for the cc sei,
-		// but swap the nal types out.
+		/* We will use the same 2 byte NAL unit header for the CC SEI,
+		 * but swap the NAL types out. */
 		hevc_nal_header[0] = out->data[nal_header_index_start];
 		hevc_nal_header[1] = out->data[nal_header_index_start + 1];
 	}
@@ -1822,43 +1822,44 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 
 	if (avc || hevc || av1) {
 		if (avc || hevc) {
-			data = malloc(sei_render_size(&sei));
+			data = bmalloc(sei_render_size(&sei));
 			size = sei_render(&sei, data);
 		}
-		// In each of these specs there is an identical structure that
-		// carries caption information it is named slightly differently
-		// the metadata_itut_t35 in AV1, or the
-		// user_data_registered_itu_t_t35 in HEVC/AVC.  We have an AVC
-		// SEI wrapped version of that here and we will strip away and
-		// repackage it slightly to fit the different codec carrying
-		// mechanisms a slightly modified SEI for HEVC and a
-		// metadata_obu for AV1
+		/* In each of these specs there is an identical structure that
+		 * carries caption information. It is named slightly differently
+		 * in each one. The metadata_itut_t35 in AV1 or the
+		 * user_data_registered_itu_t_t35 in HEVC/AVC. We have an AVC
+		 * SEI wrapped version of that here. We will strip it out and
+		 * repackage it slightly to fit the different codec carrying
+		 * mechanisms. A slightly modified SEI for HEVC and a metadata
+		 * OBU for AV1. */
 		if (avc) {
-			/* TODO SEI should come after AUD/SPS/PPS,
-			   but before any VCL */
+			/* TODO: SEI should come after AUD/SPS/PPS,
+			 * but before any VCL */
 			da_push_back_array(out_data, nal_start, 4);
 			da_push_back_array(out_data, data, size);
 #ifdef ENABLE_HEVC
 		} else if (hevc) {
-			/* Only first nal, VPS/PPS/SPS should use the 4 byte
-			   start code, seis use 3 byte version */
+			/* Only first NAL (VPS/PPS/SPS) should use the 4 byte
+			 * start code. SEIs use 3 byte version */
 			da_push_back_array(out_data, nal_start + 1, 3);
-			// nal_unit_header( ) {
-			// forbidden_zero_bit       f(1)
-			// nal_unit_type            u(6)
-			// nuh_layer_id             u(6)
-			// nuh_temporal_id_plus1    u(3)
-			// }
+			/* nal_unit_header( ) {
+			 * forbidden_zero_bit       f(1)
+			 * nal_unit_type            u(6)
+			 * nuh_layer_id             u(6)
+			 * nuh_temporal_id_plus1    u(3)
+			 * }
+			 */
 			const uint8_t prefix_sei_nal_type = 39;
-			// The first bit is always 0, so we just need to
-			// save the last bit off the original header and
-			// add the sei nal type
+			/* The first bit is always 0, so we just need to
+			 * save the last bit off the original header and
+			 * add the SEI NAL type. */
 			uint8_t first_byte = (prefix_sei_nal_type << 1) |
 					     (0x01 & hevc_nal_header[0]);
 			hevc_nal_header[0] = first_byte;
-			// the H265 nal unit header is 2 byte instead of
-			// one, otherwise everything else is the
-			// same.
+			/* The HEVC NAL unit header is 2 byte instead of
+			 * one, otherwise everything else is the
+			 * same. */
 			da_push_back_array(out_data, hevc_nal_header, 2);
 			da_push_back_array(out_data, &data[1], size - 1);
 #endif
@@ -1875,7 +1876,7 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 			}
 		}
 		if (data) {
-			free(data);
+			bfree(data);
 		}
 		obs_encoder_packet_release(out);
 
@@ -1884,10 +1885,7 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 		out->size = out_data.num - sizeof(ref);
 	}
 	sei_free(&sei);
-	if (avc || hevc || av1) {
-		return true;
-	}
-	return false;
+	return avc || hevc || av1;
 }
 
 static bool update_metrics(struct obs_output *output, size_t track_idx,
@@ -2695,7 +2693,7 @@ static bool initialize_interleaved_packets(struct obs_output *output)
 		}
 	}
 	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
-		if (output->audio_encoders[i]) {
+		if (output->audio_encoders[i] && audio[i]->dts > 0) {
 			output->audio_offsets[i] = audio[i]->dts;
 		}
 	}
@@ -2851,6 +2849,8 @@ static bool purge_encoder_group_keyframe_data(obs_output_t *output, size_t idx)
 	return false;
 }
 
+/* Check whether keyframes are emitted from all grouped encoders, and log
+ * if keyframes haven't been emitted from all grouped encoders. */
 static void
 check_encoder_group_keyframe_alignment(obs_output_t *output,
 				       struct encoder_packet *packet)
@@ -2905,7 +2905,7 @@ check_encoder_group_keyframe_alignment(obs_output_t *output,
 
 	pthread_mutex_lock(&packet->encoder->encoder_group->mutex);
 	insert_data.required_tracks =
-		packet->encoder->encoder_group->encoders_ready;
+		packet->encoder->encoder_group->encoders_started;
 	pthread_mutex_unlock(&packet->encoder->encoder_group->mutex);
 
 	da_insert(output->keyframe_group_tracking, idx, &insert_data);

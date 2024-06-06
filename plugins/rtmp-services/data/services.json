@@ -1004,76 +1004,128 @@
         },
         {
             "name": "Chaturbate",
+            "stream_key_link": "https://chaturbate.com/b/?useExternalSoftware=true",
+            "more_info_link": "https://support.chaturbate.com/hc/en-us/articles/360037971952-How-do-I-set-up-OBS",
             "servers": [
                 {
                     "name": "Global Main Fastest - Recommended",
-                    "url": "rtmp://live.stream.highwebmedia.com/live-origin"
+                    "url": "rtmp://global.live.mmcdn.com/live-origin"
                 },
                 {
                     "name": "Global Backup",
-                    "url": "rtmp://live-backup.stream.highwebmedia.com/live-origin"
+                    "url": "rtmp://global-backup.live.mmcdn.com/live-origin"
                 },
                 {
-                    "name": "US West: Seattle, WA",
-                    "url": "rtmp://live-sea.stream.highwebmedia.com/live-origin"
-                },
-                {
-                    "name": "US West: Phoenix, AZ",
-                    "url": "rtmp://live-phx.stream.highwebmedia.com/live-origin"
-                },
-                {
-                    "name": "US Central: Salt Lake City, UT",
-                    "url": "rtmp://live-slc.stream.highwebmedia.com/live-origin"
-                },
-                {
-                    "name": "US Central: Chicago, IL",
-                    "url": "rtmp://live-chi.stream.highwebmedia.com/live-origin"
-                },
-                {
-                    "name": "US East: Atlanta, GA",
-                    "url": "rtmp://live-atl.stream.highwebmedia.com/live-origin"
-                },
-                {
-                    "name": "US East: Ashburn, VA",
-                    "url": "rtmp://live-ash.stream.highwebmedia.com/live-origin"
-                },
-                {
-                    "name": "South America: Sao Paulo, Brazil",
-                    "url": "rtmp://live-gru.stream.highwebmedia.com/live-origin"
-                },
-                {
-                    "name": "EU: Amsterdam, NL",
-                    "url": "rtmp://live-nld.stream.highwebmedia.com/live-origin"
-                },
-                {
-                    "name": "EU: Alblasserdam, NL",
-                    "url": "rtmp://live-alb.stream.highwebmedia.com/live-origin"
-                },
-                {
-                    "name": "EU: Frankfurt, DE",
-                    "url": "rtmp://live-fra.stream.highwebmedia.com/live-origin"
-                },
-                {
-                    "name": "EU: Belgrade, Serbia",
-                    "url": "rtmp://live-srb.stream.highwebmedia.com/live-origin"
+                    "name": "Asia: Mumbai, India",
+                    "url": "rtmp://bom.live.mmcdn.com/live-origin"
                 },
                 {
                     "name": "Asia: Singapore",
-                    "url": "rtmp://live-sin.stream.highwebmedia.com/live-origin"
+                    "url": "rtmp://sin.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "Asia: Taiwan",
+                    "url": "rtmp://tsa.live.mmcdn.com/live-origin"
                 },
                 {
                     "name": "Asia: Tokyo, Japan",
-                    "url": "rtmp://live-nrt.stream.highwebmedia.com/live-origin"
+                    "url": "rtmp://nrt.live.mmcdn.com/live-origin"
                 },
                 {
-                    "name": "Australia: Sydney",
-                    "url": "rtmp://live-syd.stream.highwebmedia.com/live-origin"
+                    "name": "Australasia: Sydney, Australia",
+                    "url": "rtmp://syd.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "EU East: Sofia, Bulgaria",
+                    "url": "rtmp://sof.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "EU East: Warsaw, Poland",
+                    "url": "rtmp://waw.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "EU North: Helsinki, Finland",
+                    "url": "rtmp://hel.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "EU West: Amsterdam, Netherlands",
+                    "url": "rtmp://ams.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "EU West: Frankfurt, Germany",
+                    "url": "rtmp://fra.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "EU West: Madrid, Spain",
+                    "url": "rtmp://mad.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "EU West: Milan, Italy",
+                    "url": "rtmp://mxp.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "EU West: Rotterdam, Netherlands",
+                    "url": "rtmp://rtm.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "South America: Bogota, Colombia",
+                    "url": "rtmp://bog.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "South America: Sao Paulo, Brazil",
+                    "url": "rtmp://gru.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "US Central: Austin, TX",
+                    "url": "rtmp://aus.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "US Central: Chicago, IL",
+                    "url": "rtmp://chi.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "US East: Ashburn, VA",
+                    "url": "rtmp://ash.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "US East: Atlanta, GA",
+                    "url": "rtmp://atl.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "US East: Miami, FL",
+                    "url": "rtmp://mia.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "US West: Los Angeles, CA",
+                    "url": "rtmp://lax.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "US West: Phoenix, AZ",
+                    "url": "rtmp://phx.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "US West: Salt Lake City, UT",
+                    "url": "rtmp://slc.live.mmcdn.com/live-origin"
+                },
+                {
+                    "name": "US West: Seattle, WA",
+                    "url": "rtmp://sea.live.mmcdn.com/live-origin"
                 }
             ],
             "recommended": {
                 "keyint": 2,
                 "max video bitrate": 50000,
-                "max audio bitrate": 192
+                "max audio bitrate": 192,
+                "supported resolutions": [
+                    "3840x2160",
+                    "2560x1440",
+                    "1920x1080",
+                    "1280x720",
+                    "960x540",
+                    "852x480",
+                    "640x360"
+                ],
+                "max fps": 60
             },
             "supported video codecs": [
                 "h264"
@@ -2471,21 +2523,26 @@
         },
         {
             "name": "Joystick.TV",
-            "more_info_link": "https://support.joystick.tv/support/creator-support/setting-up-your-stream/",
+            "more_info_link": "https://support.joystick.tv/live_streaming/",
             "stream_key_link": "https://joystick.tv/stream-settings",
             "servers": [
                 {
-                    "name": "RTMP",
+                    "name": "North America",
                     "url": "rtmp://live.joystick.tv/live/"
+                },
+                {
+                    "name": "Europe",
+                    "url": "rtmp://eu.live.joystick.tv/live/"
                 }
             ],
             "recommended": {
                 "keyint": 2,
                 "max video bitrate": 7500,
                 "max audio bitrate": 192,
+                "max fps": 60,
                 "profile": "main",
                 "bframes": 0,
-                "x264opts": "tune=zerolatency"
+                "x264opts": "tune=zerolatency scenecut=0"
             },
             "supported video codecs": [
                 "h264"
@@ -2515,66 +2572,6 @@
                 "bframes": 0,
                 "max video bitrate": 20000,
                 "max audio bitrate": 512
-            },
-            "supported video codecs": [
-                "h264"
-            ]
-        },
-        {
-            "name": "VStream",
-            "common": false,
-            "stream_key_link": "https://vstream.com/dashboard/livestreams",
-            "more_info_link": "https://vstream.com/help/streaming-with-obs",
-            "servers": [
-                {
-                    "name": "Global (RTMP)",
-                    "url": "rtmp://live.vstream.com"
-                }
-            ],
-            "recommended": {
-                "keyint": 2,
-                "profile": "high",
-                "x264opts": "scenecut=0",
-                "supported resolutions": [
-                    "1920x1080",
-                    "1280x720",
-                    "852x480"
-                ],
-                "bitrate matrix": [
-                    {
-                        "res": "1920x1080",
-                        "fps": 60,
-                        "max bitrate": 8000
-                    },
-                    {
-                        "res": "1920x1080",
-                        "fps": 30,
-                        "max bitrate": 6000
-                    },
-                    {
-                        "res": "1280x720",
-                        "fps": 60,
-                        "max bitrate": 6000
-                    },
-                    {
-                        "res": "1280x720",
-                        "fps": 30,
-                        "max bitrate": 4000
-                    },
-                    {
-                        "res": "852x480",
-                        "fps": 60,
-                        "max bitrate": 3000
-                    },
-                    {
-                        "res": "852x480",
-                        "fps": 30,
-                        "max bitrate": 2000
-                    }
-                ],
-                "max fps": 60,
-                "max video bitrate": 8000,
-                "max audio bitrate": 320
             },
             "supported video codecs": [
                 "h264"
@@ -2709,8 +2706,14 @@
             ],
             "recommended": {
                 "keyint": 1,
-                "profile": "high",
-                "bframes": 0
+                "bframes": 0,
+                "max fps": 60,
+                "max video bitrate": 8000,
+                "max audio bitrate": 192,
+                "x264opts": "tune=zerolatency scenecut=0",
+                "supported resolutions": [
+                    "1920x1080"
+                ]
             }
         },
         {
@@ -2801,6 +2804,104 @@
                 "keyint": 2,
                 "max video bitrate": 12000,
                 "max audio bitrate": 320
+            }
+        },
+        {
+            "name": "Hakuna Live - RTMP",
+            "servers": [
+                {
+                    "name": "Republic of Korea / Japan",
+                    "url": "rtmps://media-proxy.prod.an1.media.hpcnt.com/hakuna"
+                }
+            ],
+            "protocol": "RTMP",
+            "supported video codecs": [
+                "h264"
+            ],
+            "recommended": {
+                "keyint": 2,
+                "supported resolutions": [
+                    "1920x1080",
+                    "1280x720"
+                ],
+                "max video bitrate": 6000,
+                "max audio bitrate": 320,
+                "bframes": 0
+            }
+        },
+        {
+            "name": "sheeta",
+            "common": false,
+            "more_info_link": "https://partner-support.sheeta.com/hc/ja/articles/4404573942425-%E7%94%9F%E6%94%BE%E9%80%81%E3%81%AE%E9%85%8D%E4%BF%A1%E6%96%B9%E6%B3%95",
+            "servers": [
+                {
+                    "name": "Default",
+                    "url": "rtmp://lsm.sheeta.com:1935/lsm"
+                }
+            ],
+            "protocol": "RTMP",
+            "supported video codecs": [
+                "h264"
+            ],
+            "supported audio codecs": [
+                "aac"
+            ],
+            "recommended": {
+                "keyint": 1,
+                "profile": "main",
+                "supported resolutions": [
+                    "1920x1080",
+                    "1280x720",
+                    "854x480",
+                    "640x480"
+                ],
+                "bitrate matrix": [
+                    {
+                        "res": "1920x1080",
+                        "fps": 30,
+                        "max bitrate": 6000
+                    },
+                    {
+                        "res": "1280x720",
+                        "fps": 30,
+                        "max bitrate": 4700
+                    },
+                    {
+                        "res": "854x480",
+                        "fps": 30,
+                        "max bitrate": 3400
+                    },
+                    {
+                        "res": "640x480",
+                        "fps": 30,
+                        "max bitrate": 3400
+                    },
+                    {
+                        "res": "1920x1080",
+                        "fps": 60,
+                        "max bitrate": 9000
+                    },
+                    {
+                        "res": "1280x720",
+                        "fps": 60,
+                        "max bitrate": 7000
+                    },
+                    {
+                        "res": "854x480",
+                        "fps": 60,
+                        "max bitrate": 5000
+                    },
+                    {
+                        "res": "640x480",
+                        "fps": 60,
+                        "max bitrate": 5000
+                    }
+                ],
+                "max fps": 60,
+                "max video bitrate": 9000,
+                "max audio bitrate": 512,
+                "x264opts": "scenecut=0",
+                "output": "rtmp_output"
             }
         },
         {
@@ -3431,6 +3532,5 @@
                 "x264opts": "scenecut=0"
             }
         }
-
     ]
 }

@@ -758,7 +758,6 @@ struct obs_source {
 	volatile bool timing_set;
 	volatile uint64_t timing_adjust;
 	uint64_t resample_offset;
-	uint64_t last_audio_ts;
 	uint64_t next_audio_ts_min;
 	uint64_t next_audio_sys_ts_min;
 	uint64_t last_frame_ts;
@@ -1287,7 +1286,7 @@ struct encoder_callback {
 struct encoder_group {
 	pthread_mutex_t mutex;
 	uint32_t encoders_added;
-	uint32_t encoders_ready;
+	uint32_t encoders_started;
 	uint64_t start_timestamp;
 
 	uint32_t frame_rate_divisors_lcm;

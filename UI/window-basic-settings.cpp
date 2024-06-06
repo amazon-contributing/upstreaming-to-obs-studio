@@ -347,6 +347,7 @@ void RestrictResetBitrates(initializer_list<QComboBox *> boxes, int maxbitrate);
 #define VIDEO_RES       &OBSBasicSettings::VideoChangedResolution
 #define VIDEO_CHANGED   &OBSBasicSettings::VideoChanged
 #define A11Y_CHANGED    &OBSBasicSettings::A11yChanged
+#define APPEAR_CHANGED  &OBSBasicSettings::AppearanceChanged
 #define ADV_CHANGED     &OBSBasicSettings::AdvancedChanged
 #define ADV_RESTART     &OBSBasicSettings::AdvancedChangedRestart
 /* clang-format on */
@@ -370,7 +371,6 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 
 	/* clang-format off */
 	HookWidget(ui->language,             COMBO_CHANGED,  GENERAL_CHANGED);
-	HookWidget(ui->theme, 		     COMBO_CHANGED,  GENERAL_CHANGED);
 	HookWidget(ui->updateChannelBox,     COMBO_CHANGED,  GENERAL_CHANGED);
 	HookWidget(ui->enableAutoUpdates,    CHECK_CHANGED,  GENERAL_CHANGED);
 	HookWidget(ui->openStatsOnStartup,   CHECK_CHANGED,  GENERAL_CHANGED);
@@ -407,6 +407,8 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	HookWidget(ui->multiviewDrawNames,   CHECK_CHANGED,  GENERAL_CHANGED);
 	HookWidget(ui->multiviewDrawAreas,   CHECK_CHANGED,  GENERAL_CHANGED);
 	HookWidget(ui->multiviewLayout,      COMBO_CHANGED,  GENERAL_CHANGED);
+	HookWidget(ui->theme, 		     COMBO_CHANGED,  APPEAR_CHANGED);
+	HookWidget(ui->themeVariant,	     COMBO_CHANGED,  APPEAR_CHANGED);
 	HookWidget(ui->service,              COMBO_CHANGED,  STREAM1_CHANGED);
 	HookWidget(ui->server,               COMBO_CHANGED,  STREAM1_CHANGED);
 	HookWidget(ui->customServer,         EDIT_CHANGED,   STREAM1_CHANGED);
@@ -798,8 +800,13 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 		&OBSBasicSettings::SimpleReplayBufferChanged);
 	connect(ui->simpleRBSecMax, &QSpinBox::valueChanged, this,
 		&OBSBasicSettings::SimpleReplayBufferChanged);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+	connect(ui->advOutSplitFile, &QCheckBox::checkStateChanged, this,
+		&OBSBasicSettings::AdvOutSplitFileChanged);
+#else
 	connect(ui->advOutSplitFile, &QCheckBox::stateChanged, this,
 		&OBSBasicSettings::AdvOutSplitFileChanged);
+#endif
 	connect(ui->advOutSplitFileType, &QComboBox::currentIndexChanged, this,
 		&OBSBasicSettings::AdvOutSplitFileChanged);
 	connect(ui->advReplayBuf, &QCheckBox::toggled, this,
@@ -892,6 +899,7 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	ui->multitrackVideoNoticeBox->setVisible(false);
 
 	InitStreamPage();
+	InitAppearancePage();
 	LoadSettings(false);
 
 	ui->advOutTrack1->setAccessibleName(
@@ -1182,6 +1190,7 @@ void OBSBasicSettings::LoadFormats()
 	ui->simpleOutRecFormat->addItem(FORMAT_STR("MKV"), "mkv");
 	ui->simpleOutRecFormat->addItem(FORMAT_STR("MP4"), "mp4");
 	ui->simpleOutRecFormat->addItem(FORMAT_STR("MOV"), "mov");
+	ui->simpleOutRecFormat->addItem(FORMAT_STR("hMP4"), "hybrid_mp4");
 	ui->simpleOutRecFormat->addItem(FORMAT_STR("fMP4"), "fragmented_mp4");
 	ui->simpleOutRecFormat->addItem(FORMAT_STR("fMOV"), "fragmented_mov");
 	ui->simpleOutRecFormat->addItem(FORMAT_STR("TS"), "mpegts");
@@ -1190,6 +1199,7 @@ void OBSBasicSettings::LoadFormats()
 	ui->advOutRecFormat->addItem(FORMAT_STR("MKV"), "mkv");
 	ui->advOutRecFormat->addItem(FORMAT_STR("MP4"), "mp4");
 	ui->advOutRecFormat->addItem(FORMAT_STR("MOV"), "mov");
+	ui->advOutRecFormat->addItem(FORMAT_STR("hMP4"), "hybrid_mp4");
 	ui->advOutRecFormat->addItem(FORMAT_STR("fMP4"), "fragmented_mp4");
 	ui->advOutRecFormat->addItem(FORMAT_STR("fMOV"), "fragmented_mov");
 	ui->advOutRecFormat->addItem(FORMAT_STR("TS"), "mpegts");
@@ -1250,10 +1260,10 @@ void OBSBasicSettings::ReloadCodecs(const FFmpegFormat &format)
 
 	for (auto &codec : supportedCodecs) {
 		switch (codec.type) {
-		case AUDIO:
+		case FFmpegCodecType::AUDIO:
 			AddCodec(ui->advOutFFAEncoder, codec);
 			break;
-		case VIDEO:
+		case FFmpegCodecType::VIDEO:
 			AddCodec(ui->advOutFFVEncoder, codec);
 			break;
 		default:
@@ -1297,51 +1307,6 @@ void OBSBasicSettings::LoadLanguageList()
 	}
 
 	ui->language->model()->sort(0);
-}
-
-void OBSBasicSettings::LoadThemeList()
-{
-	/* Save theme if user presses Cancel */
-	savedTheme = string(App()->GetTheme());
-
-	ui->theme->clear();
-	QSet<QString> uniqueSet;
-	string themeDir;
-	char userThemeDir[512];
-	int ret = GetConfigPath(userThemeDir, sizeof(userThemeDir),
-				"obs-studio/themes/");
-	GetDataFilePath("themes/", themeDir);
-
-	/* Check user dir first. */
-	if (ret > 0) {
-		QDirIterator it(QString(userThemeDir), QStringList() << "*.qss",
-				QDir::Files);
-		while (it.hasNext()) {
-			it.next();
-			QString name = it.fileInfo().completeBaseName();
-			ui->theme->addItem(name, name);
-			uniqueSet.insert(name);
-		}
-	}
-
-	/* Check shipped themes. */
-	QDirIterator uIt(QString(themeDir.c_str()), QStringList() << "*.qss",
-			 QDir::Files);
-	while (uIt.hasNext()) {
-		uIt.next();
-		QString name = uIt.fileInfo().completeBaseName();
-		QString value = name;
-
-		if (name == DEFAULT_THEME)
-			name += " " + QTStr("Default");
-
-		if (!uniqueSet.contains(value) && name != "Default")
-			ui->theme->addItem(name, value);
-	}
-
-	int idx = ui->theme->findData(QT_UTF8(App()->GetTheme()));
-	if (idx != -1)
-		ui->theme->setCurrentIndex(idx);
 }
 
 #if defined(_WIN32) || defined(ENABLE_SPARKLE_UPDATER)
@@ -1416,7 +1381,6 @@ void OBSBasicSettings::LoadGeneralSettings()
 	loading = true;
 
 	LoadLanguageList();
-	LoadThemeList();
 
 #if defined(_WIN32) || defined(ENABLE_SPARKLE_UPDATER)
 	bool enableAutoUpdates = config_get_bool(GetGlobalConfig(), "General",
@@ -1436,8 +1400,13 @@ void OBSBasicSettings::LoadGeneralSettings()
 					"HideOBSWindowsFromCapture");
 		ui->hideOBSFromCapture->setChecked(hideWindowFromCapture);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+		connect(ui->hideOBSFromCapture, &QCheckBox::checkStateChanged,
+			this, &OBSBasicSettings::HideOBSWindowWarning);
+#else
 		connect(ui->hideOBSFromCapture, &QCheckBox::stateChanged, this,
 			&OBSBasicSettings::HideOBSWindowWarning);
+#endif
 	}
 #endif
 
@@ -2172,6 +2141,7 @@ OBSBasicSettings::CreateEncoderPropertyView(const char *encoder,
 	view->setFrameShape(QFrame::NoFrame);
 	view->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
 	view->setProperty("changed", QVariant(changed));
+	view->setScrolling(false);
 	QObject::connect(view, &OBSPropertiesView::Changed, this,
 			 &OBSBasicSettings::OutputsChanged);
 
@@ -3361,6 +3331,8 @@ void OBSBasicSettings::LoadSettings(bool changedOnly)
 		LoadVideoSettings();
 	if (!changedOnly || a11yChanged)
 		LoadA11ySettings();
+	if (!changedOnly || appearanceChanged)
+		LoadAppearanceSettings();
 	if (!changedOnly || advancedChanged)
 		LoadAdvancedSettings();
 }
@@ -3374,15 +3346,6 @@ void OBSBasicSettings::SaveGeneralSettings()
 	if (WidgetChanged(ui->language))
 		config_set_string(GetGlobalConfig(), "General", "Language",
 				  language.c_str());
-
-	int themeIndex = ui->theme->currentIndex();
-	QString themeData = ui->theme->itemData(themeIndex).toString();
-
-	if (WidgetChanged(ui->theme)) {
-		savedTheme = themeData.toStdString();
-		config_set_string(GetGlobalConfig(), "General", "CurrentTheme3",
-				  QT_TO_UTF8(themeData));
-	}
 
 #if defined(_WIN32) || defined(ENABLE_SPARKLE_UPDATER)
 	if (WidgetChanged(ui->enableAutoUpdates))
@@ -4174,7 +4137,8 @@ void OBSBasicSettings::SaveSettings()
 		SaveA11ySettings();
 	if (advancedChanged)
 		SaveAdvancedSettings();
-
+	if (appearanceChanged)
+		SaveAppearanceSettings();
 	if (videoChanged || advancedChanged)
 		main->ResetVideo();
 
@@ -4198,6 +4162,8 @@ void OBSBasicSettings::SaveSettings()
 			AddChangedVal(changed, "hotkeys");
 		if (a11yChanged)
 			AddChangedVal(changed, "a11y");
+		if (appearanceChanged)
+			AddChangedVal(changed, "appearance");
 		if (advancedChanged)
 			AddChangedVal(changed, "advanced");
 
@@ -4236,7 +4202,7 @@ bool OBSBasicSettings::QueryChanges()
 		SaveSettings();
 	} else {
 		if (savedTheme != App()->GetTheme())
-			App()->SetTheme(savedTheme);
+			App()->SetTheme(savedTheme->id);
 
 		LoadSettings(true);
 		restart = false;
@@ -4311,17 +4277,24 @@ void OBSBasicSettings::closeEvent(QCloseEvent *event)
 		event->ignore();
 }
 
+void OBSBasicSettings::showEvent(QShowEvent *event)
+{
+	QDialog::showEvent(event);
+
+	/* Reduce the height of the widget area if too tall compared to the screen
+	 * size (e.g., 720p) with potential window decoration (e.g., titlebar). */
+	const int titleBarHeight =
+		QApplication::style()->pixelMetric(QStyle::PM_TitleBarHeight);
+	const int maxHeight =
+		round(screen()->availableGeometry().height() - titleBarHeight);
+	if (size().height() >= maxHeight)
+		resize(size().width(), maxHeight);
+}
+
 void OBSBasicSettings::reject()
 {
 	if (AskIfCanCloseSettings())
 		close();
-}
-
-void OBSBasicSettings::on_theme_activated(int idx)
-{
-	QString currT = ui->theme->itemData(idx).toString();
-
-	App()->SetTheme(currT.toUtf8().constData());
 }
 
 void OBSBasicSettings::on_listWidget_itemSelectionChanged()
@@ -4331,7 +4304,7 @@ void OBSBasicSettings::on_listWidget_itemSelectionChanged()
 	if (loading || row == pageIndex)
 		return;
 
-	if (!hotkeysLoaded && row == 5) {
+	if (!hotkeysLoaded && row == Pages::HOTKEYS) {
 		setCursor(Qt::BusyCursor);
 		/* Look, I know this /feels/ wrong, but the specific issue we're dealing with
 		 * here means that the UI locks up immediately even when using "invokeMethod".
@@ -4388,7 +4361,7 @@ void OBSBasicSettings::on_buttonBox_clicked(QAbstractButton *button)
 	    val == QDialogButtonBox::RejectRole) {
 		if (val == QDialogButtonBox::RejectRole) {
 			if (savedTheme != App()->GetTheme())
-				App()->SetTheme(savedTheme);
+				App()->SetTheme(savedTheme->id);
 		}
 		ClearChanged();
 		close();
@@ -4529,7 +4502,8 @@ void OBSBasicSettings::on_advOutFFAEncoder_currentIndexChanged(int idx)
 	if (!itemDataVariant.isNull()) {
 		auto desc = itemDataVariant.value<FFmpegCodec>();
 		SetAdvOutputFFmpegEnablement(
-			AUDIO, desc.id != 0 || desc.name != nullptr, true);
+			FFmpegCodecType::AUDIO,
+			desc.id != 0 || desc.name != nullptr, true);
 	}
 }
 
@@ -4539,7 +4513,8 @@ void OBSBasicSettings::on_advOutFFVEncoder_currentIndexChanged(int idx)
 	if (!itemDataVariant.isNull()) {
 		auto desc = itemDataVariant.value<FFmpegCodec>();
 		SetAdvOutputFFmpegEnablement(
-			VIDEO, desc.id != 0 || desc.name != nullptr, true);
+			FFmpegCodecType::VIDEO,
+			desc.id != 0 || desc.name != nullptr, true);
 	}
 }
 
@@ -4785,7 +4760,11 @@ void OBSBasicSettings::SpeakerLayoutChanged(int idx)
 	UpdateAudioWarnings();
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+void OBSBasicSettings::HideOBSWindowWarning(Qt::CheckState state)
+#else
 void OBSBasicSettings::HideOBSWindowWarning(int state)
+#endif
 {
 	if (loading || state == Qt::Unchecked)
 		return;
@@ -5033,6 +5012,15 @@ void OBSBasicSettings::A11yChanged()
 	}
 }
 
+void OBSBasicSettings::AppearanceChanged()
+{
+	if (!loading) {
+		appearanceChanged = true;
+		sender()->setProperty("changed", QVariant(true));
+		EnableApplyButton(true);
+	}
+}
+
 void OBSBasicSettings::AdvancedChanged()
 {
 	if (!loading) {
@@ -5237,10 +5225,7 @@ void OBSBasicSettings::AdvOutRecCheckWarnings()
 			errorMsg.isEmpty() ? "warningLabel" : "errorLabel");
 		advOutRecWarning->setWordWrap(true);
 
-		QFormLayout *formLayout = reinterpret_cast<QFormLayout *>(
-			ui->advOutRecTopContainer->layout());
-
-		formLayout->addRow(nullptr, advOutRecWarning);
+		ui->advOutRecInfoLayout->addWidget(advOutRecWarning);
 	}
 }
 
@@ -6113,6 +6098,11 @@ QIcon OBSBasicSettings::GetGeneralIcon() const
 	return generalIcon;
 }
 
+QIcon OBSBasicSettings::GetAppearanceIcon() const
+{
+	return appearanceIcon;
+}
+
 QIcon OBSBasicSettings::GetStreamIcon() const
 {
 	return streamIcon;
@@ -6150,42 +6140,47 @@ QIcon OBSBasicSettings::GetAdvancedIcon() const
 
 void OBSBasicSettings::SetGeneralIcon(const QIcon &icon)
 {
-	ui->listWidget->item(0)->setIcon(icon);
+	ui->listWidget->item(Pages::GENERAL)->setIcon(icon);
+}
+
+void OBSBasicSettings::SetAppearanceIcon(const QIcon &icon)
+{
+	ui->listWidget->item(Pages::APPEARANCE)->setIcon(icon);
 }
 
 void OBSBasicSettings::SetStreamIcon(const QIcon &icon)
 {
-	ui->listWidget->item(1)->setIcon(icon);
+	ui->listWidget->item(Pages::STREAM)->setIcon(icon);
 }
 
 void OBSBasicSettings::SetOutputIcon(const QIcon &icon)
 {
-	ui->listWidget->item(2)->setIcon(icon);
+	ui->listWidget->item(Pages::OUTPUT)->setIcon(icon);
 }
 
 void OBSBasicSettings::SetAudioIcon(const QIcon &icon)
 {
-	ui->listWidget->item(3)->setIcon(icon);
+	ui->listWidget->item(Pages::AUDIO)->setIcon(icon);
 }
 
 void OBSBasicSettings::SetVideoIcon(const QIcon &icon)
 {
-	ui->listWidget->item(4)->setIcon(icon);
+	ui->listWidget->item(Pages::VIDEO)->setIcon(icon);
 }
 
 void OBSBasicSettings::SetHotkeysIcon(const QIcon &icon)
 {
-	ui->listWidget->item(5)->setIcon(icon);
+	ui->listWidget->item(Pages::HOTKEYS)->setIcon(icon);
 }
 
 void OBSBasicSettings::SetAccessibilityIcon(const QIcon &icon)
 {
-	ui->listWidget->item(6)->setIcon(icon);
+	ui->listWidget->item(Pages::ACCESSIBILITY)->setIcon(icon);
 }
 
 void OBSBasicSettings::SetAdvancedIcon(const QIcon &icon)
 {
-	ui->listWidget->item(7)->setIcon(icon);
+	ui->listWidget->item(Pages::ADVANCED)->setIcon(icon);
 }
 
 int OBSBasicSettings::CurrentFLVTrack()
@@ -6291,10 +6286,10 @@ extern bool MultitrackVideoDeveloperModeEnabled();
 
 void OBSBasicSettings::UpdateMultitrackVideo()
 {
-	// technically it should currently be safe to toggle multitrackVideo
+	// Technically, it should currently be safe to toggle multitrackVideo
 	// while not streaming (recording should be irrelevant), but practically
 	// output settings aren't currently being tracked with that degree of
-	// flexibility, so just disable everything while outputs are active
+	// flexibility, so just disable everything while outputs are active.
 	auto toggle_available = !main->Active();
 
 	// FIXME: protocol is not updated properly for WHIP; what do?
@@ -6408,13 +6403,13 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 					 vodTrackCheckbox->isChecked();
 
 		auto vod_track_idx_enabled = [&](size_t idx) {
-			return vod_track_enabled && vodTrack[idx] &&
-			       vodTrack[idx]->isChecked();
+			return vod_track_enabled && vodTrack[idx - 1] &&
+			       vodTrack[idx - 1]->isChecked();
 		};
 
 		auto track1_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack1->isChecked() ||
-					       vod_track_idx_enabled(0));
+					       vod_track_idx_enabled(1));
 		auto track1_disabled = track1_warning_visible &&
 				       !ui->advOutRecTrack1->isChecked();
 		ui->advOutTrack1BitrateLabel->setDisabled(track1_disabled);
@@ -6422,7 +6417,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track2_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack2->isChecked() ||
-					       vod_track_idx_enabled(1));
+					       vod_track_idx_enabled(2));
 		auto track2_disabled = track2_warning_visible &&
 				       !ui->advOutRecTrack2->isChecked();
 		ui->advOutTrack2BitrateLabel->setDisabled(track2_disabled);
@@ -6430,7 +6425,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track3_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack3->isChecked() ||
-					       vod_track_idx_enabled(2));
+					       vod_track_idx_enabled(3));
 		auto track3_disabled = track3_warning_visible &&
 				       !ui->advOutRecTrack3->isChecked();
 		ui->advOutTrack3BitrateLabel->setDisabled(track3_disabled);
@@ -6438,7 +6433,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track4_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack4->isChecked() ||
-					       vod_track_idx_enabled(3));
+					       vod_track_idx_enabled(4));
 		auto track4_disabled = track4_warning_visible &&
 				       !ui->advOutRecTrack4->isChecked();
 		ui->advOutTrack4BitrateLabel->setDisabled(track4_disabled);
@@ -6446,7 +6441,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track5_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack5->isChecked() ||
-					       vod_track_idx_enabled(4));
+					       vod_track_idx_enabled(5));
 		auto track5_disabled = track5_warning_visible &&
 				       !ui->advOutRecTrack5->isChecked();
 		ui->advOutTrack5BitrateLabel->setDisabled(track5_disabled);
@@ -6454,7 +6449,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 
 		auto track6_warning_visible = mtv_enabled &&
 					      (ui->advOutTrack6->isChecked() ||
-					       vod_track_idx_enabled(5));
+					       vod_track_idx_enabled(6));
 		auto track6_disabled = track6_warning_visible &&
 				       !ui->advOutRecTrack6->isChecked();
 		ui->advOutTrack6BitrateLabel->setDisabled(track6_disabled);
@@ -6498,7 +6493,7 @@ void OBSBasicSettings::UpdateMultitrackVideo()
 				settings, "multitrack_video_disclaimer"));
 		} else {
 			ui->multitrackVideoInfo->setText(
-				QTStr("MultitrackVideo.InfoTest")
+				QTStr("MultitrackVideo.Info")
 					.arg(multitrack_video_name,
 					     ui->service->currentText()));
 		}

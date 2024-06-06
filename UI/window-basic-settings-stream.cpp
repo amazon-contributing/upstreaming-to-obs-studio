@@ -368,8 +368,27 @@ void OBSBasicSettings::SaveStream1Settings()
 	auto oldMultitrackVideoSetting = config_get_bool(
 		main->Config(), "Stream1", "EnableMultitrackVideo");
 
-	SaveCheckBox(ui->enableMultitrackVideo, "Stream1",
-		     "EnableMultitrackVideo");
+	if (!IsCustomService()) {
+		OBSDataAutoRelease settings = obs_data_create();
+		obs_data_set_string(settings, "service",
+				    QT_TO_UTF8(ui->service->currentText()));
+		OBSServiceAutoRelease temp_service = obs_service_create_private(
+			"rtmp_common", "auto config query service", settings);
+		settings = obs_service_get_settings(temp_service);
+		auto available = obs_data_has_user_value(
+			settings, "multitrack_video_configuration_url");
+
+		if (available) {
+			SaveCheckBox(ui->enableMultitrackVideo, "Stream1",
+				     "EnableMultitrackVideo");
+		} else {
+			config_remove_value(main->Config(), "Stream1",
+					    "EnableMultitrackVideo");
+		}
+	} else {
+		SaveCheckBox(ui->enableMultitrackVideo, "Stream1",
+			     "EnableMultitrackVideo");
+	}
 	SaveCheckBox(ui->multitrackVideoMaximumAggregateBitrateAuto, "Stream1",
 		     "MultitrackVideoMaximumAggregateBitrateAuto");
 	SaveSpinBox(ui->multitrackVideoMaximumAggregateBitrate, "Stream1",
@@ -671,6 +690,10 @@ void OBSBasicSettings::ServiceChanged(bool resetFields)
 
 	if (resetFields || lastService != service.c_str()) {
 		reset_service_ui_fields(ui.get(), service, loading);
+
+		ui->enableMultitrackVideo->setChecked(config_get_bool(
+			main->Config(), "Stream1", "EnableMultitrackVideo"));
+		UpdateMultitrackVideo();
 	}
 
 	ui->useAuth->setVisible(custom);

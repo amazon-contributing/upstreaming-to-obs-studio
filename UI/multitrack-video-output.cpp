@@ -113,7 +113,7 @@ create_service(const GoLiveApi::Config &go_live_config,
 		}
 
 		url = rtmp_url->c_str();
-		blog(LOG_INFO, "Using custom rtmp URL: '%s'", url);
+		blog(LOG_INFO, "Using custom RTMP URL: '%s'", url);
 	} else {
 		if (!url) {
 			blog(LOG_ERROR, "No RTMP URL in go live config");
@@ -128,7 +128,7 @@ create_service(const GoLiveApi::Config &go_live_config,
 	dstr_cat(str, url);
 
 	// dstr_find does not protect against null, and dstr_cat will
-	// not inialize str if cat'ing with a null url
+	// not initialize str if cat'ing with a null url
 	if (!dstr_is_empty(str)) {
 		auto found = dstr_find(str, "/{stream_key}");
 		if (found)
@@ -145,7 +145,9 @@ create_service(const GoLiveApi::Config &go_live_config,
 			QString::fromStdString(go_live_config.meta.config_id));
 	}
 
-	auto key_with_param = stream_key + "?" + parsed_query.toString();
+	auto key_with_param = stream_key;
+	if (!parsed_query.isEmpty())
+		key_with_param += "?" + parsed_query.toString();
 
 	OBSDataAutoRelease settings = obs_data_create();
 	obs_data_set_string(settings, "server", str->array);
@@ -199,7 +201,7 @@ static OBSOutputAutoRelease create_output()
 
 	if (!output) {
 		blog(LOG_ERROR,
-		     "failed to create multitrack video rtmp output");
+		     "Failed to create multitrack video rtmp output");
 		throw MultitrackVideoError::warning(QTStr(
 			"FailedToStartStream.FailedToCreateMultitrackVideoOutput"));
 	}
@@ -213,7 +215,7 @@ static OBSOutputAutoRelease create_recording_output(obs_data_t *settings)
 		"flv_output", "flv multitrack video", settings, nullptr);
 
 	if (!output)
-		blog(LOG_ERROR, "failed to create multitrack video flv output");
+		blog(LOG_ERROR, "Failed to create multitrack video flv output");
 
 	return output;
 }
@@ -339,7 +341,7 @@ static OBSEncoderAutoRelease create_video_encoder(
 	obs_video_info ovi_storage;
 	if (!obs_get_video_info(&ovi_storage)) {
 		blog(LOG_WARNING,
-		     "Failed to get obs video info while creating encoder %zu",
+		     "Failed to get obs_video_info while creating encoder %zu",
 		     encoder_index);
 		throw MultitrackVideoError::warning(
 			QTStr("FailedToStartStream.FailedToGetOBSVideoInfo")
@@ -380,7 +382,7 @@ static OBSEncoderAutoRelease create_audio_encoder(const char *name,
 	OBSEncoderAutoRelease audio_encoder = obs_audio_encoder_create(
 		audio_encoder_id, name, settings, mixer_idx, nullptr);
 	if (!audio_encoder) {
-		blog(LOG_ERROR, "failed to create audio encoder");
+		blog(LOG_ERROR, "Failed to create audio encoder");
 		throw MultitrackVideoError::warning(QTStr(
 			"FailedToStartStream.FailedToCreateAudioEncoder"));
 	}
@@ -673,7 +675,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 
 	auto audio_encoders = std::vector<OBSEncoderAutoRelease>();
 	auto video_encoders = std::vector<OBSEncoderAutoRelease>();
-	OBSEncoderAutoRelease audio_encoder = nullptr;
 	auto outputs = SetupOBSOutput(dump_stream_to_file_config, output_config,
 				      audio_encoders, video_encoders,
 				      audio_encoder_id, vod_track_mixer,
@@ -775,12 +776,9 @@ signal_handler_t *MultitrackVideoOutput::StreamingSignalHandler()
 		       : nullptr;
 }
 
-void MultitrackVideoOutput::StartedStreaming(QWidget *parent, bool success)
+void MultitrackVideoOutput::StartedStreaming(QWidget *parent)
 {
-	if (!success)
-		return;
-
-	OBSOutputAutoRelease dump_output = nullptr;
+	OBSOutputAutoRelease dump_output;
 	{
 		const std::lock_guard current_stream_dump_lock{
 			current_stream_dump_mutex};
@@ -818,18 +816,16 @@ void MultitrackVideoOutput::StartedStreaming(QWidget *parent, bool success)
 
 void MultitrackVideoOutput::StopStreaming()
 {
-	OBSOutputAutoRelease current_output = nullptr;
+	OBSOutputAutoRelease current_output;
 	{
 		const std::lock_guard current_lock{current_mutex};
 		if (current && current->output_)
 			current_output = obs_output_get_ref(current->output_);
 	}
-
-	if (current_output) {
+	if (current_output)
 		obs_output_stop(current_output);
-	}
 
-	OBSOutputAutoRelease dump_output = nullptr;
+	OBSOutputAutoRelease dump_output;
 	{
 		const std::lock_guard current_stream_dump_lock{
 			current_stream_dump_mutex};
@@ -873,9 +869,11 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 
 	check_setting(useDelay, "Basic.Settings.Advanced.StreamDelay",
 		      "Basic.Settings.Advanced.StreamDelay");
+#ifdef _WIN32
 	check_setting(enableNewSocketLoop,
 		      "Basic.Settings.Advanced.Network.EnableNewSocketLoop",
 		      "Basic.Settings.Advanced.Network");
+#endif
 
 	if (incompatible_settings.isEmpty())
 		return true;
@@ -884,46 +882,38 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 
 	QMessageBox mb(parent);
 	mb.setIcon(QMessageBox::Critical);
-	mb.setWindowTitle("Incompatible Settings");
-	mb.setText(QString("%1 is not currently compatible with:\n\n%2\n"
-			   "To continue streaming with %1, disable "
-			   "incompatible settings:\n\n%3\n"
-			   "and Start Streaming again.")
-			   .arg(obs_data_get_string(service_settings,
-						    "multitrack_video_name"))
-			   .arg(incompatible_settings)
-			   .arg(where_to_disable));
-	auto this_stream =
-		mb.addButton("Disable for this stream and Start Streaming",
-			     QMessageBox::AcceptRole);
+	mb.setWindowTitle(QTStr("MultitrackVideo.IncompatibleSettings.Title"));
+	mb.setText(
+		QString(QTStr("MultitrackVideo.IncompatibleSettings.Text"))
+			.arg(obs_data_get_string(service_settings,
+						 "ertmp_multitrack_video_name"))
+			.arg(incompatible_settings)
+			.arg(where_to_disable));
+	auto this_stream = mb.addButton(
+		QTStr("MultitrackVideo.IncompatibleSettings.DisableAndStartStreaming"),
+		QMessageBox::AcceptRole);
 	auto all_streams = mb.addButton(
-		QString("Update %1 and Start Streaming").arg(QTStr("Settings")),
+		QString(QTStr(
+			"MultitrackVideo.IncompatibleSettings.UpdateAndStartStreaming")),
 		QMessageBox::AcceptRole);
 	mb.setStandardButtons(QMessageBox::StandardButton::Cancel);
 
 	mb.exec();
 
-	{
-		QString action = "cancel";
-		if (mb.clickedButton() == this_stream) {
-			action = this_stream->text();
-		} else if (mb.clickedButton() == all_streams) {
-			action = all_streams->text();
-		}
-
-		auto error =
-			QString("attempted to start stream with incompatible settings (%1); "
-				"action taken: %2")
-				.arg(incompatible_settings_list)
-				.arg(action)
-				.toUtf8();
-		blog(LOG_INFO, "MultitrackVideoOutput: %s", error.constData());
+	const char *action = "cancel";
+	if (mb.clickedButton() == this_stream) {
+		action = "DisableAndStartStreaming";
+	} else if (mb.clickedButton() == all_streams) {
+		action = "UpdateAndStartStreaming";
 	}
+
+	blog(LOG_INFO,
+	     "MultitrackVideoOutput: attempted to start stream with incompatible"
+	     "settings (%s); action taken: %s",
+	     incompatible_settings_list.toUtf8().constData(), action);
 
 	if (mb.clickedButton() == this_stream ||
 	    mb.clickedButton() == all_streams) {
-		useDelay = false;
-		enableNewSocketLoop = false;
 		useDelay = false;
 		enableNewSocketLoop = false;
 
@@ -1171,7 +1161,7 @@ void StreamStopHandler(void *arg, calldata_t *params)
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
 	self->StopExtraViews();
 
-	OBSOutputAutoRelease stream_dump_output = nullptr;
+	OBSOutputAutoRelease stream_dump_output;
 	{
 		const std::lock_guard<std::mutex> current_stream_dump_lock{
 			self->current_stream_dump_mutex};
@@ -1209,8 +1199,6 @@ void StreamStopHandler(void *arg, calldata_t *params)
 void StreamDeactivateHandler(void *arg, calldata_t *params)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
-	if (!self->current)
-		return;
 
 	if (obs_output_reconnecting(static_cast<obs_output_t *>(
 		    calldata_ptr(params, "output"))))
@@ -1240,9 +1228,6 @@ void RecordingStopHandler(void *arg, calldata_t *params)
 void RecordingDeactivateHandler(void *arg, calldata_t * /*data*/)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
-	if (!self->current_stream_dump)
-		return;
-
 	MultitrackVideoOutput::ReleaseOnMainThread(
 		self->take_current_stream_dump());
 }

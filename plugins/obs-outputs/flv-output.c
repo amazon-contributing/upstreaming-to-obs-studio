@@ -61,106 +61,86 @@ struct flv_output {
  * not use or link against FFmpeg.
  */
 
+/* clang-format off */
+
 /**
-  * Chromaticity coordinates of the source primaries.
-  * These values match the ones defined by ISO/IEC 23091-2_2019 subclause 8.1 and ITU-T H.273.
-  */
+ * Chromaticity Coordinates of the Source Primaries
+ * These values match the ones defined by ISO/IEC 23091-2_2019 subclause 8.1 and ITU-T H.273.
+ */
 enum OBSColorPrimaries {
-	OBSCOL_PRI_RESERVED0 = 0,
-	OBSCOL_PRI_BT709 =
-		1, ///< also ITU-R BT1361 / IEC 61966-2-4 / SMPTE RP 177 Annex B
-	OBSCOL_PRI_UNSPECIFIED = 2,
-	OBSCOL_PRI_RESERVED = 3,
-	OBSCOL_PRI_BT470M =
-		4, ///< also FCC Title 47 Code of Federal Regulations 73.682 (a)(20)
-	OBSCOL_PRI_BT470BG =
-		5, ///< also ITU-R BT601-6 625 / ITU-R BT1358 625 / ITU-R BT1700 625 PAL & SECAM
-	OBSCOL_PRI_SMPTE170M =
-		6, ///< also ITU-R BT601-6 525 / ITU-R BT1358 525 / ITU-R BT1700 NTSC
-	OBSCOL_PRI_SMPTE240M =
-		7, ///< identical to above, also called "SMPTE C" even though it uses D65
-	OBSCOL_PRI_FILM = 8,      ///< colour filters using Illuminant C
-	OBSCOL_PRI_BT2020 = 9,    ///< ITU-R BT2020
-	OBSCOL_PRI_SMPTE428 = 10, ///< SMPTE ST 428-1 (CIE 1931 XYZ)
+	OBSCOL_PRI_RESERVED0    =  0,
+	OBSCOL_PRI_BT709        =  1, ///< also ITU-R BT1361 / IEC 61966-2-4 / SMPTE RP 177 Annex B
+	OBSCOL_PRI_UNSPECIFIED  =  2,
+	OBSCOL_PRI_RESERVED     =  3,
+	OBSCOL_PRI_BT470M       =  4, ///< also FCC Title 47 Code of Federal Regulations 73.682 (a)(20)
+	OBSCOL_PRI_BT470BG      =  5, ///< also ITU-R BT601-6 625 / ITU-R BT1358 625 / ITU-R BT1700 625 PAL & SECAM
+	OBSCOL_PRI_SMPTE170M    =  6, ///< also ITU-R BT601-6 525 / ITU-R BT1358 525 / ITU-R BT1700 NTSC
+	OBSCOL_PRI_SMPTE240M    =  7, ///< identical to above, also called "SMPTE C" even though it uses D65
+	OBSCOL_PRI_FILM         =  8, ///< colour filters using Illuminant C
+	OBSCOL_PRI_BT2020       =  9, ///< ITU-R BT2020
+	OBSCOL_PRI_SMPTE428     = 10, ///< SMPTE ST 428-1 (CIE 1931 XYZ)
 	OBSCOL_PRI_SMPTEST428_1 = OBSCOL_PRI_SMPTE428,
-	OBSCOL_PRI_SMPTE431 = 11, ///< SMPTE ST 431-2 (2011) / DCI P3
-	OBSCOL_PRI_SMPTE432 =
-		12, ///< SMPTE ST 432-1 (2010) / P3 D65 / Display P3
-	OBSCOL_PRI_EBU3213 =
-		22, ///< EBU Tech. 3213-E (nothing there) / one of JEDEC P22 group phosphors
-	OBSCOL_PRI_JEDEC_P22 = OBSCOL_PRI_EBU3213,
-	OBSCOL_PRI_NB ///< Not part of ABI
+	OBSCOL_PRI_SMPTE431     = 11, ///< SMPTE ST 431-2 (2011) / DCI P3
+	OBSCOL_PRI_SMPTE432     = 12, ///< SMPTE ST 432-1 (2010) / P3 D65 / Display P3
+	OBSCOL_PRI_EBU3213      = 22, ///< EBU Tech. 3213-E (nothing there) / one of JEDEC P22 group phosphors
+	OBSCOL_PRI_JEDEC_P22    = OBSCOL_PRI_EBU3213,
+	OBSCOL_PRI_NB                 ///< Not part of ABI
 };
 
 /**
- * Color Transfer Characteristic.
+ * Color Transfer Characteristic
  * These values match the ones defined by ISO/IEC 23091-2_2019 subclause 8.2.
  */
 enum OBSColorTransferCharacteristic {
-	OBSCOL_TRC_RESERVED0 = 0,
-	OBSCOL_TRC_BT709 = 1, ///< also ITU-R BT1361
-	OBSCOL_TRC_UNSPECIFIED = 2,
-	OBSCOL_TRC_RESERVED = 3,
-	OBSCOL_TRC_GAMMA22 =
-		4, ///< also ITU-R BT470M / ITU-R BT1700 625 PAL & SECAM
-	OBSCOL_TRC_GAMMA28 = 5, ///< also ITU-R BT470BG
-	OBSCOL_TRC_SMPTE170M =
-		6, ///< also ITU-R BT601-6 525 or 625 / ITU-R BT1358 525 or 625 / ITU-R BT1700 NTSC
-	OBSCOL_TRC_SMPTE240M = 7,
-	OBSCOL_TRC_LINEAR = 8, ///< "Linear transfer characteristics"
-	OBSCOL_TRC_LOG =
-		9, ///< "Logarithmic transfer characteristic (100:1 range)"
-	OBSCOL_TRC_LOG_SQRT =
-		10, ///< "Logarithmic transfer characteristic (100 * Sqrt(10) : 1 range)"
+	OBSCOL_TRC_RESERVED0    =  0,
+	OBSCOL_TRC_BT709        =  1, ///< also ITU-R BT1361
+	OBSCOL_TRC_UNSPECIFIED  =  2,
+	OBSCOL_TRC_RESERVED     =  3,
+	OBSCOL_TRC_GAMMA22      =  4, ///< also ITU-R BT470M / ITU-R BT1700 625 PAL & SECAM
+	OBSCOL_TRC_GAMMA28      =  5, ///< also ITU-R BT470BG
+	OBSCOL_TRC_SMPTE170M    =  6, ///< also ITU-R BT601-6 525 or 625 / ITU-R BT1358 525 or 625 / ITU-R BT1700 NTSC
+	OBSCOL_TRC_SMPTE240M    =  7,
+	OBSCOL_TRC_LINEAR       =  8, ///< "Linear transfer characteristics"
+	OBSCOL_TRC_LOG          =  9, ///< "Logarithmic transfer characteristic (100:1 range)"
+	OBSCOL_TRC_LOG_SQRT     = 10, ///< "Logarithmic transfer characteristic (100 * Sqrt(10) : 1 range)"
 	OBSCOL_TRC_IEC61966_2_4 = 11, ///< IEC 61966-2-4
-	OBSCOL_TRC_BT1361_ECG = 12,   ///< ITU-R BT1361 Extended Colour Gamut
+	OBSCOL_TRC_BT1361_ECG   = 12, ///< ITU-R BT1361 Extended Colour Gamut
 	OBSCOL_TRC_IEC61966_2_1 = 13, ///< IEC 61966-2-1 (sRGB or sYCC)
-	OBSCOL_TRC_BT2020_10 = 14,    ///< ITU-R BT2020 for 10-bit system
-	OBSCOL_TRC_BT2020_12 = 15,    ///< ITU-R BT2020 for 12-bit system
-	OBSCOL_TRC_SMPTE2084 =
-		16, ///< SMPTE ST 2084 for 10-, 12-, 14- and 16-bit systems
-	OBSCOL_TRC_SMPTEST2084 = OBSCOL_TRC_SMPTE2084,
-	OBSCOL_TRC_SMPTE428 = 17, ///< SMPTE ST 428-1
+	OBSCOL_TRC_BT2020_10    = 14, ///< ITU-R BT2020 for 10-bit system
+	OBSCOL_TRC_BT2020_12    = 15, ///< ITU-R BT2020 for 12-bit system
+	OBSCOL_TRC_SMPTE2084    = 16, ///< SMPTE ST 2084 for 10-, 12-, 14- and 16-bit systems
+	OBSCOL_TRC_SMPTEST2084  = OBSCOL_TRC_SMPTE2084,
+	OBSCOL_TRC_SMPTE428     = 17, ///< SMPTE ST 428-1
 	OBSCOL_TRC_SMPTEST428_1 = OBSCOL_TRC_SMPTE428,
-	OBSCOL_TRC_ARIB_STD_B67 =
-		18,   ///< ARIB STD-B67, known as "Hybrid log-gamma"
-	OBSCOL_TRC_NB ///< Not part of ABI
+	OBSCOL_TRC_ARIB_STD_B67 = 18, ///< ARIB STD-B67, known as "Hybrid log-gamma"
+	OBSCOL_TRC_NB                 ///< Not part of ABI
 };
 
 /**
- * YUV colorspace type.
+ * YUV Colorspace Type
  * These values match the ones defined by ISO/IEC 23091-2_2019 subclause 8.3.
  */
 enum OBSColorSpace {
-	OBSCOL_SPC_RGB =
-		0, ///< order of coefficients is actually GBR, also IEC 61966-2-1 (sRGB), YZX and ST 428-1
-	OBSCOL_SPC_BT709 =
-		1, ///< also ITU-R BT1361 / IEC 61966-2-4 xvYCC709 / derived in SMPTE RP 177 Annex B
-	OBSCOL_SPC_UNSPECIFIED = 2,
-	OBSCOL_SPC_RESERVED =
-		3, ///< reserved for future use by ITU-T and ISO/IEC just like 15-255 are
-	OBSCOL_SPC_FCC =
-		4, ///< FCC Title 47 Code of Federal Regulations 73.682 (a)(20)
-	OBSCOL_SPC_BT470BG =
-		5, ///< also ITU-R BT601-6 625 / ITU-R BT1358 625 / ITU-R BT1700 625 PAL & SECAM / IEC 61966-2-4 xvYCC601
-	OBSCOL_SPC_SMPTE170M =
-		6, ///< also ITU-R BT601-6 525 / ITU-R BT1358 525 / ITU-R BT1700 NTSC / functionally identical to above
-	OBSCOL_SPC_SMPTE240M =
-		7, ///< derived from 170M primaries and D65 white point, 170M is derived from BT470 System M's primaries
-	OBSCOL_SPC_YCGCO =
-		8, ///< used by Dirac / VC-2 and H.264 FRext, see ITU-T SG16
-	OBSCOL_SPC_YCOCG = OBSCOL_SPC_YCGCO,
-	OBSCOL_SPC_BT2020_NCL =
-		9, ///< ITU-R BT2020 non-constant luminance system
-	OBSCOL_SPC_BT2020_CL = 10, ///< ITU-R BT2020 constant luminance system
-	OBSCOL_SPC_SMPTE2085 = 11, ///< SMPTE 2085, Y'D'zD'x
-	OBSCOL_SPC_CHROMA_DERIVED_NCL =
-		12, ///< Chromaticity-derived non-constant luminance system
-	OBSCOL_SPC_CHROMA_DERIVED_CL =
-		13, ///< Chromaticity-derived constant luminance system
-	OBSCOL_SPC_ICTCP = 14, ///< ITU-R BT.2100-0, ICtCp
-	OBSCOL_SPC_NB          ///< Not part of ABI
+	OBSCOL_SPC_RGB                =  0, ///< order of coefficients is actually GBR, also IEC 61966-2-1 (sRGB), YZX and ST 428-1
+	OBSCOL_SPC_BT709              =  1, ///< also ITU-R BT1361 / IEC 61966-2-4 xvYCC709 / derived in SMPTE RP 177 Annex B
+	OBSCOL_SPC_UNSPECIFIED        =  2,
+	OBSCOL_SPC_RESERVED           =  3, ///< reserved for future use by ITU-T and ISO/IEC just like 15-255 are
+	OBSCOL_SPC_FCC                =  4, ///< FCC Title 47 Code of Federal Regulations 73.682 (a)(20)
+	OBSCOL_SPC_BT470BG            =  5, ///< also ITU-R BT601-6 625 / ITU-R BT1358 625 / ITU-R BT1700 625 PAL & SECAM / IEC 61966-2-4 xvYCC601
+	OBSCOL_SPC_SMPTE170M          =  6, ///< also ITU-R BT601-6 525 / ITU-R BT1358 525 / ITU-R BT1700 NTSC / functionally identical to above
+	OBSCOL_SPC_SMPTE240M          =  7, ///< derived from 170M primaries and D65 white point, 170M is derived from BT470 System M's primaries
+	OBSCOL_SPC_YCGCO              =  8, ///< used by Dirac / VC-2 and H.264 FRext, see ITU-T SG16
+	OBSCOL_SPC_YCOCG              =  OBSCOL_SPC_YCGCO,
+	OBSCOL_SPC_BT2020_NCL         =  9, ///< ITU-R BT2020 non-constant luminance system
+	OBSCOL_SPC_BT2020_CL          = 10, ///< ITU-R BT2020 constant luminance system
+	OBSCOL_SPC_SMPTE2085          = 11, ///< SMPTE 2085, Y'D'zD'x
+	OBSCOL_SPC_CHROMA_DERIVED_NCL = 12, ///< Chromaticity-derived non-constant luminance system
+	OBSCOL_SPC_CHROMA_DERIVED_CL  = 13, ///< Chromaticity-derived constant luminance system
+	OBSCOL_SPC_ICTCP              = 14, ///< ITU-R BT.2100-0, ICtCp
+	OBSCOL_SPC_NB                       ///< Not part of ABI
 };
+
+/* clang-format on */
 
 static inline bool stopping(struct flv_output *stream)
 {
@@ -238,7 +218,8 @@ static int write_packet_ex(struct flv_output *stream,
 	fwrite(data, 1, size, stream->file);
 	bfree(data);
 
-	if (is_header || is_footer) // manually created packets
+	// manually created packets
+	if (is_header || is_footer)
 		bfree(packet->data);
 	else
 		obs_encoder_packet_release(packet);
@@ -327,17 +308,19 @@ static bool write_video_header(struct flv_output *stream, size_t idx)
 
 	case CODEC_H264:
 		packet.size = obs_parse_avc_header(&packet.data, header, size);
-		// Always send H264 on track 0 as old style for compat
+		// Always send H.264 on track 0 as old style for compatibility.
 		if (idx == 0) {
 			write_packet(stream, &packet, true);
 		} else {
 			write_packet_ex(stream, &packet, true, false, idx);
 		}
 		return true;
-#ifdef ENABLE_HEVC
 	case CODEC_HEVC:
+#ifdef ENABLE_HEVC
 		packet.size = obs_parse_hevc_header(&packet.data, header, size);
 		break;
+#else
+		return false;
 #endif
 	case CODEC_AV1:
 		packet.size = obs_parse_av1_header(&packet.data, header, size);
@@ -391,7 +374,9 @@ static bool write_video_metadata(struct flv_output *stream, size_t idx)
 		bits_per_raw_sample = 8;
 	}
 
-	int pri = 0, trc = 0, spc = 0;
+	int pri = 0;
+	int trc = 0;
+	int spc = 0;
 	switch (colorspace) {
 	case VIDEO_CS_601:
 		pri = OBSCOL_PRI_SMPTE170M;
@@ -460,16 +445,20 @@ static void write_headers(struct flv_output *stream)
 
 	write_meta_data(stream);
 	write_audio_header(stream, 0);
-	write_video_header(stream, 0);
-	write_video_metadata(stream, 0);
+
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		obs_encoder_t *enc =
+			obs_output_get_video_encoder2(stream->output, i);
+		if (!enc)
+			continue;
+
+		if (!write_video_header(stream, i) ||
+		    !write_video_metadata(stream, i))
+			return;
+	}
 
 	for (size_t i = 1; write_audio_header(stream, i); i++)
 		;
-	for (size_t i = 1;
-	     obs_output_get_video_encoder2(stream->output, i) != NULL; i++) {
-		write_video_header(stream, i);
-		write_video_metadata(stream, i);
-	}
 }
 
 static bool write_video_footer(struct flv_output *stream, size_t idx)
@@ -488,9 +477,9 @@ static inline bool write_footers(struct flv_output *stream)
 		obs_encoder_t *encoder =
 			obs_output_get_video_encoder2(stream->output, i);
 		if (!encoder)
-			return true;
+			continue;
 
-		if (stream->video_codec[i] == CODEC_H264)
+		if (i == 0 && stream->video_codec[i] == CODEC_H264)
 			continue;
 
 		if (!write_video_footer(stream, i))
@@ -605,10 +594,12 @@ static void flv_output_data(void *data, struct encoder_packet *packet)
 		case CODEC_H264:
 			obs_parse_avc_packet(&parsed_packet, packet);
 			break;
-#ifdef ENABLE_HEVC
 		case CODEC_HEVC:
+#ifdef ENABLE_HEVC
 			obs_parse_hevc_packet(&parsed_packet, packet);
 			break;
+#else
+			goto unlock;
 #endif
 		case CODEC_AV1:
 			obs_parse_av1_packet(&parsed_packet, packet);
@@ -646,7 +637,6 @@ static obs_properties_t *flv_output_properties(void *unused)
 	obs_properties_add_text(props, "path",
 				obs_module_text("FLVOutput.FilePath"),
 				OBS_TEXT_DEFAULT);
-
 	return props;
 }
 
@@ -665,4 +655,5 @@ struct obs_output_info flv_output_info = {
 	.start = flv_output_start,
 	.stop = flv_output_stop,
 	.encoded_packet = flv_output_data,
-	.get_properties = flv_output_properties};
+	.get_properties = flv_output_properties,
+};

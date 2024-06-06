@@ -1,7 +1,8 @@
 #include "goliveapi-postdata.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include "system-info.hpp"
-#include "multitrack-video-output.hpp"
 
 #include "models/multitrack-video.hpp"
 

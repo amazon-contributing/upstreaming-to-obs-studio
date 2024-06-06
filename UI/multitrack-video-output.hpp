@@ -46,7 +46,6 @@ struct MultitrackVideoViewInfo {
 };
 
 struct MultitrackVideoOutput {
-
 public:
 	void PrepareStreaming(QWidget *parent, const char *service_name,
 			      obs_service_t *service,
@@ -59,7 +58,7 @@ public:
 			      obs_data_t *dump_stream_to_file_config,
 			      std::optional<size_t> vod_track_mixer);
 	signal_handler_t *StreamingSignalHandler();
-	void StartedStreaming(QWidget *parent, bool success);
+	void StartedStreaming(QWidget *parent);
 	void StopStreaming();
 	bool HandleIncompatibleSettings(QWidget *parent, config_t *config,
 					obs_service_t *service, bool &useDelay,
