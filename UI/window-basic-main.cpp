@@ -1707,7 +1707,7 @@ bool OBSBasic::InitBasicConfigDefaults()
 	config_set_default_bool(basicConfig, "Stream1", "IgnoreRecommended",
 				false);
 	config_set_default_bool(basicConfig, "Stream1", "EnableMultitrackVideo",
-				true);
+				false);
 	config_set_default_bool(basicConfig, "Stream1",
 				"MultitrackVideoMaximumAggregateBitrateAuto",
 				true);
