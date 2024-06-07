@@ -21,8 +21,8 @@
 #include <libavutil/mastering_display_metadata.h>
 
 enum AVHWDeviceType hw_priority[] = {
-	AV_HWDEVICE_TYPE_D3D11VA,      AV_HWDEVICE_TYPE_DXVA2,
-	AV_HWDEVICE_TYPE_CUDA,         AV_HWDEVICE_TYPE_VAAPI,
+	AV_HWDEVICE_TYPE_CUDA,         AV_HWDEVICE_TYPE_D3D11VA,
+	AV_HWDEVICE_TYPE_DXVA2,        AV_HWDEVICE_TYPE_VAAPI,
 	AV_HWDEVICE_TYPE_VDPAU,        AV_HWDEVICE_TYPE_QSV,
 	AV_HWDEVICE_TYPE_VIDEOTOOLBOX, AV_HWDEVICE_TYPE_NONE,
 };
@@ -335,6 +335,17 @@ static int decode_packet(struct mp_decode *d, int *got_frame)
 		if (d->hw_frame->format != d->hw_format) {
 			d->frame = d->hw_frame;
 			return ret;
+		}
+
+		/* does not check for color format or other parameter changes which would require frame buffer realloc */
+		if (d->sw_frame->data[0] &&
+		    (d->sw_frame->width != d->hw_frame->width ||
+		     d->sw_frame->height != d->hw_frame->height)) {
+			blog(LOG_DEBUG,
+			     "MP: hardware frame size changed from %dx%d to %dx%d. reallocating frame",
+			     d->sw_frame->width, d->sw_frame->height,
+			     d->hw_frame->width, d->hw_frame->height);
+			av_frame_unref(d->sw_frame);
 		}
 
 		int err = av_hwframe_transfer_data(d->sw_frame, d->hw_frame, 0);

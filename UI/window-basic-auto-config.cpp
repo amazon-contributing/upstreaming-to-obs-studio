@@ -3,6 +3,8 @@
 
 #include <obs.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include "window-basic-auto-config.hpp"
 #include "window-basic-main.hpp"
 #include "qt-wrappers.hpp"
@@ -752,7 +754,7 @@ void AutoConfigStreamPage::ServiceChanged()
 
 	if (!custom_disclaimer) {
 		ui->multitrackVideoInfo->setText(
-			QTStr("MultitrackVideo.InfoTest")
+			QTStr("MultitrackVideo.Info")
 				.arg(multitrack_video_name, service.c_str()));
 	}
 
@@ -990,11 +992,11 @@ void AutoConfigStreamPage::UpdateServerList()
 
 void AutoConfigStreamPage::UpdateCompleted()
 {
+	const bool custom = IsCustomService();
 	if (ui->stackedWidget->currentIndex() == (int)Section::Connect ||
-	    (ui->key->text().isEmpty() && !auth)) {
+	    (ui->key->text().isEmpty() && !auth && !custom)) {
 		ready = false;
 	} else {
-		bool custom = IsCustomService();
 		if (custom) {
 			ready = !ui->customServer->text().isEmpty();
 		} else {

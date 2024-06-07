@@ -30,9 +30,7 @@ enum video_id_t {
 	CODEC_NONE = 0, // not valid in rtmp
 	CODEC_H264 = 1, // legacy & Y2023 spec
 	CODEC_AV1,      // Y2023 spec
-#ifdef ENABLE_HEVC
 	CODEC_HEVC,
-#endif
 };
 
 static enum audio_id_t to_audio_type(const char *codec)

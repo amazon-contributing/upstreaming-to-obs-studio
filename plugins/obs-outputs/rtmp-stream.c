@@ -842,17 +842,19 @@ static bool send_video_header(struct rtmp_stream *stream, size_t idx)
 
 	case CODEC_H264:
 		packet.size = obs_parse_avc_header(&packet.data, header, size);
-		// Always send H264 on track 0 as old style for compat
+		// Always send H.264 on track 0 as old style for compatibility.
 		if (idx == 0) {
 			return send_packet(stream, &packet, true) >= 0;
 		} else {
 			return send_packet_ex(stream, &packet, true, false,
 					      idx) >= 0;
 		}
-#ifdef ENABLE_HEVC
 	case CODEC_HEVC:
+#ifdef ENABLE_HEVC
 		packet.size = obs_parse_hevc_header(&packet.data, header, size);
 		return send_packet_ex(stream, &packet, true, false, idx) >= 0;
+#else
+		return false;
 #endif
 	case CODEC_AV1:
 		packet.size = obs_parse_av1_header(&packet.data, header, size);
@@ -1060,8 +1062,12 @@ static int init_send(struct rtmp_stream *stream)
 
 		int total_bitrate = 0;
 
-		obs_encoder_t *vencoder = obs_output_get_video_encoder(context);
-		if (vencoder) {
+		for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+			obs_encoder_t *vencoder =
+				obs_output_get_video_encoder2(context, i);
+			if (!vencoder)
+				continue;
+
 			obs_data_t *params = obs_encoder_get_settings(vencoder);
 			if (params) {
 				int bitrate =
@@ -1936,10 +1942,12 @@ static void rtmp_stream_data(void *data, struct encoder_packet *packet)
 		case CODEC_H264:
 			obs_parse_avc_packet(&new_packet, packet);
 			break;
-#ifdef ENABLE_HEVC
 		case CODEC_HEVC:
+#ifdef ENABLE_HEVC
 			obs_parse_hevc_packet(&new_packet, packet);
 			break;
+#else
+			return;
 #endif
 		case CODEC_AV1:
 			obs_parse_av1_packet(&new_packet, packet);

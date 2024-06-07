@@ -354,8 +354,8 @@ static void add_connection(struct obs_encoder *encoder)
 			lcm(encoder->encoder_group->frame_rate_divisors_lcm,
 			    encoder->frame_rate_divisor);
 
-		encoder->encoder_group->encoders_ready += 1;
-		ready = encoder->encoder_group->encoders_ready ==
+		encoder->encoder_group->encoders_started += 1;
+		ready = encoder->encoder_group->encoders_started ==
 			encoder->encoder_group->encoders_added;
 		pthread_mutex_unlock(&encoder->encoder_group->mutex);
 		if (ready)
@@ -381,8 +381,8 @@ static void remove_connection(struct obs_encoder *encoder, bool shutdown)
 	if (encoder->encoder_group) {
 		struct encoder_group *group = encoder->encoder_group;
 		pthread_mutex_lock(&group->mutex);
-		group->encoders_ready -= 1;
-		if (group->encoders_ready == 0) {
+		group->encoders_started -= 1;
+		if (group->encoders_started == 0) {
 			group->start_timestamp = 0;
 			group->frame_rate_divisors_lcm = 1;
 
@@ -1350,6 +1350,21 @@ video_t *obs_encoder_video(const obs_encoder_t *encoder)
 	return encoder->fps_override ? encoder->fps_override : encoder->media;
 }
 
+video_t *obs_encoder_parent_video(const obs_encoder_t *encoder)
+{
+	if (!obs_encoder_valid(encoder, "obs_encoder_parent_video"))
+		return NULL;
+	if (encoder->info.type != OBS_ENCODER_VIDEO) {
+		blog(LOG_WARNING,
+		     "obs_encoder_parent_video: "
+		     "encoder '%s' is not a video encoder",
+		     obs_encoder_get_name(encoder));
+		return NULL;
+	}
+
+	return encoder->media;
+}
+
 audio_t *obs_encoder_audio(const obs_encoder_t *encoder)
 {
 	if (!obs_encoder_valid(encoder, "obs_encoder_audio"))
@@ -1577,7 +1592,7 @@ void handle_encoder_group_reconfigure_request(obs_encoder_t *encoder)
 	bool new_reconfigure_request = encoder->last_reconfigure_request !=
 				       group->reconfigure_request;
 	if (!new_reconfigure_request &&
-	    group->encoders_updated_next_pts == group->encoders_ready &&
+	    group->encoders_updated_next_pts == group->encoders_started &&
 	    encoder->cur_pts == group->next_pts &&
 	    encoder->last_handled_reconfigure_request !=
 		    encoder->last_reconfigure_request) {
@@ -2137,50 +2152,6 @@ uint64_t obs_encoder_get_pause_offset(const obs_encoder_t *encoder)
 	return encoder ? encoder->pause.ts_offset : 0;
 }
 
-bool obs_encoder_group_keyframe_aligned_encoders(obs_encoder_t *encoder,
-						 obs_encoder_t *grouped_encoder)
-{
-	if (!obs_encoder_valid(encoder,
-			       "obs_encoder_group_keyframe_aligned_encoders") ||
-	    !obs_encoder_valid(grouped_encoder,
-			       "obs_encoder_group_keyframe_aligned_encoders"))
-		return false;
-
-	if (obs_encoder_active(encoder) ||
-	    obs_encoder_active(grouped_encoder)) {
-		obs_encoder_t *active =
-			obs_encoder_active(encoder) ? encoder : grouped_encoder;
-		obs_encoder_t *other = active == encoder ? grouped_encoder
-							 : encoder;
-		blog(LOG_ERROR,
-		     "obs_encoder_group_keyframe_aligned_encoders: encoder '%s' is already active, could not group with '%s'",
-		     obs_encoder_get_name(active), obs_encoder_get_name(other));
-		return false;
-	}
-
-	if (grouped_encoder->encoder_group) {
-		blog(LOG_ERROR,
-		     "encoder '%s' is already part of a multitrack group while trying to group with encoder '%s'",
-		     obs_encoder_get_name(grouped_encoder),
-		     obs_encoder_get_name(encoder));
-		return false;
-	}
-
-	if (!encoder->encoder_group) {
-		encoder->encoder_group = bzalloc(sizeof(struct encoder_group));
-		if (pthread_mutex_init(&encoder->encoder_group->mutex, NULL) <
-		    0)
-			return false;
-
-		encoder->encoder_group->encoders_added = 1;
-	}
-
-	grouped_encoder->encoder_group = encoder->encoder_group;
-	encoder->encoder_group->encoders_added += 1;
-
-	return true;
-}
-
 bool obs_encoder_has_roi(const obs_encoder_t *encoder)
 {
 	return encoder->roi.num > 0;
@@ -2266,4 +2237,134 @@ void obs_encoder_enum_roi(obs_encoder_t *encoder,
 uint32_t obs_encoder_get_roi_increment(const obs_encoder_t *encoder)
 {
 	return encoder->roi_increment;
+}
+
+bool obs_encoder_group_keyframe_aligned_encoders(
+	obs_encoder_t *encoder, obs_encoder_t *encoder_to_be_grouped)
+{
+	if (!obs_encoder_valid(encoder,
+			       "obs_encoder_group_keyframe_aligned_encoders") ||
+	    !obs_encoder_valid(encoder_to_be_grouped,
+			       "obs_encoder_group_keyframe_aligned_encoders"))
+		return false;
+
+	if (obs_encoder_active(encoder) ||
+	    obs_encoder_active(encoder_to_be_grouped)) {
+		obs_encoder_t *active = obs_encoder_active(encoder)
+						? encoder
+						: encoder_to_be_grouped;
+		obs_encoder_t *other = active == encoder ? encoder_to_be_grouped
+							 : encoder;
+		blog(LOG_ERROR,
+		     "obs_encoder_group_keyframe_aligned_encoders: encoder '%s' "
+		     "is already active, could not group with '%s'",
+		     obs_encoder_get_name(active), obs_encoder_get_name(other));
+		return false;
+	}
+
+	if (encoder_to_be_grouped->encoder_group) {
+		blog(LOG_ERROR,
+		     "obs_encoder_group_keyframe_aligned_encoders: encoder '%s' "
+		     "is already part of a keyframe aligned group while trying "
+		     "to group with encoder '%s'",
+		     obs_encoder_get_name(encoder_to_be_grouped),
+		     obs_encoder_get_name(encoder));
+		return false;
+	}
+
+	bool unlock = false;
+	if (!encoder->encoder_group) {
+		encoder->encoder_group = bzalloc(sizeof(struct encoder_group));
+		if (pthread_mutex_init(&encoder->encoder_group->mutex, NULL) <
+		    0) {
+			bfree(encoder->encoder_group);
+			encoder->encoder_group = NULL;
+			return false;
+		}
+
+		encoder->encoder_group->encoders_added = 1;
+	} else {
+		pthread_mutex_lock(&encoder->encoder_group->mutex);
+		unlock = true;
+		if (encoder->encoder_group->encoders_started != 0) {
+			blog(LOG_ERROR,
+			     "obs_encoder_group_keyframe_aligned_encoders: "
+			     "Can't add encoder '%s' to active group "
+			     "from encoder '%s'",
+			     obs_encoder_get_name(encoder_to_be_grouped),
+			     obs_encoder_get_name(encoder));
+			pthread_mutex_unlock(&encoder->encoder_group->mutex);
+			return false;
+		}
+	}
+
+	encoder->encoder_group->encoders_added += 1;
+	encoder_to_be_grouped->encoder_group = encoder->encoder_group;
+
+	if (unlock)
+		pthread_mutex_unlock(&encoder->encoder_group->mutex);
+
+	return true;
+}
+
+bool obs_encoder_group_remove_keyframe_aligned_encoder(
+	obs_encoder_t *encoder, obs_encoder_t *encoder_to_be_ungrouped)
+{
+	if (!obs_encoder_valid(
+		    encoder,
+		    "obs_encoder_group_remove_keyframe_aligned_encoder") ||
+	    !obs_encoder_valid(
+		    encoder_to_be_ungrouped,
+		    "obs_encoder_group_remove_keyframe_aligned_encoder"))
+		return false;
+
+	if (obs_encoder_active(encoder) ||
+	    obs_encoder_active(encoder_to_be_ungrouped)) {
+		blog(LOG_ERROR,
+		     "obs_encoder_group_remove_keyframe_aligned_encoder: encoders are active, "
+		     "could not ungroup encoder '%s' from '%s'",
+		     obs_encoder_get_name(encoder_to_be_ungrouped),
+		     obs_encoder_get_name(encoder));
+		return false;
+	}
+
+	if (encoder->encoder_group != encoder_to_be_ungrouped->encoder_group) {
+		blog(LOG_ERROR,
+		     "obs_encoder_group_remove_keyframe_aligned_encoder: "
+		     "encoder '%s' does not belong to the same group as encoder '%s'",
+		     obs_encoder_get_name(encoder_to_be_ungrouped),
+		     obs_encoder_get_name(encoder));
+		return false;
+	}
+
+	struct encoder_group *current_group = encoder->encoder_group;
+	struct encoder_group *free_group = NULL;
+
+	pthread_mutex_lock(&current_group->mutex);
+
+	if (current_group->encoders_started != 0) {
+		blog(LOG_ERROR,
+		     "obs_encoder_group_remove_keyframe_aligned_encoder: "
+		     "could not ungroup encoder '%s' from '%s' while "
+		     "the group contains active encoders",
+		     obs_encoder_get_name(encoder_to_be_ungrouped),
+		     obs_encoder_get_name(encoder));
+		pthread_mutex_unlock(&current_group->mutex);
+		return false;
+	}
+
+	current_group->encoders_added -= 1;
+	encoder_to_be_ungrouped->encoder_group = NULL;
+	if (current_group->encoders_added == 1) {
+		free_group = current_group;
+		encoder->encoder_group = NULL;
+	}
+	pthread_mutex_unlock(&current_group->mutex);
+
+	if (free_group) {
+		pthread_mutex_destroy(&free_group->mutex);
+		bfree(free_group);
+	}
+
+	return true;
 }

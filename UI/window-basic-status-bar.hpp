@@ -5,7 +5,6 @@
 #include <QTimer>
 #include <obs.h>
 #include <memory>
-#include <obs.hpp>
 
 class Ui_StatusBarWidget;
 
@@ -29,7 +28,8 @@ private:
 	StatusBarWidget *statusWidget = nullptr;
 
 	OBSWeakOutputAutoRelease streamOutput;
-	obs_output_t *recordOutput = nullptr;
+	std::vector<OBSSignal> streamSigs;
+	OBSWeakOutputAutoRelease recordOutput;
 	bool active = false;
 	bool overloadedNotify = true;
 	bool streamPauseIconToggle = false;
@@ -84,6 +84,7 @@ private:
 	void UpdateBandwidth();
 	void UpdateStreamTime();
 	void UpdateRecordTime();
+	void UpdateRecordTimeLabel();
 	void UpdateDroppedFrames();
 
 	static void OBSOutputReconnect(void *data, calldata_t *params);

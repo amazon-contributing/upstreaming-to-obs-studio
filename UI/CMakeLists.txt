@@ -48,7 +48,6 @@ endif()
 include(cmake/feature-twitch.cmake)
 include(cmake/feature-restream.cmake)
 include(cmake/feature-youtube.cmake)
-include(cmake/feature-sparkle.cmake)
 include(cmake/feature-whatsnew.cmake)
 
 add_subdirectory(frontend-plugins)
@@ -72,6 +71,8 @@ target_sources(
           multiview.hpp
           obf.c
           obf.h
+          obs-app-theming.cpp
+          obs-app-theming.hpp
           obs-app.cpp
           obs-app.hpp
           obs-proxy-style.cpp
@@ -122,8 +123,11 @@ endif()
 foreach(graphics_library IN ITEMS opengl metal d3d11)
   string(TOUPPER ${graphics_library} graphics_library_U)
   if(TARGET OBS::libobs-${graphics_library})
-    target_compile_definitions(obs-studio
-                               PRIVATE DL_${graphics_library_U}="$<TARGET_FILE_NAME:OBS::libobs-${graphics_library}>")
+    target_compile_definitions(
+      obs-studio
+      PRIVATE
+        DL_${graphics_library_U}="$<$<IF:$<PLATFORM_ID:Windows>,TARGET_FILE_NAME,TARGET_SONAME_FILE_NAME>:OBS::libobs-${graphics_library}>"
+    )
   else()
     target_compile_definitions(obs-studio PRIVATE DL_${graphics_library_U}="")
   endif()

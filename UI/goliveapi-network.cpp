@@ -131,14 +131,12 @@ QString MultitrackVideoAutoConfigURL(obs_service_t *service)
 	static const QString url = [service]() -> QString {
 		auto args = qApp->arguments();
 		for (int i = 0; i < args.length() - 1; i++) {
-			if (args[i] == "--config-url") {
+			if (args[i] == "--config-url" &&
+			    args.length() > (i + 1)) {
 				return args[i + 1];
 			}
 		}
 		OBSDataAutoRelease settings = obs_service_get_settings(service);
-		if (!obs_data_has_user_value(
-			    settings, "multitrack_video_configuration_url"))
-			return {};
 		return obs_data_get_string(
 			settings, "multitrack_video_configuration_url");
 	}();

@@ -2575,6 +2575,13 @@ EXPORT void obs_encoder_set_audio(obs_encoder_t *encoder, audio_t *audio);
 EXPORT video_t *obs_encoder_video(const obs_encoder_t *encoder);
 
 /**
+ * Returns the parent video output context used with this encoder, or NULL if not
+ * a video context. Used when an FPS divisor is set, where the original video
+ * context would not otherwise be gettable.
+ */
+EXPORT video_t *obs_encoder_parent_video(const obs_encoder_t *encoder);
+
+/**
  * Returns the audio output context used with this encoder, or NULL if not
  * a audio context
  */
@@ -2616,9 +2623,10 @@ EXPORT void obs_encoder_set_last_error(obs_encoder_t *encoder,
 
 EXPORT uint64_t obs_encoder_get_pause_offset(const obs_encoder_t *encoder);
 
-EXPORT bool
-obs_encoder_group_keyframe_aligned_encoders(obs_encoder_t *encoder,
-					    obs_encoder_t *grouped_encoder);
+EXPORT bool obs_encoder_group_keyframe_aligned_encoders(
+	obs_encoder_t *encoder, obs_encoder_t *encoder_to_be_grouped);
+EXPORT bool obs_encoder_group_remove_keyframe_aligned_encoder(
+	obs_encoder_t *encoder, obs_encoder_t *encoder_to_be_ungrouped);
 
 /* ------------------------------------------------------------------------- */
 /* Stream Services */

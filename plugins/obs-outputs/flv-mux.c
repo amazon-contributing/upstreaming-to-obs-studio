@@ -33,18 +33,11 @@
 
 #define AUDIO_FRAMETYPE_OFFSET 4
 #define VIDEO_FRAMETYPE_OFFSET 4
-#define VIDEO_MULTITRACK_TYPE_OFFSET 4
 
 enum video_frametype_t {
 	FT_KEY = 1 << VIDEO_FRAMETYPE_OFFSET,
 	FT_INTER = 2 << VIDEO_FRAMETYPE_OFFSET,
 };
-
-#ifdef ENABLE_HEVC
-#define OR_CODEC_HEVC(codec) || codec == CODEC_HEVC
-#else
-#define OR_CODEC_HEVC(codec)
-#endif
 
 // Y2023 spec
 const uint8_t AUDIO_HEADER_EX = 9 << AUDIO_FRAMETYPE_OFFSET;
@@ -67,10 +60,9 @@ enum packet_type_t {
 };
 
 enum multitrack_type_t {
-	MULTITRACKTYPE_ONE_TRACK = 0 << VIDEO_MULTITRACK_TYPE_OFFSET,
-	MULTITRACKTYPE_MANY_TRACKS = 1 << VIDEO_MULTITRACK_TYPE_OFFSET,
-	MULTITRACKTYPE_MANY_TRACKS_MANY_CODECS = 2
-						 << VIDEO_MULTITRACK_TYPE_OFFSET
+	MULTITRACKTYPE_ONE_TRACK = 0x00,
+	MULTITRACKTYPE_MANY_TRACKS = 0x10,
+	MULTITRACKTYPE_MANY_TRACKS_MANY_CODECS = 0x20,
 };
 
 enum datatype_t {
@@ -109,13 +101,15 @@ static void s_w4cc(struct serializer *s, enum video_id_t id)
 		s_w8(s, '0');
 		s_w8(s, '1');
 		break;
-#ifdef ENABLE_HEVC
 	case CODEC_HEVC:
+#ifdef ENABLE_HEVC
 		s_w8(s, 'h');
 		s_w8(s, 'v');
 		s_w8(s, 'c');
 		s_w8(s, '1');
 		break;
+#else
+		assert(0);
 #endif
 	case CODEC_H264:
 		s_w8(s, 'a');
@@ -159,9 +153,6 @@ static inline double encoder_video_codec(obs_encoder_t *encoder)
 {
 	const char *codec = obs_encoder_get_codec(encoder);
 
-	if (!codec)
-		return 0.0;
-
 	if (strcmp(codec, "h264") == 0)
 		return VIDEODATA_AVCVIDEOPACKET;
 	if (strcmp(codec, "av1") == 0)
@@ -174,6 +165,12 @@ static inline double encoder_video_codec(obs_encoder_t *encoder)
 	return 0.0;
 }
 
+/*
+ * This is based on the position of `duration` and `fileSize` in
+ * `build_flv_meta_data` relative to the beginning of the file
+ * to allow `write_file_info` to overwrite these two fields once
+ * the file is finalized.
+ */
 #define FLV_INFO_SIZE_OFFSET 58
 
 void write_file_info(FILE *file, int64_t duration_ms, int64_t size)
@@ -259,18 +256,22 @@ static void build_flv_meta_data(obs_output_t *context, uint8_t **output,
 	*output = bmemdup(buf, *size);
 }
 
-static void write_previous_tag_size_without_header(struct serializer *s,
-						   uint32_t header_size)
+static inline void write_previous_tag_size_without_header(struct serializer *s,
+							  uint32_t header_size)
 {
 	assert(serializer_get_pos(s) >= header_size);
 	assert(serializer_get_pos(s) >= 11);
-	// From FLV file format specification version 10:
-	// Size of previous [current] tag, including its header.
-	// For FLV version 1 this value is 11 plus the DataSize of the previous [current] tag.
+
+	/*
+	 * From FLV file format specification version 10:
+	 * Size of previous [current] tag, including its header.
+	 * For FLV version 1 this value is 11 plus the DataSize of
+	 * the previous [current] tag.
+	 */
 	s_wb32(s, (uint32_t)serializer_get_pos(s) - header_size);
 }
 
-static void write_previous_tag_size(struct serializer *s)
+static inline void write_previous_tag_size(struct serializer *s)
 {
 	write_previous_tag_size_without_header(s, 0);
 }
@@ -406,6 +407,7 @@ void flv_packet_audio_ex(struct encoder_packet *packet,
 {
 	struct array_output_data data;
 	struct serializer s;
+
 	array_output_serializer_init(&s, &data);
 
 	assert(packet->type == OBS_ENCODER_AUDIO);
@@ -473,7 +475,7 @@ void flv_packet_ex(struct encoder_packet *packet, enum video_id_t codec_id,
 	// packet head
 	int header_metadata_size = 5; // w8+w4cc
 	// 3 extra bytes for composition time offset
-	if ((codec_id == CODEC_H264 OR_CODEC_HEVC(codec_id)) &&
+	if ((codec_id == CODEC_H264 || codec_id == CODEC_HEVC) &&
 	    type == PACKETTYPE_FRAMES) {
 		header_metadata_size += 3; // w24
 	}
@@ -485,23 +487,25 @@ void flv_packet_ex(struct encoder_packet *packet, enum video_id_t codec_id,
 	s_wtimestamp(&s, time_ms);
 	s_wb24(&s, 0); // always 0
 
-	// packet ext header
-	s_w8(&s, FRAME_HEADER_EX |
-			 (is_multitrack ? PACKETTYPE_MULTITRACK : type) |
-			 (packet->keyframe ? FT_KEY : FT_INTER));
+	uint8_t frame_type = packet->keyframe ? FT_KEY : FT_INTER;
 
-	// We only add explicitly emit trackIds iff idx > 0
-	// The default trackId is 0
+	/*
+	 * We only explicitly emit trackIds iff idx > 0.
+	 * The default trackId is 0.
+	 */
 	if (is_multitrack) {
+		s_w8(&s, FRAME_HEADER_EX | PACKETTYPE_MULTITRACK | frame_type);
 		s_w8(&s, MULTITRACKTYPE_ONE_TRACK | type);
 		s_w4cc(&s, codec_id);
-		s_w8(&s, (uint8_t)idx); // trackId
+		// trackId
+		s_w8(&s, (uint8_t)idx);
 	} else {
+		s_w8(&s, FRAME_HEADER_EX | type | frame_type);
 		s_w4cc(&s, codec_id);
 	}
 
-	// h264/hevc composition time offset
-	if ((codec_id == CODEC_H264 OR_CODEC_HEVC(codec_id)) &&
+	// H.264/HEVC composition time offset
+	if ((codec_id == CODEC_H264 || codec_id == CODEC_HEVC) &&
 	    type == PACKETTYPE_FRAMES) {
 		s_wb24(&s, get_ms_time(packet, packet->pts - packet->dts));
 	}
@@ -530,7 +534,7 @@ void flv_packet_frames(struct encoder_packet *packet, enum video_id_t codec,
 	int packet_type = PACKETTYPE_FRAMES;
 	// PACKETTYPE_FRAMESX is an optimization to avoid sending composition
 	// time offsets of 0. See Enhanced RTMP spec.
-	if ((codec == CODEC_H264 OR_CODEC_HEVC(codec)) &&
+	if ((codec == CODEC_H264 || codec == CODEC_HEVC) &&
 	    packet->dts == packet->pts)
 		packet_type = PACKETTYPE_FRAMESX;
 	flv_packet_ex(packet, codec, dts_offset, output, size, packet_type,
@@ -630,9 +634,12 @@ void flv_packet_metadata(enum video_id_t codec_id, uint8_t **output,
 	bool is_multitrack = idx > 0;
 
 	// packet head
-	int header_metadata_size = 5; // w8+w4cc
-	if (is_multitrack)
-		header_metadata_size += 2; // w8+w8
+	// w8+w4cc
+	int header_metadata_size = 5;
+	if (is_multitrack) {
+		// w8+w8
+		header_metadata_size += 2;
+	}
 
 	s_w8(&s, RTMP_PACKET_TYPE_VIDEO);
 	s_wb24(&s, (uint32_t)metadata.bytes.num + header_metadata_size);
@@ -644,12 +651,15 @@ void flv_packet_metadata(enum video_id_t codec_id, uint8_t **output,
 	s_w8(&s, FRAME_HEADER_EX | (is_multitrack ? PACKETTYPE_MULTITRACK
 						  : PACKETTYPE_METADATA));
 
-	// We only add explicitly emit trackIds iff idx > 0
-	// The default trackId is 0
+	/*
+	 * We only add explicitly emit trackIds iff idx > 0.
+	 * The default trackId is 0.
+	 */
 	if (is_multitrack) {
 		s_w8(&s, MULTITRACKTYPE_ONE_TRACK | PACKETTYPE_METADATA);
 		s_w4cc(&s, codec_id);
-		s_w8(&s, (uint8_t)idx); // trackId
+		// trackId
+		s_w8(&s, (uint8_t)idx);
 	} else {
 		s_w4cc(&s, codec_id);
 	}
