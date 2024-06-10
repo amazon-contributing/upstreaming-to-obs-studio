@@ -141,8 +141,16 @@ create_service(const GoLiveApi::Config &go_live_config,
 				    str->len - (found - str->array));
 	}
 
+	/* The stream key itself may contain query parameters, such as
+	 * "bandwidthtest" that need to be carried over. */
+	QUrl parsed_key{stream_key};
+	QUrlQuery key_query{parsed_key};
+
 	QUrl parsed_url{url};
 	QUrlQuery parsed_query{parsed_url};
+
+	for (const auto &[key, value] : key_query.queryItems())
+		parsed_query.addQueryItem(key, value);
 
 	if (!go_live_config.meta.config_id.empty()) {
 		parsed_query.addQueryItem(
@@ -150,14 +158,12 @@ create_service(const GoLiveApi::Config &go_live_config,
 			QString::fromStdString(go_live_config.meta.config_id));
 	}
 
-	auto key_with_param = stream_key;
-	if (!parsed_query.isEmpty())
-		key_with_param += "?" + parsed_query.toString();
+	parsed_key.setQuery(parsed_query);
 
 	OBSDataAutoRelease settings = obs_data_create();
 	obs_data_set_string(settings, "server", str->array);
 	obs_data_set_string(settings, "key",
-			    key_with_param.toUtf8().constData());
+			    parsed_key.toString().toUtf8().constData());
 
 	auto service = obs_service_create(
 		"rtmp_custom", "multitrack video service", settings, nullptr);
@@ -169,34 +175,6 @@ create_service(const GoLiveApi::Config &go_live_config,
 	}
 
 	return service;
-}
-
-static void ensure_directory_exists(std::string &path)
-{
-	replace(path.begin(), path.end(), '\\', '/');
-
-	size_t last = path.rfind('/');
-	if (last == std::string::npos)
-		return;
-
-	std::string directory = path.substr(0, last);
-	os_mkdirs(directory.c_str());
-}
-
-std::string GetOutputFilename(const std::string &path, const char *format)
-{
-	std::string strPath;
-	strPath += path;
-
-	char lastChar = strPath.back();
-	if (lastChar != '/' && lastChar != '\\')
-		strPath += "/";
-
-	strPath += BPtr<char>{
-		os_generate_formatted_filename("flv", false, format)};
-	ensure_directory_exists(strPath);
-
-	return strPath;
 }
 
 static OBSOutputAutoRelease create_output()
@@ -216,11 +194,21 @@ static OBSOutputAutoRelease create_output()
 
 static OBSOutputAutoRelease create_recording_output(obs_data_t *settings)
 {
-	OBSOutputAutoRelease output = obs_output_create(
-		"flv_output", "flv multitrack video", settings, nullptr);
+	OBSOutputAutoRelease output;
+	bool useMP4 = obs_data_get_bool(settings, "use_mp4");
 
-	if (!output)
-		blog(LOG_ERROR, "Failed to create multitrack video flv output");
+	if (useMP4) {
+		output = obs_output_create("mp4_output", "mp4 multitrack video",
+					   settings, nullptr);
+	} else {
+		output = obs_output_create("flv_output", "flv multitrack video",
+					   settings, nullptr);
+	}
+
+	if (!output) {
+		blog(LOG_ERROR, "Failed to create multitrack video %s output",
+		     useMP4 ? "mp4" : "flv");
+	}
 
 	return output;
 }
@@ -285,30 +273,16 @@ static void adjust_encoder_frame_rate_divisor(
 	obs_encoder_set_frame_rate_divisor(video_encoder, divisor);
 }
 
-static const std::vector<const char *> &get_available_encoders()
-{
-	// encoders are currently only registered during startup, so keeping
-	// a static vector around shouldn't be a problem
-	static std::vector<const char *> available_encoders = [] {
-		std::vector<const char *> available_encoders;
-		for (size_t i = 0;; i++) {
-			const char *id = nullptr;
-			if (!obs_enum_encoder_types(i, &id))
-				break;
-			available_encoders.push_back(id);
-		}
-		return available_encoders;
-	}();
-	return available_encoders;
-}
-
 static bool encoder_available(const char *type)
 {
-	auto &encoders = get_available_encoders();
-	return std::find_if(std::begin(encoders), std::end(encoders),
-			    [=](const char *encoder) {
-				    return strcmp(type, encoder) == 0;
-			    }) != std::end(encoders);
+	const char *id = nullptr;
+
+	for (size_t idx = 0; obs_enum_encoder_types(idx, &id); idx++) {
+		if (strcmp(id, type) == 0)
+			return true;
+	}
+
+	return false;
 }
 
 static OBSEncoderAutoRelease create_video_encoder(
