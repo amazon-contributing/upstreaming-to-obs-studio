@@ -83,6 +83,7 @@ private:
 
 	struct OBSOutputObjects {
 		OBSOutputAutoRelease output_;
+		std::shared_ptr<obs_encoder_group_t> video_encoder_group_;
 		std::vector<OBSEncoderAutoRelease> video_encoders_;
 		std::vector<OBSEncoderAutoRelease> audio_encoders_;
 		OBSServiceAutoRelease multitrack_video_service_;

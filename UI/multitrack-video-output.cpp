@@ -373,6 +373,7 @@ static OBSOutputs
 SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 	       const GoLiveApi::Config &go_live_config,
 	       std::vector<OBSEncoderAutoRelease> &audio_encoders,
+	       std::shared_ptr<obs_encoder_group_t> &video_encoder_group,
 	       std::vector<OBSEncoderAutoRelease> &video_encoders,
 	       const char *audio_encoder_id,
 	       std::optional<size_t> vod_track_mixer,
@@ -650,10 +651,11 @@ void MultitrackVideoOutput::PrepareStreaming(
 
 	auto audio_encoders = std::vector<OBSEncoderAutoRelease>();
 	auto video_encoders = std::vector<OBSEncoderAutoRelease>();
+	std::shared_ptr<obs_encoder_group_t> video_encoder_group;
 	auto outputs = SetupOBSOutput(dump_stream_to_file_config, output_config,
-				      audio_encoders, video_encoders,
-				      audio_encoder_id, vod_track_mixer,
-				      extra_views_);
+				      audio_encoders, video_encoder_group,
+				      video_encoders, audio_encoder_id,
+				      vod_track_mixer, extra_views_);
 	auto output = std::move(outputs.output);
 	auto recording_output = std::move(outputs.recording_output);
 	if (!output)
@@ -706,6 +708,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 				current_stream_dump_mutex};
 			current_stream_dump.emplace(OBSOutputObjects{
 				std::move(recording_output),
+				video_encoder_group,
 				std::move(recording_video_encoders),
 				std::move(recording_audio_encoders),
 				nullptr,
@@ -720,6 +723,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 		const std::lock_guard current_lock{current_mutex};
 		current.emplace(OBSOutputObjects{
 			std::move(output),
+			video_encoder_group,
 			std::move(video_encoders),
 			std::move(audio_encoders),
 			std::move(multitrack_video_service),
@@ -912,19 +916,24 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 
 static bool
 create_video_encoders(const GoLiveApi::Config &go_live_config,
+		      std::shared_ptr<obs_encoder_group_t> &video_encoder_group,
 		      std::vector<OBSEncoderAutoRelease> &video_encoders,
 		      obs_output_t *output, obs_output_t *recording_output,
 		      const std::map<std::string, video_t *> &extra_views,
 		      json &bitrate_interpolation_array)
 {
 	DStr video_encoder_name_buffer;
-	obs_encoder_t *first_encoder = nullptr;
 	if (go_live_config.encoder_configurations.empty()) {
 		blog(LOG_WARNING,
 		     "MultitrackVideoOutput: Missing video encoder configurations");
 		throw MultitrackVideoError::warning(
 			QTStr("FailedToStartStream.MissingEncoderConfigs"));
 	}
+
+	std::shared_ptr<obs_encoder_group_t> encoder_group(
+		obs_encoder_group_create(), obs_encoder_group_destroy);
+	if (!encoder_group)
+		return false;
 
 	for (size_t i = 0; i < go_live_config.encoder_configurations.size();
 	     i++) {
@@ -934,11 +943,8 @@ create_video_encoders(const GoLiveApi::Config &go_live_config,
 		if (!encoder)
 			return false;
 
-		if (!first_encoder)
-			first_encoder = encoder;
-		else
-			obs_encoder_group_keyframe_aligned_encoders(
-				first_encoder, encoder);
+		if (!obs_encoder_set_group(encoder, encoder_group.get()))
+			return false;
 
 		obs_output_set_video_encoder2(output, encoder, i);
 		if (recording_output)
@@ -954,6 +960,7 @@ create_video_encoders(const GoLiveApi::Config &go_live_config,
 			bitrate_interpolation_array.push_back(json::array());
 	}
 
+	video_encoder_group = encoder_group;
 	return true;
 }
 
@@ -1055,6 +1062,7 @@ static OBSOutputs
 SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 	       const GoLiveApi::Config &go_live_config,
 	       std::vector<OBSEncoderAutoRelease> &audio_encoders,
+	       std::shared_ptr<obs_encoder_group_t> &video_encoder_group,
 	       std::vector<OBSEncoderAutoRelease> &video_encoders,
 	       const char *audio_encoder_id,
 	       std::optional<size_t> vod_track_mixer,
@@ -1068,9 +1076,9 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 			create_recording_output(dump_stream_to_file_config);
 
 	json bitrate_interpolation_array = json::array();
-	if (!create_video_encoders(go_live_config, video_encoders, output,
-				   recording_output, extra_views,
-				   bitrate_interpolation_array))
+	if (!create_video_encoders(go_live_config, video_encoder_group,
+				   video_encoders, output, recording_output,
+				   extra_views, bitrate_interpolation_array))
 		return {nullptr, nullptr};
 
 	OBSDataAutoRelease settings = obs_output_get_settings(output);
