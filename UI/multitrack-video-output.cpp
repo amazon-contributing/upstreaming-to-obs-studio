@@ -1000,7 +1000,7 @@ create_audio_encoders(const GoLiveApi::Config &go_live_config,
 
 		obs_encoder_set_speaker_layout(encoder, target_speakers);
 		blog(LOG_INFO,
-		     "MultitrackVideoOutput: settings encoder '%s' "
+		     "MultitrackVideoOutput: setting encoder '%s' "
 		     "to %" PRIu32 " channels ",
 		     obs_encoder_get_name(encoder), channels);
 	};
