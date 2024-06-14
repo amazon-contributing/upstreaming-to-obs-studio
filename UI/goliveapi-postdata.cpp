@@ -37,6 +37,8 @@ constructGoLivePost(QString streamKey,
 
 		preferences.canvas_width = ovi.base_width;
 		preferences.canvas_height = ovi.base_height;
+
+		preferences.composition_gpu_index = ovi.adapter;
 	}
 
 	if (!extra_views.empty()) {
