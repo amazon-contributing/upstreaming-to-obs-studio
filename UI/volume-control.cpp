@@ -249,6 +249,10 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 	volLabel->setObjectName("volLabel");
 	volLabel->setAlignment(Qt::AlignCenter);
 
+#ifdef __APPLE__
+	mute->setAttribute(Qt::WA_LayoutUsesWidgetRect);
+#endif
+
 	QString sourceName = obs_source_get_name(source);
 	setObjectName(sourceName);
 
@@ -256,6 +260,8 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 		config = new QPushButton(this);
 		config->setProperty("themeID", "menuIconSmall");
 		config->setAutoDefault(false);
+
+		config->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
 		config->setAccessibleName(
 			QTStr("VolControl.Properties").arg(sourceName));
@@ -294,24 +300,16 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 		controlLayout->setContentsMargins(0, 0, 0, 0);
 		controlLayout->setSpacing(0);
 
-		controlLayout->setAlignment(mute, Qt::AlignVCenter);
 		// Add Headphone (audio monitoring) widget here
 		controlLayout->addWidget(mute);
-		controlLayout->addItem(
-			new QSpacerItem(0, 0, QSizePolicy::MinimumExpanding,
-					QSizePolicy::Minimum));
 
 		if (showConfig) {
 			controlLayout->addWidget(config);
-			controlLayout->setAlignment(config, Qt::AlignVCenter);
 		}
 
 		meterLayout->setContentsMargins(0, 0, 0, 0);
 		meterLayout->setSpacing(0);
 		meterLayout->addWidget(slider);
-		meterLayout->addItem(
-			new QSpacerItem(0, 0, QSizePolicy::MinimumExpanding,
-					QSizePolicy::Minimum));
 		meterLayout->addWidget(volMeter);
 
 		meterFrame->setLayout(meterLayout);
@@ -338,9 +336,10 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 		setMaximumWidth(110);
 	} else {
 		QHBoxLayout *textLayout = new QHBoxLayout;
+		QHBoxLayout *controlLayout = new QHBoxLayout;
 		QFrame *meterFrame = new QFrame;
-		QHBoxLayout *meterLayout = new QHBoxLayout;
-		QHBoxLayout *botLayout = new QHBoxLayout;
+		QVBoxLayout *meterLayout = new QVBoxLayout;
+		QVBoxLayout *buttonLayout = new QVBoxLayout;
 
 		volMeter = new VolumeMeter(nullptr, obs_volmeter, false);
 		volMeter->setSizePolicy(QSizePolicy::MinimumExpanding,
@@ -362,23 +361,25 @@ VolControl::VolControl(OBSSource source_, bool showConfig, bool vertical)
 		meterLayout->setContentsMargins(0, 0, 0, 0);
 		meterLayout->setSpacing(0);
 
-		if (showConfig) {
-			meterLayout->addWidget(config);
-			meterLayout->setAlignment(config, Qt::AlignVCenter);
-		}
 		meterLayout->addWidget(volMeter);
+		meterLayout->addWidget(slider);
 
-		botLayout->setContentsMargins(0, 0, 0, 0);
-		botLayout->setSpacing(0);
-		botLayout->addWidget(mute);
-		botLayout->addWidget(slider);
+		buttonLayout->setContentsMargins(0, 0, 0, 0);
+		buttonLayout->setSpacing(0);
 
-		botLayout->setAlignment(slider, Qt::AlignVCenter);
-		botLayout->setAlignment(mute, Qt::AlignVCenter);
+		if (showConfig) {
+			buttonLayout->addWidget(config);
+		}
+		buttonLayout->addItem(
+			new QSpacerItem(0, 0, QSizePolicy::Minimum,
+					QSizePolicy::MinimumExpanding));
+		buttonLayout->addWidget(mute);
+
+		controlLayout->addItem(buttonLayout);
+		controlLayout->addWidget(meterFrame);
 
 		mainLayout->addItem(textLayout);
-		mainLayout->addWidget(meterFrame);
-		mainLayout->addItem(botLayout);
+		mainLayout->addItem(controlLayout);
 
 		volMeter->setFocusProxy(slider);
 	}
