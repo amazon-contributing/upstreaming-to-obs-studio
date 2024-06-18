@@ -2379,7 +2379,7 @@ static bool process_metrics(struct obs_output *output,
 			// Update for any codec specific syntax and add to the output bitstream
 			if (avc || hevc || av1) {
 				if (avc || hevc) {
-					data = malloc(sei_render_size(&sei));
+					data = bmalloc(sei_render_size(&sei));
 					size = sei_render(&sei, data);
 				}
 				// In each of these specs there is an identical structure that
@@ -2442,7 +2442,7 @@ static bool process_metrics(struct obs_output *output,
 					}
 				}
 				if (data) {
-					free(data);
+					bfree(data);
 				}
 			}
 			sei_free(&sei);
