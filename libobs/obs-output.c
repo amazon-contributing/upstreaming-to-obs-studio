@@ -394,7 +394,7 @@ bool obs_output_actual_start(obs_output_t *output)
 		mtrack->rendition_frames_skipped.diff = 0;
 		mtrack->session_frames_rendered.diff = 0;
 		mtrack->session_frames_output.diff = 0;
-		mtrack->session_frames_skipped.diff = 0;
+		mtrack->session_frames_dropped.diff = 0;
 		mtrack->session_frames_lagged.diff = 0;
 		memset(mtrack->pirts.rfc3339_str, 0,
 		       sizeof(mtrack->pirts.rfc3339_str));
@@ -1921,7 +1921,7 @@ static bool update_metrics(const struct obs_output *output,
 	// Perform reads on all the counters as close together as possible
 	m_track->session_frames_output.curr =
 		obs_output_get_total_frames(output);
-	m_track->session_frames_skipped.curr =
+	m_track->session_frames_dropped.curr =
 		obs_output_get_frames_dropped(output);
 	m_track->session_frames_rendered.curr = obs_get_total_frames();
 	m_track->session_frames_lagged.curr = obs_get_lagged_frames();
@@ -1953,7 +1953,7 @@ static bool update_metrics(const struct obs_output *output,
 	// Set the diff values to 0 if PTS is 0
 	if (pkt->pts == 0) {
 		m_track->session_frames_output.diff = 0;
-		m_track->session_frames_skipped.diff = 0;
+		m_track->session_frames_dropped.diff = 0;
 		m_track->session_frames_rendered.diff = 0;
 		m_track->session_frames_lagged.diff = 0;
 		m_track->rendition_frames_input.diff = 0;
@@ -1965,9 +1965,9 @@ static bool update_metrics(const struct obs_output *output,
 		m_track->session_frames_output.diff =
 			m_track->session_frames_output.curr -
 			m_track->session_frames_output.ref;
-		m_track->session_frames_skipped.diff =
-			m_track->session_frames_skipped.curr -
-			m_track->session_frames_skipped.ref;
+		m_track->session_frames_dropped.diff =
+			m_track->session_frames_dropped.curr -
+			m_track->session_frames_dropped.ref;
 		m_track->session_frames_rendered.diff =
 			m_track->session_frames_rendered.curr -
 			m_track->session_frames_rendered.ref;
@@ -1988,8 +1988,8 @@ static bool update_metrics(const struct obs_output *output,
 	// Update the reference values
 	m_track->session_frames_output.ref =
 		m_track->session_frames_output.curr;
-	m_track->session_frames_skipped.ref =
-		m_track->session_frames_skipped.curr;
+	m_track->session_frames_dropped.ref =
+		m_track->session_frames_dropped.curr;
 	m_track->session_frames_rendered.ref =
 		m_track->session_frames_rendered.curr;
 	m_track->session_frames_lagged.ref =
@@ -2099,7 +2099,7 @@ enum bpm_ts_event_tag {
 enum bpm_sm_type {
 	BPM_SM_FRAMES_RENDERED = 1, // Frames rendered by compositor
 	BPM_SM_FRAMES_LAGGED,       // Frames lagged by compositor
-	BPM_SM_FRAMES_SKIPPED,      // Frames skipped by compositor
+	BPM_SM_FRAMES_DROPPED,      // Frames dropped due to network congestion
 	BPM_SM_FRAMES_OUTPUT // Total frames output (sum of all video encoder rendition sinks)
 };
 
@@ -2231,8 +2231,8 @@ void bpm_sm_sei_render(struct metrics_data *m_track)
 	s_wb32(&s, m_track->session_frames_rendered.diff);
 	s_w8(&s, BPM_SM_FRAMES_LAGGED);
 	s_wb32(&s, m_track->session_frames_lagged.diff);
-	s_w8(&s, BPM_SM_FRAMES_SKIPPED);
-	s_wb32(&s, m_track->session_frames_skipped.diff);
+	s_w8(&s, BPM_SM_FRAMES_DROPPED);
+	s_wb32(&s, m_track->session_frames_dropped.diff);
 	s_w8(&s, BPM_SM_FRAMES_OUTPUT);
 	s_wb32(&s, m_track->session_frames_output.diff);
 
