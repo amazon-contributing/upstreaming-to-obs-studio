@@ -893,19 +893,18 @@ void obs_encoder_stop(obs_encoder_t *encoder,
 		if (encoder->destroy_on_stop)
 			obs_encoder_actually_destroy(encoder);
 
-		if (!group)
-			return;
-
-		/* destroying the group all the way back here prevents a race where destruction
-		 * of the group can prematurely destroy the encoder within internal functions.
-		 * this is the point where it is safe to destroy the group, even if the encoder
-		 * is then also destroyed */
-		pthread_mutex_lock(&group->mutex);
-		if (group->destroy_on_stop &&
-		    group->num_encoders_started == 0) {
-			obs_encoder_group_actually_destroy(group);
-		} else {
-			pthread_mutex_unlock(&group->mutex);
+		/* Destroying the group all the way back here prevents a race
+		 * where destruction of the group can prematurely destroy the
+		 * encoder within internal functions. This is the point where it
+		 * is safe to destroy the group, even if the encoder is then
+		 * also destroyed. */
+		if (group) {
+			pthread_mutex_lock(&group->mutex);
+			if (group->destroy_on_stop &&
+			    group->num_encoders_started == 0)
+				obs_encoder_group_actually_destroy(group);
+			else
+				pthread_mutex_unlock(&group->mutex);
 		}
 
 		/* init_mutex already unlocked */

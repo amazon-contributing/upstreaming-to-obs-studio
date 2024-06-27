@@ -129,7 +129,7 @@ GoLiveApi::Config DownloadGoLiveConfig(QWidget *parent, QString url,
 QString MultitrackVideoAutoConfigURL(obs_service_t *service)
 {
 	static const std::optional<QString> cli_url =
-		[service]() -> std::optional<QString> {
+		[]() -> std::optional<QString> {
 		auto args = qApp->arguments();
 		for (int i = 0; i < args.length() - 1; i++) {
 			if (args[i] == "--config-url" &&
