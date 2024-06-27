@@ -1140,7 +1140,7 @@ struct metrics_data {
 	struct counter_data rendition_frames_skipped;
 	struct counter_data session_frames_rendered;
 	struct counter_data session_frames_output;
-	struct counter_data session_frames_skipped;
+	struct counter_data session_frames_dropped;
 	struct counter_data session_frames_lagged;
 	struct array_output_data sei_payload[BPM_MAX_SEI];
 	bool sei_rendered[BPM_MAX_SEI];
