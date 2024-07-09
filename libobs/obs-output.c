@@ -2012,7 +2012,6 @@ static bool update_metrics(const struct obs_output *output,
 	 */
 	bool found = false;
 	struct bpm_frame_time bpm_ft_local = {0};
-	pthread_mutex_lock(&pkt->encoder->bpm_ft_mutex);
 	for (size_t i = 0; i < pkt->encoder->bpm_frame_times.num; i++) {
 		struct bpm_frame_time *bpm_ft =
 			&pkt->encoder->bpm_frame_times.array[i];
@@ -2027,7 +2026,6 @@ static bool update_metrics(const struct obs_output *output,
 			break;
 		}
 	}
-	pthread_mutex_unlock(&pkt->encoder->bpm_ft_mutex);
 
 	if (found == false) {
 		blog(LOG_DEBUG,

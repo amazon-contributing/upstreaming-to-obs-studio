@@ -53,7 +53,6 @@ static bool init_encoder(struct obs_encoder *encoder, const char *name,
 	pthread_mutex_init_value(&encoder->outputs_mutex);
 	pthread_mutex_init_value(&encoder->pause.mutex);
 	pthread_mutex_init_value(&encoder->roi_mutex);
-	pthread_mutex_init_value(&encoder->bpm_ft_mutex);
 
 	if (!obs_context_data_init(&encoder->context, OBS_OBJ_TYPE_ENCODER,
 				   settings, name, NULL, hotkey_data, false))
@@ -67,8 +66,6 @@ static bool init_encoder(struct obs_encoder *encoder, const char *name,
 	if (pthread_mutex_init(&encoder->pause.mutex, NULL) != 0)
 		return false;
 	if (pthread_mutex_init(&encoder->roi_mutex, NULL) != 0)
-		return false;
-	if (pthread_mutex_init(&encoder->bpm_ft_mutex, NULL) != 0)
 		return false;
 
 	if (encoder->orig_info.get_defaults) {
@@ -448,7 +445,6 @@ static void obs_encoder_actually_destroy(obs_encoder_t *encoder)
 		pthread_mutex_destroy(&encoder->outputs_mutex);
 		pthread_mutex_destroy(&encoder->pause.mutex);
 		pthread_mutex_destroy(&encoder->roi_mutex);
-		pthread_mutex_destroy(&encoder->bpm_ft_mutex);
 		obs_context_data_free(&encoder->context);
 		if (encoder->owns_info_id)
 			bfree((void *)encoder->info.id);
@@ -880,9 +876,7 @@ void obs_encoder_stop(obs_encoder_t *encoder,
 
 	pthread_mutex_unlock(&encoder->callbacks_mutex);
 
-	pthread_mutex_lock(&encoder->bpm_ft_mutex);
 	encoder->bpm_frame_times.num = 0;
-	pthread_mutex_unlock(&encoder->bpm_ft_mutex);
 
 	if (last) {
 		remove_connection(encoder, true);
@@ -1548,7 +1542,6 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame,
 	 * (frame encode request complete) and current PTS. PTS is used to
 	 * associate the BPM frame timing data with the encode packet. */
 	if (frame_cts) {
-		pthread_mutex_lock(&encoder->bpm_ft_mutex);
 		struct bpm_frame_time *bpm_ft =
 			da_push_back_new(encoder->bpm_frame_times);
 		// Get the frame encode request complete timestamp
@@ -1561,7 +1554,6 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame,
 		bpm_ft->pts = frame->pts;
 		bpm_ft->cts = *frame_cts;
 		bpm_ft->fer = bpm_fer_ts;
-		pthread_mutex_unlock(&encoder->bpm_ft_mutex);
 	}
 	send_off_encoder_packet(encoder, success, received, &pkt);
 
