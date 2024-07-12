@@ -2861,8 +2861,9 @@ static bool initialize_interleaved_packets(struct obs_output *output)
 				&video_dts_offsets[j];
 			if (offset->encoder_group != encoder->encoder_group)
 				continue;
-			output->video_dts_offsets[i] =
-				video[i]->dts - offset->lowest_dts;
+			output->video_dts_offsets[i] = video[i]->dts -
+						       video[i]->pts -
+						       offset->lowest_dts;
 			break;
 		}
 	}
