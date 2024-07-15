@@ -650,12 +650,6 @@ void obs_frontend_add_undo_redo_action(const char *name,
 			name, undo, redo, undo_data, redo_data, repeatable);
 }
 
-char *obs_frontend_get_version_string(void)
-{
-	return callbacks_valid() ? c->obs_frontend_get_version_string()
-				 : nullptr;
-}
-
 void obs_frontend_multitrack_video_register(
 	const char *name, multitrack_video_start_cb start_video,
 	multitrack_video_stop_cb stop_video, void *param)

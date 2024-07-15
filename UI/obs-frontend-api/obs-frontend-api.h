@@ -257,8 +257,6 @@ EXPORT void obs_frontend_add_undo_redo_action(
 EXPORT void obs_frontend_external_stream_started(obs_output_t *output);
 EXPORT void obs_frontend_external_stream_stopped(obs_weak_output_t *output);
 
-EXPORT char *obs_frontend_get_version_string(void);
-
 typedef video_t *(*multitrack_video_start_cb)(void *param);
 typedef void (*multitrack_video_stop_cb)(video_t *video, void *param);
 EXPORT void obs_frontend_multitrack_video_register(
