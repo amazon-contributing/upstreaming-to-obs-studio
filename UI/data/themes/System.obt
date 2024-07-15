@@ -159,9 +159,6 @@ QMainWindow::separator {
     height: 4px;
 }
 
-QFrame [themeID="notice"] {
-}
-
 /* About dialog */
 
 * [themeID="aboutName"] {
