@@ -1416,7 +1416,6 @@ struct obs_encoder {
 	pthread_mutex_t callbacks_mutex;
 	DARRAY(struct encoder_callback) callbacks;
 
-	pthread_mutex_t bpm_ft_mutex;
 	DARRAY(struct bpm_frame_time) bpm_frame_times;
 
 	struct pause_data pause;

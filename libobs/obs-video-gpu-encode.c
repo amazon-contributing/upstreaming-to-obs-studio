@@ -182,7 +182,6 @@ static void *gpu_encode_thread(void *data)
 			 * (frame encode request complete) and current PTS. PTS is used to
 			 * associate the BPM frame timing data with the encode packet. */
 			if (tf.timestamp) {
-				pthread_mutex_lock(&encoder->bpm_ft_mutex);
 				struct bpm_frame_time *bpm_ft =
 					da_push_back_new(
 						encoder->bpm_frame_times);
@@ -197,7 +196,6 @@ static void *gpu_encode_thread(void *data)
 				bpm_ft->pts = encoder->cur_pts;
 				bpm_ft->cts = tf.timestamp;
 				bpm_ft->fer = bpm_fer_ts;
-				pthread_mutex_unlock(&encoder->bpm_ft_mutex);
 			}
 
 			send_off_encoder_packet(encoder, success, received,
