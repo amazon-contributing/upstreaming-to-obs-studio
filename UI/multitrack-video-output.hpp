@@ -5,12 +5,11 @@
 #include <util/config-file.h>
 
 #include <atomic>
+#include <mutex>
 #include <optional>
 #include <vector>
 
-#include <qobject.h>
-#include <QFuture>
-#include <QFutureSynchronizer>
+#include <QObject>
 
 #define NOMINMAX
 
@@ -27,6 +26,19 @@ void RecordingStopHandler(void *arg, calldata_t *data);
 void RecordingDeactivateHandler(void *arg, calldata_t *data);
 
 bool MultitrackVideoDeveloperModeEnabled();
+
+struct FutureWaitGuard {
+	FutureWaitGuard(std::shared_future<void> future_) : future(future_) {}
+	FutureWaitGuard(const FutureWaitGuard &) = delete;
+	~FutureWaitGuard()
+	{
+		if (!future.valid())
+			return;
+		future.wait();
+	}
+
+	std::shared_future<void> future;
+};
 
 struct MultitrackVideoViewInfo {
 	inline MultitrackVideoViewInfo(const char *name_,
@@ -80,7 +92,7 @@ private:
 		berryessa_every_minute_ =
 			std::make_shared<std::optional<BerryessaEveryMinute>>(
 				std::nullopt);
-	QFutureSynchronizer<void> berryessa_every_minute_initializer_;
+	std::optional<FutureWaitGuard> berryessa_every_minute_initializer_;
 
 	struct OBSOutputObjects {
 		OBSOutputAutoRelease output_;

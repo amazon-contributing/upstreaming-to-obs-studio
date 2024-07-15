@@ -36,7 +36,6 @@
 #include "goliveapi-postdata.hpp"
 #include "goliveapi-network.hpp"
 #include "multitrack-video-error.hpp"
-#include "qt-helpers.hpp"
 #include "models/multitrack-video.hpp"
 
 using json = nlohmann::json;
@@ -758,6 +757,26 @@ signal_handler_t *MultitrackVideoOutput::StreamingSignalHandler()
 		       : nullptr;
 }
 
+struct BerryessaEveryMinuteInitializationGuard {
+	BerryessaEveryMinuteInitializationGuard()
+	{
+		future = guard.get_future().share();
+	};
+	~BerryessaEveryMinuteInitializationGuard() { guard.set_value(); }
+
+	std::shared_future<void> GetFuture() const { return future; }
+
+	static std::shared_future<void> MakeReadyFuture()
+	{
+		BerryessaEveryMinuteInitializationGuard guard;
+		return guard.GetFuture();
+	}
+
+private:
+	std::promise<void> guard;
+	std::shared_future<void> future;
+};
+
 void MultitrackVideoOutput::StartedStreaming(QWidget *parent)
 {
 	OBSOutputAutoRelease dump_output;
@@ -783,16 +802,18 @@ void MultitrackVideoOutput::StartedStreaming(QWidget *parent)
 			video_encoders.emplace_back(encoder);
 		}
 
-		berryessa_every_minute_initializer_.setFuture(
-			CreateFuture().then(
-				QThreadPool::globalInstance(),
-				[=, bem = berryessa_every_minute_,
-				 berryessa = berryessa_.get(),
-				 main_thread = QThread::currentThread()] {
-					bem->emplace(parent, berryessa,
-						     video_encoders)
-						.moveToThread(main_thread);
-				}));
+		auto guard = std::make_shared<
+			BerryessaEveryMinuteInitializationGuard>();
+		berryessa_every_minute_initializer_.emplace(guard->GetFuture());
+
+		QThreadPool::globalInstance()->start(
+			[=, bem = berryessa_every_minute_,
+			 berryessa = berryessa_.get(),
+			 main_thread = QThread::currentThread(),
+			 guard = guard] {
+				bem->emplace(parent, berryessa, video_encoders)
+					.moveToThread(main_thread);
+			});
 	}
 }
 
