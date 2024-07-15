@@ -2761,9 +2761,9 @@ static bool initialize_interleaved_packets(struct obs_output *output)
 
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
 		obs_encoder_t *encoder = output->video_encoders[i];
-		if (!encoder)
+		if (!encoder || !video[i])
 			continue;
-		if (!encoder->encoder_group) {
+		if (!encoder->encoder_group || video[i]->dts == video[i]->pts) {
 			output->video_dts_offsets[i] = 0;
 			continue;
 		}
