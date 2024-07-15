@@ -8,8 +8,7 @@
 #include <obs-app.hpp>
 #include <obs.hpp>
 #include <remote-text.hpp>
-
-#include "window-basic-main.hpp"
+#include <window-basic-main.hpp>
 
 #include <algorithm>
 #include <cinttypes>
@@ -310,7 +309,7 @@ create_video_encoder(DStr &name_buffer, size_t encoder_index,
 	OBSEncoderAutoRelease video_encoder = obs_video_encoder_create(
 		encoder_type, name_buffer, encoder_settings, nullptr);
 	if (!video_encoder) {
-		blog(LOG_ERROR, "failed to create video encoder '%s'",
+		blog(LOG_ERROR, "Failed to create video encoder '%s'",
 		     name_buffer->array);
 		throw MultitrackVideoError::warning(
 			QTStr("FailedToStartStream.FailedToCreateVideoEncoder")
@@ -597,8 +596,6 @@ void MultitrackVideoOutput::PrepareStreaming(
 						      go_live_post,
 						      multitrack_video_name);
 
-		blog(LOG_INFO, "Enhanced broadcasting config_id: '%s'",
-		     go_live_config->meta.config_id.c_str());
 		if (berryessa_) {
 			add_always_string(
 				berryessa_.get(), "config_id",
@@ -639,6 +636,11 @@ void MultitrackVideoOutput::PrepareStreaming(
 	}
 
 	add_always_bool(berryessa_.get(), "config_custom", is_custom_config);
+
+	if (go_live_config.has_value()) {
+		blog(LOG_INFO, "Enhanced broadcasting config_id: '%s'",
+		     go_live_config->meta.config_id.c_str());
+	}
 
 	if (!go_live_config && !custom) {
 		blog(LOG_ERROR,
@@ -1161,6 +1163,7 @@ MultitrackVideoOutput::take_current_stream_dump()
 void MultitrackVideoOutput::ReleaseOnMainThread(
 	std::optional<OBSOutputObjects> objects)
 {
+
 	if (!objects.has_value())
 		return;
 
