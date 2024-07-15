@@ -493,8 +493,6 @@ elseif(OS_POSIX)
 
   target_sources(obs PRIVATE system-info-posix.cpp)
 
-  target_sources(obs PRIVATE system-info-posix.cpp)
-
   target_compile_definitions(obs PRIVATE OBS_INSTALL_PREFIX="${OBS_INSTALL_PREFIX}"
                                          "$<$<BOOL:${LINUX_PORTABLE}>:LINUX_PORTABLE>")
   if(TARGET obspython)
