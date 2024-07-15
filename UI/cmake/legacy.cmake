@@ -303,8 +303,6 @@ target_sources(
           presentmon-csv-capture.hpp
           presentmon-csv-parser.cpp
           presentmon-csv-parser.hpp
-          qt-helpers.cpp
-          qt-helpers.hpp
           system-info.hpp)
 
 target_sources(obs PRIVATE importers/importers.cpp importers/importers.hpp importers/classic.cpp importers/sl.cpp

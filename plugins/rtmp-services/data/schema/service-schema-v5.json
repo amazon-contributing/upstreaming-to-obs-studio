@@ -94,7 +94,7 @@
                                 "url": ""
                             }
                         ],
-                        "minItems": 0,
+                        "minItems": 1,
                         "additionalItems": true
                     },
                     "recommended": {
