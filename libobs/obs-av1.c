@@ -81,12 +81,10 @@ static inline void encode_uleb128(uint64_t val, uint8_t *out_buf,
 	*len_out = num_bytes;
 }
 
-static const uint8_t METADATA_TYPE_ITUT_T35 = 4;
-static const uint8_t OBU_METADATA = 5;
-
-// Create a metadata OBU to carry caption information.
-void metadata_obu_itu_t35(const uint8_t *itut_t35_buffer, size_t itut_bufsize,
-			  uint8_t **out_buffer, size_t *outbuf_size)
+// Create an OBU to carry AV1 metadata types, including captions and user private data
+void metadata_obu(const uint8_t *itut_t35_buffer, size_t itut_bufsize,
+		  uint8_t **out_buffer, size_t *outbuf_size,
+		  uint8_t metadata_type)
 {
 	/* From the AV1 spec: 5.3.2 OBU Header Syntax
 	 * -------------
@@ -99,7 +97,7 @@ void metadata_obu_itu_t35(const uint8_t *itut_t35_buffer, size_t itut_bufsize,
 	 *   // skip, because we aren't setting this
 	 */
 
-	uint8_t obu_header_byte = (OBU_METADATA << 3) | (1 << 1);
+	uint8_t obu_header_byte = (OBS_OBU_METADATA << 3) | (1 << 1);
 
 	/* From the AV1 spec: 5.3.1 General OBU Syntax
 	 * if (obu_has_size_field)
@@ -135,7 +133,7 @@ void metadata_obu_itu_t35(const uint8_t *itut_t35_buffer, size_t itut_bufsize,
 	++offset;
 	memcpy((*out_buffer) + offset, size_buf, size_buf_size);
 	offset += size_buf_size;
-	(*out_buffer)[offset] = METADATA_TYPE_ITUT_T35;
+	(*out_buffer)[offset] = metadata_type;
 	++offset;
 	memcpy((*out_buffer) + offset, itut_t35_buffer, itut_bufsize);
 	offset += itut_bufsize;
