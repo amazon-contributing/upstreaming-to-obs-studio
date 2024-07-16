@@ -193,12 +193,6 @@ Structures/Enumerations
 
      .. versionadded:: 29.0.0
 
-   - **OBS_FRONTEND_EVENT_STREAMING_PREPARING**
-
-     Triggered when streaming is preparing
-
-     .. versionadded:: 30.1.0
-
 .. struct:: obs_frontend_source_list
 
    - DARRAY(obs_source_t*) **sources**

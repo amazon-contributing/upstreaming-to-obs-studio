@@ -6,8 +6,6 @@
 
 #include "window-basic-status-bar.hpp"
 
-#include <util/dstr.hpp>
-
 #include <functional>
 
 using namespace std;
@@ -824,16 +822,6 @@ struct OBSStudioAPI : obs_frontend_callbacks {
 	obs_frontend_external_stream_stopped(obs_weak_output_t *output) override
 	{
 		main->RemoveAdditionalStreamOutput(output);
-	}
-
-	char *obs_frontend_get_version_string() override
-	{
-		auto str = App()->GetVersionString();
-		DStr result;
-		dstr_cat(result, str.c_str());
-		auto val = result->array;
-		result->array = nullptr;
-		return val;
 	}
 
 	void obs_frontend_multitrack_video_register(
