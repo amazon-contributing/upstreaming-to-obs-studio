@@ -5,7 +5,7 @@ on:
   pull_request:
     paths-ignore:
       - '**.md'
-    branches: [master, plugin]
+    branches: [plugin]
     types: [ opened, synchronize, reopened ]
   merge_group:
     types: [checks_requested]
