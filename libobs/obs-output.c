@@ -1402,17 +1402,19 @@ void obs_output_enable_bpm(obs_output_t *output, bool bpm_enable)
 {
 	if (!obs_output_valid(output, "obs_output_enable_bpm"))
 		return;
-	if (!log_flag_service(output, __FUNCTION__))
+	if (!log_flag_encoded(output, __FUNCTION__, false) ||
+	    !log_flag_video(output, __FUNCTION__) ||
+	    !log_flag_service(output, __FUNCTION__))
 		return;
 	if (active(output))
 		return;
 
-	os_atomic_set_bool(&output->info.enable_bpm, bpm_enable);
+	os_atomic_set_bool(&output->enable_bpm, bpm_enable);
 }
 
 static inline bool bpm_enabled(const struct obs_output *output)
 {
-	return os_atomic_load_bool(&output->info.enable_bpm);
+	return os_atomic_load_bool(&output->enable_bpm);
 }
 
 static inline bool video_valid(const struct obs_output *output)
@@ -1842,18 +1844,20 @@ static bool update_metrics(const struct obs_output *output,
 
 	const video_t *video = obs_encoder_video(pkt->encoder);
 	if (video) {
-		// video_output_get_total_frames() returns the number of frames
-		// before the framerate decimator. For example, if the OBS session
-		// is rendering at 60fps, and the rendition is set for 30 fps,
-		// the counter will increment by 60 per second, not 30 per second.
-		// For metrics we will consider this value to be the number of
-		// frames input to the obs_encoder_t instance.
+		/* video_output_get_total_frames() returns the number of frames
+		 * before the framerate decimator. For example, if the OBS session
+		 * is rendering at 60fps, and the rendition is set for 30 fps,
+		 * the counter will increment by 60 per second, not 30 per second.
+		 * For metrics we will consider this value to be the number of
+		 * frames input to the obs_encoder_t instance.
+		 */
 		m_track->rendition_frames_input.curr =
 			video_output_get_total_frames(video);
 		m_track->rendition_frames_skipped.curr =
 			video_output_get_skipped_frames(video);
-		// obs_encoder_get_encoded_frames() returns the number of frames
-		// successfully encoded by the obs_encoder_t instance.
+		/* obs_encoder_get_encoded_frames() returns the number of frames
+		 * successfully encoded by the obs_encoder_t instance.
+		 */
 		m_track->rendition_frames_output.curr =
 			obs_encoder_get_encoded_frames(
 				output->video_encoders[pkt->track_idx]);
@@ -1972,12 +1976,9 @@ static bool update_metrics(const struct obs_output *output,
 	os_nstime_to_timespec(cur_time, &m_track->pirts.tspec);
 	render_metrics_time(&m_track->pirts);
 
-	/* For the EB beta, logging the BPM TS using
-	 * "--verbose" and "--unfiltered_log" in the startup arguments
-	 * gives visibility into the client latency.
-	 *
-	 * FIXME: This is OK for EB beta, but doubtful we can upstream
-	 * this as-is. Review/adjust as needed when we get there.
+	/* Log the BPM timestamp information. This provides
+	 * visibility into the client latency when OBS is started
+	 * with "--verbose" and "--unfiltered_log".
 	 */
 	blog(LOG_DEBUG,
 	     "BPM TS: %s, trk %lu: [CTS|FER-CTS|FERC-FER|PIR-CTS]:[%" PRIu64
@@ -2127,8 +2128,9 @@ void bpm_sm_sei_render(struct metrics_data *m_track)
 	// Timestamp type
 	s_w8(&s, BPM_TS_RFC3339);
 
-	// Write the timestamp event tag (Packet Interleave Request Event)
-	// Using the PIR_TS timestamp because the data was all collected at that time
+	/* Write the timestamp event tag (Packet Interleave Request Event).
+	 * Use the PIR_TS timestamp because the data was all collected at that time.
+	 */
 	s_w8(&s, BPM_TS_EVENT_PIR);
 	// Write the RFC3339-formatted string, including the null terminator
 	s_write(&s, m_track->pirts.rfc3339_str,
@@ -2136,8 +2138,9 @@ void bpm_sm_sei_render(struct metrics_data *m_track)
 
 	// Session metrics has 4 counters
 	num_counters = 4;
-	// Send all the counters with a tag(8-bit):value(32-bit) configuration
-	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_counters - 1
+	/* Send all the counters with a tag(8-bit):value(32-bit) configuration.
+	 * Upper 4 bits are set to b0000 (reserved); lower 4-bits num_counters - 1.
+	 */
 	s_w8(&s, (num_counters - 1) & 0x0F);
 	s_w8(&s, BPM_SM_FRAMES_RENDERED);
 	s_wb32(&s, m_track->session_frames_rendered.diff);
@@ -2172,8 +2175,9 @@ void bpm_erm_sei_render(struct metrics_data *m_track)
 	// Timestamp type
 	s_w8(&s, BPM_TS_RFC3339);
 
-	// Write the timestamp event tag (Packet Interleave Request Event)
-	// Using the PIRTS timestamp because the data was all collected at that time
+	/* Write the timestamp event tag (Packet Interleave Request Event).
+	 * Use the PIRTS timestamp because the data was all collected at that time.
+	 */
 	s_w8(&s, BPM_TS_EVENT_PIR);
 	// Write the RFC3339-formatted string, including the null terminator
 	s_write(&s, m_track->pirts.rfc3339_str,
@@ -2181,8 +2185,9 @@ void bpm_erm_sei_render(struct metrics_data *m_track)
 
 	// Encoder rendition metrics has 3 counters
 	num_counters = 3;
-	// Send all the counters with a tag(8-bit):value(32-bit) configuration
-	// Upper 4 bits are set to b0000 (reserved); lower 4-bits num_counters - 1
+	/* Send all the counters with a tag(8-bit):value(32-bit) configuration.
+	 * Upper 4 bits are set to b0000 (reserved); lower 4-bits num_counters - 1.
+	 */
 	s_w8(&s, (num_counters - 1) & 0x0F);
 	s_w8(&s, BPM_ERM_FRAMES_INPUT);
 	s_wb32(&s, m_track->rendition_frames_input.diff);
@@ -2237,23 +2242,23 @@ static bool process_metrics(struct obs_output *output,
 	uint8_t hevc_nal_header[2];
 	if (hevc) {
 		size_t nal_header_index_start = 4;
-		// Skipping past the annex-b start code
+		// Skip past the annex-b start code
 		if (memcmp(out->data, nal_start + 1, 3) == 0) {
 			nal_header_index_start = 3;
 		} else if (memcmp(out->data, nal_start, 4) == 0) {
 			nal_header_index_start = 4;
 
 		} else {
-			// We shouldn't ever see this unless we start getting
-			// packets without annex-b start codes
+			/* We shouldn't ever see this unless we start getting
+			 * packets without annex-b start codes. */
 			blog(LOG_DEBUG,
 			     "Annex-B start code not found, we may not "
 			     "generate a valid hevc nal unit header "
 			     "for our caption");
 			return false;
 		}
-		// We will use the same 2 byte nal unit header for the cc sei,
-		// but swap the nal types out.
+		/* We will use the same 2 byte NAL unit header for the SEI,
+		 * but swap the NAL types out. */
 		hevc_nal_header[0] = out->data[nal_header_index_start];
 		hevc_nal_header[1] = out->data[nal_header_index_start + 1];
 	}
@@ -2294,44 +2299,43 @@ static bool process_metrics(struct obs_output *output,
 					data = bmalloc(sei_render_size(&sei));
 					size = sei_render(&sei, data);
 				}
-				// In each of these specs there is an identical structure that
-				// carries caption information it is named slightly differently
-				// the metadata_itut_t35 in AV1, or the
-				// user_data_registered_itu_t_t35 in HEVC/AVC.  We have an AVC
-				// SEI wrapped version of that here and we will strip away and
-				// repackage it slightly to fit the different codec carrying
-				// mechanisms a slightly modified SEI for HEVC and a
-				// metadata_obu for AV1
+				/* In each of these specs there is an identical structure that
+				 * carries user private metadata. We have an AVC SEI wrapped
+				 * version of that here. We will strip it out and repackage
+				 * it slightly to fit the different codec carrying mechanisms.
+				 * A slightly modified SEI for HEVC and a metadata OBU for AV1.
+				 */
 				if (avc) {
-					/* TODO SEI should come after AUD/SPS/PPS,
-				   but before any VCL */
+					/* TODO: SEI should come after AUD/SPS/PPS,
+					 * but before any VCL */
 					da_push_back_array(out_data, nal_start,
 							   4);
 					da_push_back_array(out_data, data,
 							   size);
 #ifdef ENABLE_HEVC
 				} else if (hevc) {
-					/* Only first nal, VPS/PPS/SPS should use the 4 byte
-				   start code, seis use 3 byte version */
+					/* Only first NAL (VPS/PPS/SPS) should use the 4 byte
+					 * start code. SEIs use 3 byte version */
 					da_push_back_array(out_data,
 							   nal_start + 1, 3);
-					// nal_unit_header( ) {
-					// forbidden_zero_bit       f(1)
-					// nal_unit_type            u(6)
-					// nuh_layer_id             u(6)
-					// nuh_temporal_id_plus1    u(3)
-					// }
+					/* nal_unit_header( ) {
+					 * forbidden_zero_bit       f(1)
+					 * nal_unit_type            u(6)
+					 * nuh_layer_id             u(6)
+					 * nuh_temporal_id_plus1    u(3)
+					 * }
+					 */
 					const uint8_t prefix_sei_nal_type = 39;
-					// The first bit is always 0, so we just need to
-					// save the last bit off the original header and
-					// add the sei nal type
+					/* The first bit is always 0, so we just need to
+					 * save the last bit off the original header and
+					 * add the SEI NAL type. */
 					uint8_t first_byte =
 						(prefix_sei_nal_type << 1) |
 						(0x01 & hevc_nal_header[0]);
 					hevc_nal_header[0] = first_byte;
-					// the H265 nal unit header is 2 byte instead of
-					// one, otherwise everything else is the
-					// same.
+					/* The HEVC NAL unit header is 2 byte instead of
+					 * one, otherwise everything else is the
+					 * same. */
 					da_push_back_array(out_data,
 							   hevc_nal_header, 2);
 					da_push_back_array(out_data, &data[1],
@@ -2419,16 +2423,20 @@ static inline void send_interleaved(struct obs_output *output)
 		}
 		pthread_mutex_unlock(&ctrack->caption_mutex);
 
-		// Insert SEI metrics only when a keyframe is detected
-		// and only for services that enabled metrics delivery
-		if (out.keyframe && bpm_enabled(output)) {
+		/* Insert BPM only when a keyframe is detected and
+		 * only for services that enabled metrics delivery.
+		 */
+		if (bpm_enabled(output) == false) {
+			// Clear the BPM frame timing array if BPM is disabled
+			da_clear(out.encoder->bpm_frame_times);
+		} else if (out.keyframe) {
 			struct metrics_data *m_track =
 				output->metrics_tracks[out.track_idx];
 			pthread_mutex_lock(&m_track->metrics_mutex);
-			// Update the metrics and generate SEI packets
+			// Update the metrics and generate BPM messages
 			if (!process_metrics(output, &out)) {
 				blog(LOG_DEBUG,
-				     "process_metrics(): SEI-based metrics injection failed");
+				     "process_metrics(): BPM injection failed");
 			}
 			pthread_mutex_unlock(&m_track->metrics_mutex);
 		}

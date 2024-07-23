@@ -1246,8 +1246,12 @@ struct obs_output {
 	// captions are output per track
 	struct caption_track_data *caption_tracks[MAX_OUTPUT_VIDEO_ENCODERS];
 
-	// Per-track metrics are modelled as a stream of data to allow
-	// flexible insertion frequency.
+	/* Broadcast Performance Metrics control */
+	bool enable_bpm;
+
+	/* Per-track metrics are modelled as a stream of data to allow
+	 * flexible insertion frequency.
+	 */
 	struct metrics_data *metrics_tracks[MAX_OUTPUT_VIDEO_ENCODERS];
 
 	bool valid;
