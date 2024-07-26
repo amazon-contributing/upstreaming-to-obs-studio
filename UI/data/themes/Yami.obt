@@ -129,7 +129,7 @@
 
     --spinbox_button_height: calc(var(--input_height_half) - 1px);
 
-    --volume_slider: calc(calc(10px + var(--font_base_value)) / 4);
+    --volume_slider: calc(calc(4px + var(--font_base_value)) / 4);
     --volume_slider_box: calc(var(--volume_slider) * 4);
     --volume_slider_label: calc(var(--volume_slider_box) * 2);
 
@@ -890,7 +890,9 @@ QPlainTextEdit:focus {
     border-color: var(--input_border_focus);
 }
 
-QTextEdit:!editable {
+QTextEdit:!editable,
+QTextEdit:!editable:hover,
+QTextEdit:!editable:focus {
     background-color: var(--input_bg);
 }
 
@@ -1532,13 +1534,16 @@ QGroupBox::indicator:unchecked:disabled {
 QCheckBox[lockCheckBox=true] {
     outline: none;
     background: transparent;
+    max-width: var(--icon_base);
+    max-height: var(--icon_base);
+    padding: var(--padding_base);
+    border: 1px solid transparent;
+    margin-left: var(--spacing_large);
 }
 
 QCheckBox[lockCheckBox=true]::indicator {
     width: var(--icon_base);
     height: var(--icon_base);
-    padding: 1px;
-    border: 1px solid transparent;
     border-radius: 4px;
 }
 
@@ -1552,8 +1557,8 @@ QCheckBox[lockCheckBox=true]::indicator:unchecked:hover {
     image: url(:res/images/unlocked.svg);
 }
 
-QCheckBox[lockCheckBox=true]::indicator:hover,
-QCheckBox[lockCheckBox=true]::indicator:focus {
+QCheckBox[lockCheckBox=true]:hover,
+QCheckBox[lockCheckBox=true]:focus {
     border: 1px solid var(--border_highlight);
 }
 
@@ -1562,13 +1567,16 @@ QCheckBox[lockCheckBox=true]::indicator:focus {
 QCheckBox[visibilityCheckBox=true] {
     outline: none;
     background: transparent;
+    max-width: var(--icon_base);
+    max-height: var(--icon_base);
+    padding: var(--padding_base);
+    border: 1px solid transparent;
+    margin-left: var(--spacing_large);
 }
 
 QCheckBox[visibilityCheckBox=true]::indicator {
     width: var(--icon_base);
     height: var(--icon_base);
-    padding: 1px;
-    border: 1px solid transparent;
     border-radius: 4px;
 }
 
@@ -1582,8 +1590,8 @@ QCheckBox[visibilityCheckBox=true]::indicator:unchecked:hover {
     image: url(:res/images/invisible.svg);
 }
 
-QCheckBox[visibilityCheckBox=true]::indicator:hover,
-QCheckBox[visibilityCheckBox=true]::indicator:focus {
+QCheckBox[visibilityCheckBox=true]:hover,
+QCheckBox[visibilityCheckBox=true]:focus {
     border: 1px solid var(--border_highlight);
 }
 
