@@ -1516,6 +1516,7 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame,
 	struct encoder_packet pkt = {0};
 	bool received = false;
 	bool success;
+	uint64_t bpm_fer_ts = 0;
 
 	if (encoder->reconfigure_requested) {
 		encoder->reconfigure_requested = false;
@@ -1530,7 +1531,7 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame,
 	/* Get the BPM frame encode request timestamp. This
 	 * needs to be read just before the encode request.
 	 */
-	uint64_t bpm_fer_ts = os_gettime_ns();
+	bpm_fer_ts = os_gettime_ns();
 
 	profile_start(encoder->profile_encoder_encode_name);
 	success = encoder->info.encode(encoder->context.data, frame, &pkt,
@@ -1548,7 +1549,7 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame,
 		if (success) {
 			bpm_ft->ferc = os_gettime_ns();
 		} else {
-			// Encode had error, set fec to 0
+			// Encode had error, set ferc to 0
 			bpm_ft->ferc = 0;
 		}
 		bpm_ft->pts = frame->pts;

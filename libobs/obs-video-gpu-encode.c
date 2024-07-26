@@ -43,7 +43,7 @@ static void *gpu_encode_thread(void *data)
 		uint64_t lock_key;
 		uint64_t next_key;
 		size_t lock_count = 0;
-		uint64_t bpm_fer_ts;
+		uint64_t bpm_fer_ts = 0;
 
 		if (os_atomic_load_bool(&video->gpu_encode_stop))
 			break;
@@ -189,7 +189,7 @@ static void *gpu_encode_thread(void *data)
 				if (success) {
 					bpm_ft->ferc = os_gettime_ns();
 				} else {
-					// Encode had error, set fec to 0
+					// Encode had error, set ferc to 0
 					bpm_ft->ferc = 0;
 				}
 
