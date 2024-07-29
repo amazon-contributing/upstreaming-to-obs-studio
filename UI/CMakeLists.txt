@@ -106,10 +106,6 @@ target_sources(
     multitrack-video-error.hpp
     multitrack-video-output.cpp
     multitrack-video-output.hpp
-    presentmon-csv-capture.cpp
-    presentmon-csv-capture.hpp
-    presentmon-csv-parser.cpp
-    presentmon-csv-parser.hpp
     system-info.hpp
 )
 
