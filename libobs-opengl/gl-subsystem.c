@@ -216,7 +216,7 @@ const char *device_preprocessor_name(void)
 
 const char *gpu_get_driver_version(void)
 {
-  return ((const char *)glGetString(GL_VERSION));
+	return ((const char *)glGetString(GL_VERSION));
 }
 
 /* Get the amount of dedicated GDDR memory, aka VRAM, in
@@ -232,7 +232,7 @@ uint64_t gpu_get_dmem(void)
 	 */
 	if (dmem < 0)
 		dmem = 0;
-	return (uint64_t) dmem;
+	return (uint64_t)dmem;
 }
 
 /* Get the amount of CPU memory shared by the GPU, in
@@ -240,7 +240,6 @@ uint64_t gpu_get_dmem(void)
  */
 uint64_t gpu_get_smem(void)
 {
-	// FIXME: Is this correct? Does it work on AMD/NVIDIA/Intel?
 	GLint dmem, total_mem = 0;
 	glGetIntegerv(GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX, &dmem);
 	glGetIntegerv(GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &total_mem);
@@ -253,7 +252,7 @@ uint64_t gpu_get_smem(void)
 		dmem = 0;
 	if (total_mem < 0)
 		total_mem = 0;
-	return (uint64_t) total_mem - dmem;
+	return (uint64_t)total_mem - dmem;
 }
 
 int device_create(gs_device_t **p_device, uint32_t adapter)

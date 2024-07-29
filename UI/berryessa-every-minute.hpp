@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QDateTime>
 #include <QTimer>
+#include <obs.hpp>
 
 #ifdef _WIN32
 #include "wmi-data-provider.hpp"
