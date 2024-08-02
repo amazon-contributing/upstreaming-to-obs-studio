@@ -927,8 +927,6 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 			config_set_bool(config, "Output", "NewSocketLoopEnable",
 					false);
 #endif
-			config_set_bool(config, "Output", "DynamicBitrate",
-					false);
 		}
 
 		return true;
