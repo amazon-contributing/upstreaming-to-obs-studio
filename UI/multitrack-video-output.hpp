@@ -74,8 +74,6 @@ public:
 	signal_handler_t *StreamingSignalHandler();
 	void StartedStreaming(QWidget *parent);
 	void StopStreaming();
-	bool HandleIncompatibleSettings(QWidget *parent, config_t *config,
-					obs_service_t *service, bool &useDelay);
 
 	OBSOutputAutoRelease StreamingOutput()
 	{
