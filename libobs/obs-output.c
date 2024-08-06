@@ -3011,7 +3011,7 @@ static void interleave_packets(void *data, struct encoder_packet *packet)
 	else
 		obs_encoder_packet_create_instance(&out, packet);
 
-	if (packet->encoder->bpm_frame_times.num) {
+	if (packet->encoder->bpm_frame_times.num && output->enable_bpm) {
 		frame_time = da_push_back_new(
 			output->bpm_frame_times[packet->track_idx]);
 		*frame_time = packet->encoder->bpm_frame_times.array[0];
