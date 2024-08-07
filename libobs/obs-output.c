@@ -325,6 +325,9 @@ void obs_output_destroy(obs_output_t *output)
 
 		da_free(output->keyframe_group_tracking);
 
+		for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++)
+			da_free(output->bpm_frame_times[i]);
+
 		clear_raw_audio_buffers(output);
 
 		os_event_destroy(output->stopping_event);
@@ -1543,8 +1546,10 @@ static inline void check_received(struct obs_output *output,
 	}
 }
 
-static inline void apply_interleaved_packet_offset(struct obs_output *output,
-						   struct encoder_packet *out)
+static inline void
+apply_interleaved_packet_offset(struct obs_output *output,
+				struct encoder_packet *out,
+				struct bpm_frame_time *frame_time)
 {
 	int64_t offset;
 
@@ -1558,6 +1563,8 @@ static inline void apply_interleaved_packet_offset(struct obs_output *output,
 
 	out->dts -= offset;
 	out->pts -= offset;
+	if (frame_time)
+		frame_time->pts -= offset;
 
 	if (out->type == OBS_ENCODER_VIDEO)
 		out->dts -= output->video_dts_offsets[out->track_idx];
@@ -1817,7 +1824,7 @@ static void render_metrics_time(struct metrics_time *m_time)
 	m_time->valid = true;
 }
 
-static bool update_metrics(const struct obs_output *output,
+static bool update_metrics(struct obs_output *output,
 			   const struct encoder_packet *pkt)
 {
 	if (!output || !pkt)
@@ -1930,16 +1937,18 @@ static bool update_metrics(const struct obs_output *output,
 	 */
 	bool found = false;
 	struct bpm_frame_time bpm_ft_local = {0};
-	for (size_t i = 0; i < pkt->encoder->bpm_frame_times.num; i++) {
+	for (size_t i = 0; i < output->bpm_frame_times[pkt->track_idx].num;
+	     i++) {
 		struct bpm_frame_time *bpm_ft =
-			&pkt->encoder->bpm_frame_times.array[i];
+			&output->bpm_frame_times[pkt->track_idx].array[i];
 		if (bpm_ft->pts == pkt->pts) {
 			bpm_ft_local = *bpm_ft;
 			/* update_metrics() is only called on keyframes, so it
                          * should be safe to assume that all timestamps up until
                          * this timestamp have been processed already.
                          */
-			da_erase_range(pkt->encoder->bpm_frame_times, 0, i + 1);
+			da_erase_range(output->bpm_frame_times[pkt->track_idx],
+				       0, i + 1);
 			found = true;
 			break;
 		}
@@ -2426,10 +2435,7 @@ static inline void send_interleaved(struct obs_output *output)
 		/* Insert BPM only when a keyframe is detected and
 		 * only for services that enabled metrics delivery.
 		 */
-		if (bpm_enabled(output) == false) {
-			// Clear the BPM frame timing array if BPM is disabled
-			da_clear(out.encoder->bpm_frame_times);
-		} else if (out.keyframe) {
+		if (bpm_enabled(output) && out.keyframe) {
 			struct metrics_data *m_track =
 				output->metrics_tracks[out.track_idx];
 			pthread_mutex_lock(&m_track->metrics_mutex);
@@ -2806,7 +2812,7 @@ static bool initialize_interleaved_packets(struct obs_output *output)
 	for (size_t i = 0; i < output->interleaved_packets.num; i++) {
 		struct encoder_packet *packet =
 			&output->interleaved_packets.array[i];
-		apply_interleaved_packet_offset(output, packet);
+		apply_interleaved_packet_offset(output, packet, NULL);
 	}
 
 	return true;
@@ -2953,12 +2959,23 @@ check_encoder_group_keyframe_alignment(obs_output_t *output,
 	da_insert(output->keyframe_group_tracking, idx, &insert_data);
 }
 
+static void apply_bpm_offsets(struct obs_output *output)
+{
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		for (size_t j = 0; j < output->bpm_frame_times[i].num; j++) {
+			output->bpm_frame_times[i].array[j].pts -=
+				output->video_offsets[i];
+		}
+	}
+}
+
 static void interleave_packets(void *data, struct encoder_packet *packet)
 {
 	struct obs_output *output = data;
 	struct encoder_packet out;
 	bool was_started;
 	bool received_video;
+	struct bpm_frame_time *frame_time = NULL;
 
 	if (!active(output))
 		return;
@@ -2994,8 +3011,14 @@ static void interleave_packets(void *data, struct encoder_packet *packet)
 	else
 		obs_encoder_packet_create_instance(&out, packet);
 
+	if (packet->encoder->bpm_frame_times.num && output->enable_bpm) {
+		frame_time = da_push_back_new(
+			output->bpm_frame_times[packet->track_idx]);
+		*frame_time = packet->encoder->bpm_frame_times.array[0];
+	}
+
 	if (was_started)
-		apply_interleaved_packet_offset(output, &out);
+		apply_interleaved_packet_offset(output, &out, frame_time);
 	else
 		check_received(output, packet);
 
@@ -3015,6 +3038,7 @@ static void interleave_packets(void *data, struct encoder_packet *packet)
 			if (prune_interleaved_packets(output)) {
 				if (initialize_interleaved_packets(output)) {
 					resort_interleaved_packets(output);
+					apply_bpm_offsets(output);
 					send_interleaved(output);
 				}
 			}
@@ -3200,6 +3224,10 @@ static void reset_packet_data(obs_output_t *output)
 {
 	output->received_audio = false;
 	output->highest_audio_ts = 0;
+
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		output->bpm_frame_times[i].num = 0;
+	}
 
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
 		output->received_video[i] = false;

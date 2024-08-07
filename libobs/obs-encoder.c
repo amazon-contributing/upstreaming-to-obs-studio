@@ -1557,6 +1557,8 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame,
 		bpm_ft->fer = bpm_fer_ts;
 	}
 	send_off_encoder_packet(encoder, success, received, &pkt);
+	if (received)
+		da_pop_front(encoder->bpm_frame_times);
 
 	profile_end(do_encode_name);
 

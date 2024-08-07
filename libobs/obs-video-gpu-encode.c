@@ -200,6 +200,8 @@ static void *gpu_encode_thread(void *data)
 
 			send_off_encoder_packet(encoder, success, received,
 						&pkt);
+			if (received)
+				da_pop_front(encoder->bpm_frame_times);
 
 			lock_key = next_key;
 

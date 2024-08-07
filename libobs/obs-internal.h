@@ -1249,6 +1249,8 @@ struct obs_output {
 	/* Broadcast Performance Metrics control */
 	bool enable_bpm;
 
+	DARRAY(struct bpm_frame_time) bpm_frame_times[MAX_OUTPUT_VIDEO_ENCODERS];
+
 	/* Per-track metrics are modelled as a stream of data to allow
 	 * flexible insertion frequency.
 	 */
