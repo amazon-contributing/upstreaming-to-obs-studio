@@ -1295,16 +1295,13 @@ bool SimpleOutput::StartStreaming(obs_service_t *service)
 						   "NewSocketLoopEnable");
 	bool enableLowLatencyMode =
 		config_get_bool(main->Config(), "Output", "LowLatencyEnable");
-#else
-	bool enableNewSocketLoop = false;
 #endif
 	bool enableDynBitrate =
 		config_get_bool(main->Config(), "Output", "DynamicBitrate");
 
 	if (multitrackVideo && multitrackVideoActive &&
 	    !multitrackVideo->HandleIncompatibleSettings(main, main->Config(),
-							 service, useDelay,
-							 enableNewSocketLoop)) {
+							 service, useDelay)) {
 		multitrackVideoActive = false;
 		return false;
 	}
@@ -2421,16 +2418,13 @@ bool AdvancedOutput::StartStreaming(obs_service_t *service)
 						   "NewSocketLoopEnable");
 	bool enableLowLatencyMode =
 		config_get_bool(main->Config(), "Output", "LowLatencyEnable");
-#else
-	bool enableNewSocketLoop = false;
 #endif
 	bool enableDynBitrate =
 		config_get_bool(main->Config(), "Output", "DynamicBitrate");
 
 	if (multitrackVideo && multitrackVideoActive &&
 	    !multitrackVideo->HandleIncompatibleSettings(main, main->Config(),
-							 service, useDelay,
-							 enableNewSocketLoop)) {
+							 service, useDelay)) {
 		multitrackVideoActive = false;
 		return false;
 	}

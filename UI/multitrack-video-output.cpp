@@ -842,9 +842,10 @@ void MultitrackVideoOutput::StopStreaming()
 		obs_output_stop(dump_output);
 }
 
-bool MultitrackVideoOutput::HandleIncompatibleSettings(
-	QWidget *parent, config_t *config, obs_service_t *service,
-	bool &useDelay, bool &enableNewSocketLoop)
+bool MultitrackVideoOutput::HandleIncompatibleSettings(QWidget *parent,
+						       config_t *config,
+						       obs_service_t *service,
+						       bool &useDelay)
 {
 	QString incompatible_settings;
 	QString where_to_disable;
@@ -874,11 +875,6 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 
 	check_setting(useDelay, "Basic.Settings.Advanced.StreamDelay",
 		      "Basic.Settings.Advanced.StreamDelay");
-#ifdef _WIN32
-	check_setting(enableNewSocketLoop,
-		      "Basic.Settings.Advanced.Network.EnableNewSocketLoop",
-		      "Basic.Settings.Advanced.Network");
-#endif
 
 	if (incompatible_settings.isEmpty())
 		return true;
@@ -919,14 +915,9 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(
 	if (mb.clickedButton() == this_stream ||
 	    mb.clickedButton() == all_streams) {
 		useDelay = false;
-		enableNewSocketLoop = false;
 
 		if (mb.clickedButton() == all_streams) {
 			config_set_bool(config, "Output", "DelayEnable", false);
-#ifdef _WIN32
-			config_set_bool(config, "Output", "NewSocketLoopEnable",
-					false);
-#endif
 		}
 
 		return true;

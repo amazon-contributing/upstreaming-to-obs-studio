@@ -75,8 +75,7 @@ public:
 	void StartedStreaming(QWidget *parent);
 	void StopStreaming();
 	bool HandleIncompatibleSettings(QWidget *parent, config_t *config,
-					obs_service_t *service, bool &useDelay,
-					bool &enableNewSocketLoop);
+					obs_service_t *service, bool &useDelay);
 
 	OBSOutputAutoRelease StreamingOutput()
 	{
