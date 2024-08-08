@@ -2575,6 +2575,10 @@ static void discard_to_idx(struct obs_output *output, size_t idx)
 	for (size_t i = 0; i < idx; i++) {
 		struct encoder_packet *packet =
 			&output->interleaved_packets.array[i];
+		if (packet->type == OBS_ENCODER_VIDEO) {
+			da_pop_front(
+				output->bpm_frame_times[packet->track_idx]);
+		}
 		obs_encoder_packet_release(packet);
 	}
 
@@ -2969,7 +2973,8 @@ static void apply_bpm_offsets(struct obs_output *output)
 	}
 }
 
-static void interleave_packets(void *data, struct encoder_packet *packet)
+static void interleave_packets(void *data, struct encoder_packet *packet,
+			       struct bpm_frame_time *encoder_frame_time)
 {
 	struct obs_output *output = data;
 	struct encoder_packet out;
@@ -3011,10 +3016,10 @@ static void interleave_packets(void *data, struct encoder_packet *packet)
 	else
 		obs_encoder_packet_create_instance(&out, packet);
 
-	if (packet->encoder->bpm_frame_times.num && output->enable_bpm) {
+	if (encoder_frame_time && output->enable_bpm) {
 		frame_time = da_push_back_new(
 			output->bpm_frame_times[packet->track_idx]);
-		*frame_time = packet->encoder->bpm_frame_times.array[0];
+		*frame_time = *encoder_frame_time;
 	}
 
 	if (was_started)
@@ -3052,8 +3057,10 @@ static void interleave_packets(void *data, struct encoder_packet *packet)
 	pthread_mutex_unlock(&output->interleaved_mutex);
 }
 
-static void default_encoded_callback(void *param, struct encoder_packet *packet)
+static void default_encoded_callback(void *param, struct encoder_packet *packet,
+				     struct bpm_frame_time *frame_time)
 {
+	UNUSED_PARAMETER(frame_time);
 	struct obs_output *output = param;
 
 	if (data_active(output)) {

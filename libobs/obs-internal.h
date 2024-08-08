@@ -1055,6 +1055,27 @@ extern void deinterlace_render(obs_source_t *s);
 /* ------------------------------------------------------------------------- */
 /* outputs  */
 
+// Broadcast Performance Metrics frame timing
+struct bpm_frame_time {
+	/* PTS used to associate uncompressed frames with encoded packets. */
+	int64_t pts;
+	/* Composition timestamp is when the frame was rendered. */
+	uint64_t cts;
+	/* FERC (Frame Encode Request) is when the frame was
+	 * submitted to the encoder for encoding via the encode
+	 * callback (e.g. encode_texture2()).
+	 */
+	uint64_t fer;
+	/* FERC (Frame Encode Request Complete) is when
+	 * the associated FER event completed. If the encode
+	 * is synchronous with the call, this means FERC - FEC
+	 * measures the actual encode time, otherwise if the
+	 * encode is asynchronous, it measures the pipeline
+	 * delay between encode request and encode complete.
+	 */
+	uint64_t ferc;
+};
+
 enum delay_msg {
 	DELAY_MSG_PACKET,
 	DELAY_MSG_START,
@@ -1065,9 +1086,12 @@ struct delay_data {
 	enum delay_msg msg;
 	uint64_t ts;
 	struct encoder_packet packet;
+	bool frame_time_valid;
+	struct bpm_frame_time frame_time;
 };
 
-typedef void (*encoded_callback_t)(void *data, struct encoder_packet *packet);
+typedef void (*encoded_callback_t)(void *data, struct encoder_packet *packet,
+				   struct bpm_frame_time *frame_time);
 
 struct obs_weak_output {
 	struct obs_weak_ref ref;
@@ -1095,27 +1119,6 @@ struct counter_data {
 	uint32_t diff;
 	uint32_t ref;
 	uint32_t curr;
-};
-
-// Broadcast Performance Metrics frame timing
-struct bpm_frame_time {
-	/* PTS used to associate uncompressed frames with encoded packets. */
-	int64_t pts;
-	/* Composition timestamp is when the frame was rendered. */
-	uint64_t cts;
-	/* FERC (Frame Encode Request) is when the frame was
-	 * submitted to the encoder for encoding via the encode
-	 * callback (e.g. encode_texture2()).
-	 */
-	uint64_t fer;
-	/* FERC (Frame Encode Request Complete) is when
-	 * the associated FER event completed. If the encode
-	 * is synchronous with the call, this means FERC - FEC
-	 * measures the actual encode time, otherwise if the
-	 * encode is asynchronous, it measures the pipeline
-	 * delay between encode request and encode complete.
-	 */
-	uint64_t ferc;
 };
 
 #define RFC3339_MAX_LENGTH (64)
@@ -1283,7 +1286,8 @@ static inline void do_output_signal(struct obs_output *output,
 	calldata_free(&params);
 }
 
-extern void process_delay(void *data, struct encoder_packet *packet);
+extern void process_delay(void *data, struct encoder_packet *packet,
+			  struct bpm_frame_time *frame_time);
 extern void obs_output_cleanup_delay(obs_output_t *output);
 extern bool obs_output_delay_start(obs_output_t *output);
 extern void obs_output_delay_stop(obs_output_t *output);
@@ -1311,7 +1315,7 @@ struct obs_weak_encoder {
 
 struct encoder_callback {
 	bool sent_first_packet;
-	void (*new_packet)(void *param, struct encoder_packet *packet);
+	encoded_callback_t new_packet;
 	void *param;
 };
 
@@ -1439,13 +1443,9 @@ extern bool obs_encoder_initialize(obs_encoder_t *encoder);
 extern void obs_encoder_shutdown(obs_encoder_t *encoder);
 
 extern void obs_encoder_start(obs_encoder_t *encoder,
-			      void (*new_packet)(void *param,
-						 struct encoder_packet *packet),
-			      void *param);
+			      encoded_callback_t new_packet, void *param);
 extern void obs_encoder_stop(obs_encoder_t *encoder,
-			     void (*new_packet)(void *param,
-						struct encoder_packet *packet),
-			     void *param);
+			     encoded_callback_t new_packet, void *param);
 
 extern void obs_encoder_add_output(struct obs_encoder *encoder,
 				   struct obs_output *output);
