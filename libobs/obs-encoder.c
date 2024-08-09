@@ -439,7 +439,7 @@ static void obs_encoder_actually_destroy(obs_encoder_t *encoder)
 			encoder->info.destroy(encoder->context.data);
 		da_free(encoder->callbacks);
 		da_free(encoder->roi);
-		da_free(encoder->bpm_frame_times);
+		da_free(encoder->encoder_packet_times);
 		pthread_mutex_destroy(&encoder->init_mutex);
 		pthread_mutex_destroy(&encoder->callbacks_mutex);
 		pthread_mutex_destroy(&encoder->outputs_mutex);
@@ -874,7 +874,7 @@ void obs_encoder_stop(obs_encoder_t *encoder, encoded_callback_t new_packet,
 
 	pthread_mutex_unlock(&encoder->callbacks_mutex);
 
-	encoder->bpm_frame_times.num = 0;
+	encoder->encoder_packet_times.num = 0;
 
 	if (last) {
 		remove_connection(encoder, true);
@@ -1392,7 +1392,7 @@ static inline bool get_sei(const struct obs_encoder *encoder, uint8_t **sei,
 static void send_first_video_packet(struct obs_encoder *encoder,
 				    struct encoder_callback *cb,
 				    struct encoder_packet *packet,
-				    struct bpm_frame_time *frame_time)
+				    struct encoder_packet_time *packet_time)
 {
 	struct encoder_packet first_packet;
 	DARRAY(uint8_t) data;
@@ -1406,7 +1406,7 @@ static void send_first_video_packet(struct obs_encoder *encoder,
 	da_init(data);
 
 	if (!get_sei(encoder, &sei, &size) || !sei || !size) {
-		cb->new_packet(cb->param, packet, frame_time);
+		cb->new_packet(cb->param, packet, packet_time);
 		cb->sent_first_packet = true;
 		return;
 	}
@@ -1418,7 +1418,7 @@ static void send_first_video_packet(struct obs_encoder *encoder,
 	first_packet.data = data.array;
 	first_packet.size = data.num;
 
-	cb->new_packet(cb->param, &first_packet, frame_time);
+	cb->new_packet(cb->param, &first_packet, packet_time);
 	cb->sent_first_packet = true;
 
 	da_free(data);
@@ -1428,14 +1428,14 @@ static const char *send_packet_name = "send_packet";
 static inline void send_packet(struct obs_encoder *encoder,
 			       struct encoder_callback *cb,
 			       struct encoder_packet *packet,
-			       struct bpm_frame_time *frame_time)
+			       struct encoder_packet_time *packet_time)
 {
 	profile_start(send_packet_name);
 	/* include SEI in first video packet */
 	if (encoder->info.type == OBS_ENCODER_VIDEO && !cb->sent_first_packet)
-		send_first_video_packet(encoder, cb, packet, frame_time);
+		send_first_video_packet(encoder, cb, packet, packet_time);
 	else
-		cb->new_packet(cb->param, packet, frame_time);
+		cb->new_packet(cb->param, packet, packet_time);
 	profile_end(send_packet_name);
 }
 
@@ -1493,7 +1493,7 @@ void send_off_encoder_packet(obs_encoder_t *encoder, bool success,
 			struct encoder_callback *cb;
 			cb = encoder->callbacks.array + (i - 1);
 			send_packet(encoder, cb, pkt,
-				    encoder->bpm_frame_times.array);
+				    encoder->encoder_packet_times.array);
 		}
 
 		pthread_mutex_unlock(&encoder->callbacks_mutex);
@@ -1517,7 +1517,7 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame,
 	struct encoder_packet pkt = {0};
 	bool received = false;
 	bool success;
-	uint64_t bpm_fer_ts = 0;
+	uint64_t fer_ts = 0;
 
 	if (encoder->reconfigure_requested) {
 		encoder->reconfigure_requested = false;
@@ -1529,37 +1529,37 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame,
 	pkt.timebase_den = encoder->timebase_den;
 	pkt.encoder = encoder;
 
-	/* Get the BPM frame encode request timestamp. This
+	/* Get the frame encode request timestamp. This
 	 * needs to be read just before the encode request.
 	 */
-	bpm_fer_ts = os_gettime_ns();
+	fer_ts = os_gettime_ns();
 
 	profile_start(encoder->profile_encoder_encode_name);
 	success = encoder->info.encode(encoder->context.data, frame, &pkt,
 				       &received);
 	profile_end(encoder->profile_encoder_encode_name);
 
-	/* Generate and enqueue the BPM frame timing metrics, namely
+	/* Generate and enqueue the frame timing metrics, namely
 	 * the CTS (composition time), FER (frame encode request), FERC
 	 * (frame encode request complete) and current PTS. PTS is used to
-	 * associate the BPM frame timing data with the encode packet. */
+	 * associate the frame timing data with the encode packet. */
 	if (frame_cts) {
-		struct bpm_frame_time *bpm_ft =
-			da_push_back_new(encoder->bpm_frame_times);
+		struct encoder_packet_time *ept =
+			da_push_back_new(encoder->encoder_packet_times);
 		// Get the frame encode request complete timestamp
 		if (success) {
-			bpm_ft->ferc = os_gettime_ns();
+			ept->ferc = os_gettime_ns();
 		} else {
 			// Encode had error, set ferc to 0
-			bpm_ft->ferc = 0;
+			ept->ferc = 0;
 		}
-		bpm_ft->pts = frame->pts;
-		bpm_ft->cts = *frame_cts;
-		bpm_ft->fer = bpm_fer_ts;
+		ept->pts = frame->pts;
+		ept->cts = *frame_cts;
+		ept->fer = fer_ts;
 	}
 	send_off_encoder_packet(encoder, success, received, &pkt);
-	if (received && encoder->bpm_frame_times.num != 0)
-		da_pop_front(encoder->bpm_frame_times);
+	if (received && encoder->encoder_packet_times.num != 0)
+		da_pop_front(encoder->encoder_packet_times);
 
 	profile_end(do_encode_name);
 

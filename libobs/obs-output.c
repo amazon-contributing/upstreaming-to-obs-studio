@@ -326,7 +326,7 @@ void obs_output_destroy(obs_output_t *output)
 		da_free(output->keyframe_group_tracking);
 
 		for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++)
-			da_free(output->bpm_frame_times[i]);
+			da_free(output->encoder_packet_times[i]);
 
 		clear_raw_audio_buffers(output);
 
@@ -1549,7 +1549,7 @@ static inline void check_received(struct obs_output *output,
 static inline void
 apply_interleaved_packet_offset(struct obs_output *output,
 				struct encoder_packet *out,
-				struct bpm_frame_time *frame_time)
+				struct encoder_packet_time *packet_time)
 {
 	int64_t offset;
 
@@ -1563,8 +1563,8 @@ apply_interleaved_packet_offset(struct obs_output *output,
 
 	out->dts -= offset;
 	out->pts -= offset;
-	if (frame_time)
-		frame_time->pts -= offset;
+	if (packet_time)
+		packet_time->pts -= offset;
 
 	if (out->type == OBS_ENCODER_VIDEO)
 		out->dts -= output->video_dts_offsets[out->track_idx];
@@ -1936,18 +1936,18 @@ static bool update_metrics(struct obs_output *output,
 	 * message generation.
 	 */
 	bool found = false;
-	struct bpm_frame_time bpm_ft_local = {0};
-	for (size_t i = 0; i < output->bpm_frame_times[pkt->track_idx].num;
+	struct encoder_packet_time bpm_ft_local = {0};
+	for (size_t i = 0; i < output->encoder_packet_times[pkt->track_idx].num;
 	     i++) {
-		struct bpm_frame_time *bpm_ft =
-			&output->bpm_frame_times[pkt->track_idx].array[i];
-		if (bpm_ft->pts == pkt->pts) {
-			bpm_ft_local = *bpm_ft;
+		struct encoder_packet_time *ept =
+			&output->encoder_packet_times[pkt->track_idx].array[i];
+		if (ept->pts == pkt->pts) {
+			bpm_ft_local = *ept;
 			/* update_metrics() is only called on keyframes, so it
                          * should be safe to assume that all timestamps up until
                          * this timestamp have been processed already.
                          */
-			da_erase_range(output->bpm_frame_times[pkt->track_idx],
+			da_erase_range(output->encoder_packet_times[pkt->track_idx],
 				       0, i + 1);
 			found = true;
 			break;
@@ -2577,7 +2577,7 @@ static void discard_to_idx(struct obs_output *output, size_t idx)
 			&output->interleaved_packets.array[i];
 		if (packet->type == OBS_ENCODER_VIDEO) {
 			da_pop_front(
-				output->bpm_frame_times[packet->track_idx]);
+				output->encoder_packet_times[packet->track_idx]);
 		}
 		obs_encoder_packet_release(packet);
 	}
@@ -2966,21 +2966,21 @@ check_encoder_group_keyframe_alignment(obs_output_t *output,
 static void apply_bpm_offsets(struct obs_output *output)
 {
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
-		for (size_t j = 0; j < output->bpm_frame_times[i].num; j++) {
-			output->bpm_frame_times[i].array[j].pts -=
+		for (size_t j = 0; j < output->encoder_packet_times[i].num; j++) {
+			output->encoder_packet_times[i].array[j].pts -=
 				output->video_offsets[i];
 		}
 	}
 }
 
 static void interleave_packets(void *data, struct encoder_packet *packet,
-			       struct bpm_frame_time *encoder_frame_time)
+			       struct encoder_packet_time *packet_time)
 {
 	struct obs_output *output = data;
 	struct encoder_packet out;
 	bool was_started;
 	bool received_video;
-	struct bpm_frame_time *frame_time = NULL;
+	struct encoder_packet_time *output_packet_time = NULL;
 
 	if (!active(output))
 		return;
@@ -3016,14 +3016,14 @@ static void interleave_packets(void *data, struct encoder_packet *packet,
 	else
 		obs_encoder_packet_create_instance(&out, packet);
 
-	if (encoder_frame_time && output->enable_bpm) {
-		frame_time = da_push_back_new(
-			output->bpm_frame_times[packet->track_idx]);
-		*frame_time = *encoder_frame_time;
+	if (packet_time && output->enable_bpm) {
+		output_packet_time = da_push_back_new(
+			output->encoder_packet_times[packet->track_idx]);
+		*output_packet_time = *packet_time;
 	}
 
 	if (was_started)
-		apply_interleaved_packet_offset(output, &out, frame_time);
+		apply_interleaved_packet_offset(output, &out, output_packet_time);
 	else
 		check_received(output, packet);
 
@@ -3058,9 +3058,9 @@ static void interleave_packets(void *data, struct encoder_packet *packet,
 }
 
 static void default_encoded_callback(void *param, struct encoder_packet *packet,
-				     struct bpm_frame_time *frame_time)
+				     struct encoder_packet_time *packet_time)
 {
-	UNUSED_PARAMETER(frame_time);
+	UNUSED_PARAMETER(packet_time);
 	struct obs_output *output = param;
 
 	if (data_active(output)) {
@@ -3233,7 +3233,7 @@ static void reset_packet_data(obs_output_t *output)
 	output->highest_audio_ts = 0;
 
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
-		output->bpm_frame_times[i].num = 0;
+		output->encoder_packet_times[i].num = 0;
 	}
 
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {

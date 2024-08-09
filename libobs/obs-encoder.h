@@ -44,6 +44,36 @@ enum obs_encoder_type {
 	OBS_ENCODER_VIDEO  /**< The encoder provides a video codec */
 };
 
+/* encoder_packet_time is used for timestamping events associated
+ * with each video frame. This is useful for deriving absolute
+ * timestamps (i.e. wall-clock based formats) and measuring latency.
+ */
+struct encoder_packet_time {
+	/* PTS used to associate uncompressed frames with encoded packets. */
+	int64_t pts;
+
+	/* Composition timestamp is when the frame was rendered,
+	 * captured via os_gettime_ns().
+	 */
+	uint64_t cts;
+
+	/* FERC (Frame Encode Request) is when the frame was
+	 * submitted to the encoder for encoding via the encode
+	 * callback (e.g. encode_texture2()), captured via os_gettime_ns().
+	 */
+	uint64_t fer;
+
+	/* FERC (Frame Encode Request Complete) is when
+	 * the associated FER event completed. If the encode
+	 * is synchronous with the call, this means FERC - FEC
+	 * measures the actual encode time, otherwise if the
+	 * encode is asynchronous, it measures the pipeline
+	 * delay between encode request and encode complete.
+	 * FERC is also cpatured via os_gettime_ns().
+	 */
+	uint64_t ferc;
+};
+
 /** Encoder output packet */
 struct encoder_packet {
 	uint8_t *data; /**< Packet data */
