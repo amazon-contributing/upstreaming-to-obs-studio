@@ -2467,20 +2467,6 @@ static inline void send_interleaved(struct obs_output *output)
 			     "%s: Track %lu encoder packet timing array empty.",
 			     __FUNCTION__, out.track_idx);
 		}
-		/* Insert BPM only when a keyframe is detected and
-		 * only for services that enabled metrics delivery.
-		 */
-		if (bpm_enabled(output) && out.keyframe) {
-			struct metrics_data *m_track =
-				output->metrics_tracks[out.track_idx];
-			pthread_mutex_lock(&m_track->metrics_mutex);
-			// Update the metrics and generate BPM messages
-			if (!process_metrics(output, &out)) {
-				blog(LOG_DEBUG,
-				     "process_metrics(): BPM injection failed");
-			}
-			pthread_mutex_unlock(&m_track->metrics_mutex);
-		}
 	}
 
 	output->info.encoded_packet(output->context.data, &out);
