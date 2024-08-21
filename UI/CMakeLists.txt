@@ -20,6 +20,10 @@ if(NOT TARGET OBS::json11)
   add_subdirectory("${CMAKE_SOURCE_DIR}/deps/json11" "${CMAKE_BINARY_DIR}/deps/json11")
 endif()
 
+if(NOT TARGET bpm)
+  add_subdirectory("${CMAKE_SOURCE_DIR}/deps/bpm" "${CMAKE_BINARY_DIR}/deps/bpm")
+endif()
+
 add_executable(obs-studio)
 add_executable(OBS::studio ALIAS obs-studio)
 

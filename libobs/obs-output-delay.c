@@ -46,7 +46,8 @@ static inline bool log_flag_encoded(const struct obs_output *output,
 
 static inline void push_packet(struct obs_output *output,
 			       struct encoder_packet *packet,
-			       struct encoder_packet_time *packet_time, uint64_t t)
+			       struct encoder_packet_time *packet_time,
+			       uint64_t t)
 {
 	struct delay_data dd;
 
@@ -70,9 +71,10 @@ static inline void process_delay_data(struct obs_output *output,
 		if (!delay_active(output) || !delay_capturing(output))
 			obs_encoder_packet_release(&dd->packet);
 		else
-			output->delay_callback(
-				output, &dd->packet,
-				dd->packet_time_valid ? &dd->packet_time : NULL);
+			output->delay_callback(output, &dd->packet,
+					       dd->packet_time_valid
+						       ? &dd->packet_time
+						       : NULL);
 		break;
 	case DELAY_MSG_START:
 		obs_output_actual_start(output);

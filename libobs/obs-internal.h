@@ -1196,7 +1196,7 @@ struct obs_output {
 	struct caption_track_data *caption_tracks[MAX_OUTPUT_VIDEO_ENCODERS];
 
 	DARRAY(struct encoder_packet_time)
-		encoder_packet_times[MAX_OUTPUT_VIDEO_ENCODERS];
+	encoder_packet_times[MAX_OUTPUT_VIDEO_ENCODERS];
 
 	/* Packet callbacks */
 	pthread_mutex_t pkt_callbacks_mutex;
