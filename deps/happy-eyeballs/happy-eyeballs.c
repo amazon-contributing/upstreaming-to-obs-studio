@@ -194,6 +194,7 @@ static int build_addr_list(const char *hostname, int port,
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = AI_ADDRCONFIG;
 
 	if (context->bind_addr_len == sizeof(struct sockaddr_in))
 		hints.ai_family = AF_INET;
@@ -497,6 +498,7 @@ int happy_eyeballs_create(struct happy_eyeballs_ctx **context)
 
 	ctx->socket_fd = INVALID_SOCKET;
 	da_init(ctx->candidates);
+	da_reserve(ctx->candidates, HAPPY_EYEBALLS_MAX_ATTEMPTS);
 
 	/* race_completed_event will be signalled when there is a winner or all
 	 * attempts have failed */
@@ -649,11 +651,11 @@ int happy_eyeballs_timedwait(struct happy_eyeballs_ctx *context,
 	return status;
 }
 
-int happy_eyeballs_destroy(struct happy_eyeballs_ctx *context)
+static void *destroy_thread(void *param)
 {
-	if (context == NULL)
-		return STATUS_INVALID_ARGUMENT;
+	struct happy_eyeballs_ctx *context = param;
 
+	os_set_thread_name("happy-eyeballs destroy thread");
 #ifdef _WIN32
 #define SHUT_RDWR SD_BOTH
 #else
@@ -697,6 +699,21 @@ int happy_eyeballs_destroy(struct happy_eyeballs_ctx *context)
 
 	da_free(context->candidates);
 	free(context);
+
+	return NULL;
+}
+
+int happy_eyeballs_destroy(struct happy_eyeballs_ctx *context)
+{
+	if (context == NULL)
+		return STATUS_INVALID_ARGUMENT;
+
+	/* The destroy happens asynchronously in another thread due to the
+	 * connect() call blocking on Windows. */
+	pthread_t thread;
+	pthread_create(&thread, NULL, destroy_thread, context);
+	pthread_detach(thread);
+
 	return STATUS_SUCCESS;
 }
 
