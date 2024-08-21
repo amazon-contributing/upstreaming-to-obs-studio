@@ -9,6 +9,7 @@
 #include <obs.hpp>
 #include <remote-text.hpp>
 #include <window-basic-main.hpp>
+#include <bpm.h>
 
 #include <algorithm>
 #include <cinttypes>
@@ -676,6 +677,9 @@ void MultitrackVideoOutput::PrepareStreaming(
 
 	obs_output_set_service(output, multitrack_video_service);
 
+	// Register the BPM (Broadcast Performance Metrics) callback
+	obs_output_add_packet_callback(output, bpm_injection, NULL);
+
 	OBSSignal start_streaming;
 	OBSSignal stop_streaming;
 	OBSSignal deactivate_stream;
@@ -996,7 +1000,6 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 	       std::optional<size_t> vod_track_mixer,
 	       const std::map<std::string, video_t *> &extra_views)
 {
-
 	auto output = create_output();
 	OBSOutputAutoRelease recording_output;
 	if (dump_stream_to_file_config)
@@ -1118,6 +1121,15 @@ void StreamDeactivateHandler(void *arg, calldata_t *params)
 	if (obs_output_reconnecting(static_cast<obs_output_t *>(
 		    calldata_ptr(params, "output"))))
 		return;
+
+	/* Unregister the BPM (Broadcast Performance Metrics) callback
+	 * and destroy the allocated metrics data.
+	 */
+	obs_output_remove_packet_callback(
+		static_cast<obs_output_t *>(calldata_ptr(params, "output")),
+		bpm_injection, NULL);
+	bpm_destroy(
+		static_cast<obs_output_t *>(calldata_ptr(params, "output")));
 
 	MultitrackVideoOutput::ReleaseOnMainThread(self->take_current());
 }

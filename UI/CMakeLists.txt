@@ -33,6 +33,7 @@ target_link_libraries(
           FFmpeg::avcodec
           FFmpeg::avutil
           FFmpeg::avformat
+          OBS::bpm
           OBS::libobs
           OBS::frontend-api
           OBS::json11)
