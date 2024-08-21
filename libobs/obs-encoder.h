@@ -47,6 +47,18 @@ enum obs_encoder_type {
 /* encoder_packet_time is used for timestamping events associated
  * with each video frame. This is useful for deriving absolute
  * timestamps (i.e. wall-clock based formats) and measuring latency.
+ *
+ * For each frame, there are four events of interest, described in
+ * the encoder_packet_time struct, namely cts, fer, ferc, and pir.
+ * The timebase of these four events is os_gettime_ns(), which provides
+ * very high resolution timestamping, and the ability to convert the
+ * timing to any other time format.
+ *
+ * Each frame follows a timeline in the following temporal order:
+ *   CTS, FER, FERC, PIR
+ *
+ * PTS is the integer-based monotonically increasing value that is used
+ * to associate an encoder_packet_time entry with a specific encoder_packet.
  */
 struct encoder_packet_time {
 	/* PTS used to associate uncompressed frames with encoded packets. */
@@ -69,9 +81,17 @@ struct encoder_packet_time {
 	 * measures the actual encode time, otherwise if the
 	 * encode is asynchronous, it measures the pipeline
 	 * delay between encode request and encode complete.
-	 * FERC is also cpatured via os_gettime_ns().
+	 * FERC is also captured via os_gettime_ns().
 	 */
 	uint64_t ferc;
+
+	/* PIR (Packet Interleave Request) is when the encoded packet
+	 * is interleaved with the stream. PIR is captured via
+	 * os_gettime_ns(). The difference between PIR and CTS gives
+	 * the total latency between frame rendering
+	 * and packet interleaving.
+	 */
+	uint64_t pir;
 };
 
 /** Encoder output packet */

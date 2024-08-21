@@ -1947,8 +1947,9 @@ static bool update_metrics(struct obs_output *output,
                          * should be safe to assume that all timestamps up until
                          * this timestamp have been processed already.
                          */
-			da_erase_range(output->encoder_packet_times[pkt->track_idx],
-				       0, i + 1);
+			da_erase_range(
+				output->encoder_packet_times[pkt->track_idx], 0,
+				i + 1);
 			found = true;
 			break;
 		}
@@ -2388,6 +2389,8 @@ static bool process_metrics(struct obs_output *output,
 static inline void send_interleaved(struct obs_output *output)
 {
 	struct encoder_packet out = output->interleaved_packets.array[0];
+	struct encoder_packet_time ept_local = {0};
+	bool found_ept = false;
 
 	/* do not send an interleaved packet if there's no packet of the
 	 * opposing type of a higher timestamp in the interleave buffer.
@@ -2432,6 +2435,38 @@ static inline void send_interleaved(struct obs_output *output)
 		}
 		pthread_mutex_unlock(&ctrack->caption_mutex);
 
+		/* Iterate the array of encoder packet times to
+		 * find a matching PTS entry, and drain the array.
+		 * Packet timing currently applies to video only.
+		 */
+		struct encoder_packet_time *ept = NULL;
+		size_t num_ept =
+			output->encoder_packet_times[out.track_idx].num;
+		if (num_ept) {
+			for (size_t i = 0; i < num_ept; i++) {
+				ept = &output->encoder_packet_times[out.track_idx]
+					       .array[i];
+				if (ept->pts == out.pts) {
+					ept_local = *ept;
+					da_erase(output->encoder_packet_times
+							 [out.track_idx],
+						 i);
+					found_ept = true;
+					break;
+				}
+			}
+			if (found_ept == false) {
+				blog(LOG_DEBUG,
+				     "%s: Track %lu encoder packet timing for PTS%" PRId64
+				     " not found.",
+				     __FUNCTION__, out.track_idx, out.pts);
+			}
+		} else {
+			// encoder_packet_times should not be empty; log if so.
+			blog(LOG_DEBUG,
+			     "%s: Track %lu encoder packet timing array empty.",
+			     __FUNCTION__, out.track_idx);
+		}
 		/* Insert BPM only when a keyframe is detected and
 		 * only for services that enabled metrics delivery.
 		 */
@@ -2963,10 +2998,11 @@ check_encoder_group_keyframe_alignment(obs_output_t *output,
 	da_insert(output->keyframe_group_tracking, idx, &insert_data);
 }
 
-static void apply_bpm_offsets(struct obs_output *output)
+static void apply_ept_offsets(struct obs_output *output)
 {
 	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
-		for (size_t j = 0; j < output->encoder_packet_times[i].num; j++) {
+		for (size_t j = 0; j < output->encoder_packet_times[i].num;
+		     j++) {
 			output->encoder_packet_times[i].array[j].pts -=
 				output->video_offsets[i];
 		}
@@ -3023,7 +3059,8 @@ static void interleave_packets(void *data, struct encoder_packet *packet,
 	}
 
 	if (was_started)
-		apply_interleaved_packet_offset(output, &out, output_packet_time);
+		apply_interleaved_packet_offset(output, &out,
+						output_packet_time);
 	else
 		check_received(output, packet);
 
@@ -3043,7 +3080,7 @@ static void interleave_packets(void *data, struct encoder_packet *packet,
 			if (prune_interleaved_packets(output)) {
 				if (initialize_interleaved_packets(output)) {
 					resort_interleaved_packets(output);
-					apply_bpm_offsets(output);
+					apply_ept_offsets(output);
 					send_interleaved(output);
 				}
 			}

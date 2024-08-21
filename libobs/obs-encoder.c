@@ -1487,13 +1487,40 @@ void send_off_encoder_packet(obs_encoder_t *encoder, bool success,
 		pkt->sys_dts_usec += encoder->pause.ts_offset / 1000;
 		pthread_mutex_unlock(&encoder->pause.mutex);
 
+		/* Find the encoder packet timing entry in the encoder
+		 * timing array with the corresponding PTS value, then remove
+		 * the entry from the array to ensure it doesn't continuously fill.
+		 */
+		struct encoder_packet_time ept_local;
+		struct encoder_packet_time *ept = NULL;
+		bool found_ept = false;
+		if (pkt->type == OBS_ENCODER_VIDEO) {
+			for (size_t i = encoder->encoder_packet_times.num;
+			     i > 0; i--) {
+				ept = &encoder->encoder_packet_times
+					       .array[i - 1];
+				if (ept->pts == pkt->pts) {
+					ept_local = *ept;
+					da_erase(encoder->encoder_packet_times,
+						 i - 1);
+					found_ept = true;
+					break;
+				}
+			}
+			if (!found_ept)
+				blog(LOG_DEBUG,
+				     "%s: Encoder packet timing for PTS %" PRId64
+				     " not found",
+				     __FUNCTION__, pkt->pts);
+		}
+
 		pthread_mutex_lock(&encoder->callbacks_mutex);
 
 		for (size_t i = encoder->callbacks.num; i > 0; i--) {
 			struct encoder_callback *cb;
 			cb = encoder->callbacks.array + (i - 1);
 			send_packet(encoder, cb, pkt,
-				    encoder->encoder_packet_times.array);
+				    found_ept ? &ept_local : NULL);
 		}
 
 		pthread_mutex_unlock(&encoder->callbacks_mutex);
@@ -1558,8 +1585,6 @@ bool do_encode(struct obs_encoder *encoder, struct encoder_frame *frame,
 		ept->fer = fer_ts;
 	}
 	send_off_encoder_packet(encoder, success, received, &pkt);
-	if (received && encoder->encoder_packet_times.num != 0)
-		da_pop_front(encoder->encoder_packet_times);
 
 	profile_end(do_encode_name);
 
