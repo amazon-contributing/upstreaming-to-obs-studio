@@ -74,6 +74,12 @@ struct rendered_callback {
 	void *param;
 };
 
+struct packet_callback {
+	void (*packet_cb)(obs_output_t *output, struct encoder_packet *pkt,
+			  struct encoder_packet_time *pkt_time, void *param);
+	void *param;
+};
+
 /* ------------------------------------------------------------------------- */
 /* validity checks */
 
@@ -1055,27 +1061,6 @@ extern void deinterlace_render(obs_source_t *s);
 /* ------------------------------------------------------------------------- */
 /* outputs  */
 
-// Broadcast Performance Metrics frame timing
-struct bpm_frame_time {
-	/* PTS used to associate uncompressed frames with encoded packets. */
-	int64_t pts;
-	/* Composition timestamp is when the frame was rendered. */
-	uint64_t cts;
-	/* FERC (Frame Encode Request) is when the frame was
-	 * submitted to the encoder for encoding via the encode
-	 * callback (e.g. encode_texture2()).
-	 */
-	uint64_t fer;
-	/* FERC (Frame Encode Request Complete) is when
-	 * the associated FER event completed. If the encode
-	 * is synchronous with the call, this means FERC - FEC
-	 * measures the actual encode time, otherwise if the
-	 * encode is asynchronous, it measures the pipeline
-	 * delay between encode request and encode complete.
-	 */
-	uint64_t ferc;
-};
-
 enum delay_msg {
 	DELAY_MSG_PACKET,
 	DELAY_MSG_START,
@@ -1086,12 +1071,12 @@ struct delay_data {
 	enum delay_msg msg;
 	uint64_t ts;
 	struct encoder_packet packet;
-	bool frame_time_valid;
-	struct bpm_frame_time frame_time;
+	bool packet_time_valid;
+	struct encoder_packet_time packet_time;
 };
 
 typedef void (*encoded_callback_t)(void *data, struct encoder_packet *packet,
-				   struct bpm_frame_time *frame_time);
+				   struct encoder_packet_time *frame_time);
 
 struct obs_weak_output {
 	struct obs_weak_ref ref;
@@ -1113,45 +1098,6 @@ struct caption_track_data {
 	double caption_timestamp;
 	double last_caption_timestamp;
 	struct deque caption_data;
-};
-
-struct counter_data {
-	uint32_t diff;
-	uint32_t ref;
-	uint32_t curr;
-};
-
-#define RFC3339_MAX_LENGTH (64)
-struct metrics_time {
-	struct timespec tspec;
-	char rfc3339_str[RFC3339_MAX_LENGTH];
-	bool valid;
-};
-
-// Broadcast Performance Metrics SEI types
-enum bpm_sei_types {
-	BPM_TS_SEI = 0, // BPM Timestamp SEI
-	BPM_SM_SEI,     // BPM Session Metrics SEI
-	BPM_ERM_SEI,    // BPM Encoded Rendition Metrics SEI
-	BPM_MAX_SEI
-};
-
-struct metrics_data {
-	pthread_mutex_t metrics_mutex;
-	struct counter_data rendition_frames_input;
-	struct counter_data rendition_frames_output;
-	struct counter_data rendition_frames_skipped;
-	struct counter_data session_frames_rendered;
-	struct counter_data session_frames_output;
-	struct counter_data session_frames_dropped;
-	struct counter_data session_frames_lagged;
-	struct array_output_data sei_payload[BPM_MAX_SEI];
-	bool sei_rendered[BPM_MAX_SEI];
-	struct metrics_time
-		cts; // Composition timestamp (i.e. when the frame was created)
-	struct metrics_time ferts;  // Frame encode request timestamp
-	struct metrics_time fercts; // Frame encode request complete timestamp
-	struct metrics_time pirts;  // Packet Interleave Request timestamp
 };
 
 struct pause_data {
@@ -1249,15 +1195,12 @@ struct obs_output {
 	// captions are output per track
 	struct caption_track_data *caption_tracks[MAX_OUTPUT_VIDEO_ENCODERS];
 
-	/* Broadcast Performance Metrics control */
-	bool enable_bpm;
+	DARRAY(struct encoder_packet_time)
+	encoder_packet_times[MAX_OUTPUT_VIDEO_ENCODERS];
 
-	DARRAY(struct bpm_frame_time) bpm_frame_times[MAX_OUTPUT_VIDEO_ENCODERS];
-
-	/* Per-track metrics are modelled as a stream of data to allow
-	 * flexible insertion frequency.
-	 */
-	struct metrics_data *metrics_tracks[MAX_OUTPUT_VIDEO_ENCODERS];
+	/* Packet callbacks */
+	pthread_mutex_t pkt_callbacks_mutex;
+	DARRAY(struct packet_callback) pkt_callbacks;
 
 	bool valid;
 
@@ -1287,7 +1230,7 @@ static inline void do_output_signal(struct obs_output *output,
 }
 
 extern void process_delay(void *data, struct encoder_packet *packet,
-			  struct bpm_frame_time *frame_time);
+			  struct encoder_packet_time *packet_time);
 extern void obs_output_cleanup_delay(obs_output_t *output);
 extern bool obs_output_delay_start(obs_output_t *output);
 extern void obs_output_delay_stop(obs_output_t *output);
@@ -1426,7 +1369,7 @@ struct obs_encoder {
 	pthread_mutex_t callbacks_mutex;
 	DARRAY(struct encoder_callback) callbacks;
 
-	DARRAY(struct bpm_frame_time) bpm_frame_times;
+	DARRAY(struct encoder_packet_time) encoder_packet_times;
 
 	struct pause_data pause;
 
