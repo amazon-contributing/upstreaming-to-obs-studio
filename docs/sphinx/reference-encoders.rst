@@ -164,8 +164,9 @@ Encoder Definition Structure (obs_encoder_info)
 
    - **OBS_ENCODER_CAP_DEPRECATED** - Encoder is deprecated
    - **OBS_ENCODER_CAP_ROI** - Encoder supports region of interest feature
+   - **OBS_ENCODER_CAP_SCALING** - Encoder implements its own scaling logic,
+                                   desiring to receive unscaled frames
 
-      .. versionadded:: 30.1
 
 Encoder Packet Structure (encoder_packet)
 -----------------------------------------
@@ -347,15 +348,6 @@ General Encoder Functions
                             if none
    :return:                 A reference to the newly created encoder, or
                             *NULL* if failed
-
----------------------
-
-.. function:: void obs_encoder_addref(obs_encoder_t *encoder)
-
-   Adds a reference to an encoder.
-
-.. deprecated:: 27.2.0
-   Use :c:func:`obs_encoder_get_ref()` instead.
 
 ---------------------
 

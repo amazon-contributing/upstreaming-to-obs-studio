@@ -21,11 +21,11 @@
 #include <QVariant>
 #include <QFileDialog>
 #include <QStandardPaths>
+#include <qt-wrappers.hpp>
 #include "item-widget-helpers.hpp"
 #include "window-basic-main.hpp"
 #include "window-importer.hpp"
 #include "window-namedialog.hpp"
-#include "qt-wrappers.hpp"
 
 using namespace std;
 
@@ -168,8 +168,7 @@ bool OBSBasic::AddSceneCollection(bool create_new, const QString &qname)
 		RefreshSceneCollections();
 	};
 
-	if (api)
-		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGING);
+	OnEvent(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGING);
 
 	new_collection(file, name);
 
@@ -179,10 +178,8 @@ bool OBSBasic::AddSceneCollection(bool create_new, const QString &qname)
 
 	UpdateTitleBar();
 
-	if (api) {
-		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_LIST_CHANGED);
-		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED);
-	}
+	OnEvent(OBS_FRONTEND_EVENT_SCENE_COLLECTION_LIST_CHANGED);
+	OnEvent(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED);
 
 	return true;
 }
@@ -294,8 +291,7 @@ void OBSBasic::on_actionRenameSceneCollection_triggered()
 	UpdateTitleBar();
 	RefreshSceneCollections();
 
-	if (api)
-		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_RENAMED);
+	OnEvent(OBS_FRONTEND_EVENT_SCENE_COLLECTION_RENAMED);
 }
 
 void OBSBasic::on_actionRemoveSceneCollection_triggered()
@@ -339,8 +335,7 @@ void OBSBasic::on_actionRemoveSceneCollection_triggered()
 		return;
 	}
 
-	if (api)
-		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGING);
+	OnEvent(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGING);
 
 	oldFile.insert(0, path);
 	/* os_rename() overwrites if necessary, only the .bak file will remain. */
@@ -360,10 +355,8 @@ void OBSBasic::on_actionRemoveSceneCollection_triggered()
 
 	UpdateTitleBar();
 
-	if (api) {
-		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_LIST_CHANGED);
-		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED);
-	}
+	OnEvent(OBS_FRONTEND_EVENT_SCENE_COLLECTION_LIST_CHANGED);
+	OnEvent(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED);
 }
 
 void OBSBasic::on_actionImportSceneCollection_triggered()
@@ -441,6 +434,97 @@ void OBSBasic::on_actionExportSceneCollection_triggered()
 	}
 }
 
+void OBSBasic::on_actionRemigrateSceneCollection_triggered()
+{
+	if (Active()) {
+		OBSMessageBox::warning(
+			this,
+			QTStr("Basic.Main.RemigrateSceneCollection.Title"),
+			QTStr("Basic.Main.RemigrateSceneCollection.CannotMigrate.Active"));
+		return;
+	}
+
+	OBSDataAutoRelease priv = obs_get_private_data();
+
+	if (!usingAbsoluteCoordinates && !migrationBaseResolution) {
+		OBSMessageBox::warning(
+			this,
+			QTStr("Basic.Main.RemigrateSceneCollection.Title"),
+			QTStr("Basic.Main.RemigrateSceneCollection.CannotMigrate.UnknownBaseResolution"));
+		return;
+	}
+
+	obs_video_info ovi;
+	obs_get_video_info(&ovi);
+
+	if (!usingAbsoluteCoordinates &&
+	    migrationBaseResolution->first == ovi.base_width &&
+	    migrationBaseResolution->second == ovi.base_height) {
+		OBSMessageBox::warning(
+			this,
+			QTStr("Basic.Main.RemigrateSceneCollection.Title"),
+			QTStr("Basic.Main.RemigrateSceneCollection.CannotMigrate.BaseResolutionMatches"));
+		return;
+	}
+
+	QString name = config_get_string(App()->GlobalConfig(), "Basic",
+					 "SceneCollection");
+	QString message = QTStr("Basic.Main.RemigrateSceneCollection.Text")
+				  .arg(name)
+				  .arg(ovi.base_width)
+				  .arg(ovi.base_height);
+
+	auto answer = OBSMessageBox::question(
+		this, QTStr("Basic.Main.RemigrateSceneCollection.Title"),
+		message);
+
+	if (answer == QMessageBox::No)
+		return;
+
+	lastOutputResolution = {ovi.base_width, ovi.base_height};
+
+	if (!usingAbsoluteCoordinates) {
+		/* Temporarily change resolution to migration resolution */
+		ovi.base_width = migrationBaseResolution->first;
+		ovi.base_height = migrationBaseResolution->second;
+
+		if (obs_reset_video(&ovi) != OBS_VIDEO_SUCCESS) {
+			OBSMessageBox::critical(
+				this,
+				QTStr("Basic.Main.RemigrateSceneCollection.Title"),
+				QTStr("Basic.Main.RemigrateSceneCollection.CannotMigrate.FailedVideoReset"));
+			return;
+		}
+	}
+
+	char path[512];
+	int ret = GetConfigPath(path, 512, "obs-studio/basic/scenes/");
+	if (ret <= 0) {
+		blog(LOG_WARNING, "Failed to get scene collection config path");
+		return;
+	}
+
+	std::string fileName = path;
+	fileName += config_get_string(App()->GlobalConfig(), "Basic",
+				      "SceneCollectionFile");
+	fileName += ".json";
+
+	if (api)
+		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGING);
+
+	/* Save and immediately reload to (re-)run migrations. */
+	SaveProjectNow();
+	/* Reset video if we potentially changed to a temporary resolution */
+	if (!usingAbsoluteCoordinates)
+		ResetVideo();
+
+	Load(fileName.c_str(), !usingAbsoluteCoordinates);
+	RefreshSceneCollections();
+
+	if (api)
+		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED);
+}
+
 void OBSBasic::ChangeSceneCollection()
 {
 	QAction *action = reinterpret_cast<QAction *>(sender());
@@ -461,8 +545,7 @@ void OBSBasic::ChangeSceneCollection()
 		return;
 	}
 
-	if (api)
-		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGING);
+	OnEvent(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGING);
 
 	SaveProjectNow();
 
@@ -480,6 +563,5 @@ void OBSBasic::ChangeSceneCollection()
 
 	UpdateTitleBar();
 
-	if (api)
-		api->on_event(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED);
+	OnEvent(OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED);
 }

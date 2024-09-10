@@ -371,7 +371,8 @@ struct OBSOutputs {
 };
 
 static OBSOutputs
-SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
+SetupOBSOutput(QWidget *parent, const QString &multitrack_video_name,
+	       obs_data_t *dump_stream_to_file_config,
 	       const GoLiveApi::Config &go_live_config,
 	       std::vector<OBSEncoderAutoRelease> &audio_encoders,
 	       std::shared_ptr<obs_encoder_group_t> &video_encoder_group,
@@ -678,7 +679,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 	obs_output_set_service(output, multitrack_video_service);
 
 	// Register the BPM (Broadcast Performance Metrics) callback
-	obs_output_add_packet_callback(output, bpm_injection, NULL);
+	obs_output_add_packet_callback(output, bpm_inject, NULL);
 
 	OBSSignal start_streaming;
 	OBSSignal stop_streaming;
@@ -898,12 +899,16 @@ create_audio_encoders(const GoLiveApi::Config &go_live_config,
 		      std::vector<OBSEncoderAutoRelease> &audio_encoders,
 		      obs_output_t *output, obs_output_t *recording_output,
 		      const char *audio_encoder_id, size_t main_audio_mixer,
-		      std::optional<size_t> vod_track_mixer)
+		      std::optional<size_t> vod_track_mixer,
+		      std::vector<speaker_layout> &speaker_layouts,
+		      speaker_layout &current_layout)
 {
 	speaker_layout speakers = SPEAKERS_UNKNOWN;
 	obs_audio_info oai = {};
 	if (obs_get_audio_info(&oai))
 		speakers = oai.speakers;
+
+	current_layout = speakers;
 
 	auto sanitize_audio_channels = [&](obs_encoder_t *encoder,
 					   uint32_t channels) {
@@ -924,14 +929,14 @@ create_audio_encoders(const GoLiveApi::Config &go_live_config,
 			return;
 		}
 		if (speakers != SPEAKERS_UNKNOWN &&
-		    channels > get_audio_channels(speakers))
+		    (channels > get_audio_channels(speakers) ||
+		     speakers == target_speakers))
 			return;
 
-		obs_encoder_set_speaker_layout(encoder, target_speakers);
-		blog(LOG_INFO,
-		     "MultitrackVideoOutput: setting encoder '%s' "
-		     "to %" PRIu32 " channels ",
-		     obs_encoder_get_name(encoder), channels);
+		auto it = std::find(std::begin(speaker_layouts),
+				    std::end(speaker_layouts), target_speakers);
+		if (it == std::end(speaker_layouts))
+			speaker_layouts.push_back(target_speakers);
 	};
 
 	using encoder_configs_type =
@@ -988,6 +993,77 @@ create_audio_encoders(const GoLiveApi::Config &go_live_config,
 			*vod_track_mixer);
 
 	return;
+}
+
+static const char *speaker_layout_to_string(speaker_layout layout)
+{
+	switch (layout) {
+	case SPEAKERS_MONO:
+		return "Mono";
+	case SPEAKERS_2POINT1:
+		return "2.1";
+	case SPEAKERS_4POINT0:
+		return "4.0";
+	case SPEAKERS_4POINT1:
+		return "4.1";
+	case SPEAKERS_5POINT1:
+		return "5.1";
+	case SPEAKERS_7POINT1:
+		return "7.1";
+	case SPEAKERS_UNKNOWN:
+	case SPEAKERS_STEREO:
+		return "Stereo";
+	}
+
+	return "Stereo";
+}
+
+static void handle_speaker_layout_issues(
+	QWidget *parent, const QString &multitrack_video_name,
+	const std::vector<speaker_layout> &requested_layouts,
+	speaker_layout layout)
+{
+	if (requested_layouts.empty())
+		return;
+
+	QString message;
+	if (requested_layouts.size() == 1) {
+		message =
+			QTStr("MultitrackVideo.IncompatibleSettings.AudioChannelsSingle")
+				.arg(QTStr(speaker_layout_to_string(
+					requested_layouts.front())));
+	} else {
+		message =
+			QTStr("MultitrackVideo.IncompatibleSettings.AudioChannelsMultiple")
+				.arg(multitrack_video_name);
+	}
+
+	QMetaObject::invokeMethod(
+		parent,
+		[&] {
+			QMessageBox mb(parent);
+			mb.setIcon(QMessageBox::Critical);
+			mb.setWindowTitle(QTStr(
+				"MultitrackVideo.IncompatibleSettings.Title"));
+			mb.setText(
+				QTStr("MultitrackVideo.IncompatibleSettings.AudioChannels")
+					.arg(multitrack_video_name)
+					.arg(QTStr(speaker_layout_to_string(
+						layout)))
+					.arg(message));
+
+			mb.setStandardButtons(
+				QMessageBox::StandardButton::Cancel);
+
+			mb.exec();
+		},
+		BlockingConnectionTypeFor(parent));
+
+	blog(LOG_INFO,
+	     "MultitrackVideoOutput: Attempted to start stream with incompatible "
+	     "audio channel setting. Action taken: cancel");
+
+	throw MultitrackVideoError::cancel();
 }
 
 static OBSOutputs
@@ -1127,7 +1203,7 @@ void StreamDeactivateHandler(void *arg, calldata_t *params)
 	 */
 	obs_output_remove_packet_callback(
 		static_cast<obs_output_t *>(calldata_ptr(params, "output")),
-		bpm_injection, NULL);
+		bpm_inject, NULL);
 	bpm_destroy(
 		static_cast<obs_output_t *>(calldata_ptr(params, "output")));
 

@@ -48,20 +48,16 @@ obs_to_ffmpeg_video_format(enum video_format format)
 		return AV_PIX_FMT_YUVA422P;
 	case VIDEO_FORMAT_YUVA:
 		return AV_PIX_FMT_YUVA444P;
-#if LIBAVUTIL_BUILD >= AV_VERSION_INT(56, 31, 100)
 	case VIDEO_FORMAT_YA2L:
 		return AV_PIX_FMT_YUVA444P12LE;
-#endif
 	case VIDEO_FORMAT_I010:
 		return AV_PIX_FMT_YUV420P10LE;
 	case VIDEO_FORMAT_P010:
 		return AV_PIX_FMT_P010LE;
-#if LIBAVUTIL_BUILD >= AV_VERSION_INT(57, 17, 100)
 	case VIDEO_FORMAT_P216:
 		return AV_PIX_FMT_P216LE;
 	case VIDEO_FORMAT_P416:
 		return AV_PIX_FMT_P416LE;
-#endif
 	case VIDEO_FORMAT_NONE:
 	case VIDEO_FORMAT_AYUV:
 	default:
@@ -69,7 +65,7 @@ obs_to_ffmpeg_video_format(enum video_format format)
 	}
 }
 
-static enum AVChromaLocation
+static inline enum AVChromaLocation
 determine_chroma_location(enum AVPixelFormat pix_fmt,
 			  enum AVColorSpace colorspace)
 {

@@ -1,12 +1,12 @@
-#include <auth-listener.hpp>
+#include "moc_auth-listener.cpp"
 
 #include <QRegularExpression>
 #include <QRegularExpressionMatch>
 #include <QString>
 #include <QtNetwork/QTcpSocket>
+#include <qt-wrappers.hpp>
 
 #include "obs-app.hpp"
-#include "qt-wrappers.hpp"
 
 #define LOGO_URL "https://obsproject.com/assets/images/new_icon_small-r.png"
 

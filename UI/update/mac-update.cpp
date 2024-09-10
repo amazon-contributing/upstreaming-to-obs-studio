@@ -1,11 +1,11 @@
 #include "update-helpers.hpp"
 #include "shared-update.hpp"
-#include "qt-wrappers.hpp"
-#include "mac-update.hpp"
+#include "moc_mac-update.cpp"
 #include "obs-app.hpp"
 
 #include <string>
 
+#include <qt-wrappers.hpp>
 #include <QMessageBox>
 
 /* ------------------------------------------------------------------------ */

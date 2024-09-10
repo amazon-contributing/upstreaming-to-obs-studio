@@ -1,4 +1,4 @@
-#include "window-dock.hpp"
+#include "moc_window-dock.cpp"
 #include "obs-app.hpp"
 #include "window-basic-main.hpp"
 
@@ -34,6 +34,11 @@ void OBSDock::closeEvent(QCloseEvent *event)
 	}
 
 	QDockWidget::closeEvent(event);
+
+	if (widget() && event->isAccepted()) {
+		QEvent widgetEvent(QEvent::Type(QEvent::User + QEvent::Close));
+		qApp->sendEvent(widget(), &widgetEvent);
+	}
 }
 
 void OBSDock::showEvent(QShowEvent *event)

@@ -1503,38 +1503,23 @@
             "name": "Lightcast.com",
             "servers": [
                 {
-                    "name": "North America / East",
-                    "url": "rtmp://us-east.live.lightcast.com/202E1F/default"
+                    "name": "North America 1",
+                    "url": "rtmp://ingest-na1.live.lightcast.com/in"
                 },
                 {
-                    "name": "North America / West",
-                    "url": "rtmp://us-west.live.lightcast.com/202E1F/default"
+                    "name": "North America 2",
+                    "url": "rtmp://ingest-na2.live.lightcast.com/in"
                 },
                 {
-                    "name": "Europe / Amsterdam",
-                    "url": "rtmp://europe.live.lightcast.com/202E1F/default"
-                },
-                {
-                    "name": "Europe / Frankfurt",
-                    "url": "rtmp://europe-fra.live.lightcast.com/202E1F/default"
-                },
-                {
-                    "name": "Europe / Stockholm",
-                    "url": "rtmp://europe-sto.live.lightcast.com/202E1F/default"
-                },
-                {
-                    "name": "Asia / Hong Kong",
-                    "url": "rtmp://asia.live.lightcast.com/202E1F/default"
-                },
-                {
-                    "name": "Australia / Sydney",
-                    "url": "rtmp://australia.live.lightcast.com/202E1F/default"
+                    "name": "Europe",
+                    "url": "rtmp://ingest-eu1.live.lightcast.com/in"
                 }
             ],
             "recommended": {
                 "keyint": 2,
                 "max video bitrate": 6000,
-                "max audio bitrate": 160
+                "max audio bitrate": 320,
+                "x264opts": "scenecut=0"
             },
             "supported video codecs": [
                 "h264"
@@ -1599,25 +1584,6 @@
             "supported video codecs": [
                 "h264"
             ]
-        },
-        {
-            "name": "YouNow",
-            "common": false,
-            "protocol": "FTL",
-            "servers": [
-                {
-                    "name": "younow.com",
-                    "url": "https://api.younow.com/php/api/broadcast/ingest?id="
-                }
-            ],
-            "recommended": {
-                "keyint": 2,
-                "output": "ftl_output",
-                "max audio bitrate": 160,
-                "max video bitrate": 7000,
-                "profile": "main",
-                "bframes": 0
-            }
         },
         {
             "name": "Steam",
@@ -2584,40 +2550,20 @@
             "stream_key_link": "https://masterstream.ir/managestreams.php",
             "servers": [
                 {
-                    "name": "Auto (Iran Servers)",
-                    "url": "rtmp://auto.masterstream.ir/live"
+                    "name": "Iran Server 1 - Bandwidth Required",
+                    "url": "rtmp://live-vip1.masterstream.ir/live"
                 },
                 {
-                    "name": "Iran Server 1",
-                    "url": "rtmp://live1.masterstream.ir/live"
-                },
-                {
-                    "name": "Iran Server 2",
-                    "url": "rtmp://live2.masterstream.ir/live"
-                },
-                {
-                    "name": "Iran Server 3",
-                    "url": "rtmp://live3.masterstream.ir/live"
-                },
-                {
-                    "name": "Iran Server 4",
-                    "url": "rtmp://live4.masterstream.ir/live"
-                },
-                {
-                    "name": "Iran Server 5",
-                    "url": "rtmp://live5.masterstream.ir/live"
-                },
-                {
-                    "name": "Iran Server 6",
-                    "url": "rtmp://live6.masterstream.ir/live"
-                },
-                {
-                    "name": "Iran Server 7",
-                    "url": "rtmp://live7.masterstream.ir/live"
+                    "name": "Iran Server 2 - Bandwidth Required",
+                    "url": "rtmp://live-vip2.masterstream.ir/live"
                 },
                 {
                     "name": "Turkey Server 1",
                     "url": "rtmp://tr-live1.masterstream.ir/live"
+                },
+                {
+                    "name": "Russia Server 1",
+                    "url": "rtmp://ru-live1.masterstream.ir/live"
                 }
             ],
             "protocol": "RTMP",
@@ -2804,29 +2750,6 @@
                 "keyint": 2,
                 "max video bitrate": 12000,
                 "max audio bitrate": 320
-            }
-        },
-        {
-            "name": "Hakuna Live - RTMP",
-            "servers": [
-                {
-                    "name": "Republic of Korea / Japan",
-                    "url": "rtmps://media-proxy.prod.an1.media.hpcnt.com/hakuna"
-                }
-            ],
-            "protocol": "RTMP",
-            "supported video codecs": [
-                "h264"
-            ],
-            "recommended": {
-                "keyint": 2,
-                "supported resolutions": [
-                    "1920x1080",
-                    "1280x720"
-                ],
-                "max video bitrate": 6000,
-                "max audio bitrate": 320,
-                "bframes": 0
             }
         },
         {
@@ -3628,6 +3551,28 @@
                 "keyint": 1,
                 "bframes": 0
             }
+        },
+        {
+            "name": "NFHS Network",
+            "more_info_link": "https://support.nfhsnetwork.com/hc/en-us",
+            "stream_key_link": "https://console.nfhsnetwork.com/nfhs-events/",
+            "servers": [
+                {
+                    "name": "Manual Broadcasts",
+                    "url": "rtmp://video.nfhsnetwork.com/manual"
+                }
+            ],
+            "recommended": {
+                "supported resolutions": [
+                    "1920x1080",
+                    "1280x720",
+                    "640x360"
+                ],
+                "max fps": 60
+            },
+            "supported video codecs": [
+                "h264"
+            ]
         }
     ]
 }

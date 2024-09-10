@@ -364,6 +364,12 @@ private:
 
 	std::atomic<obs_scene_t *> currentScene = nullptr;
 	std::optional<std::pair<uint32_t, uint32_t>> lastOutputResolution;
+	std::optional<std::pair<uint32_t, uint32_t>> migrationBaseResolution;
+	bool usingAbsoluteCoordinates = false;
+
+	void DisableRelativeCoordinates(bool disable);
+
+	void OnEvent(enum obs_frontend_event event);
 
 	void UpdateMultiviewProjectorMenu();
 
@@ -381,8 +387,9 @@ private:
 	void UploadLog(const char *subdir, const char *file, const bool crash);
 
 	void Save(const char *file);
-	void LoadData(obs_data_t *data, const char *file);
-	void Load(const char *file);
+	void LoadData(obs_data_t *data, const char *file,
+		      bool remigrate = false);
+	void Load(const char *file, bool remigrate = false);
 
 	void InitHotkeys();
 	void CreateHotkeys();
@@ -674,6 +681,7 @@ private:
 	std::string lastReplay;
 
 	void UpdatePreviewOverflowSettings();
+	void UpdatePreviewScrollbars();
 
 	bool streamingStarting = false;
 
@@ -752,6 +760,8 @@ public slots:
 	void PauseRecording();
 	void UnpauseRecording();
 
+	void UpdateEditMenu();
+
 private slots:
 
 	void on_actionMainUndo_triggered();
@@ -813,6 +823,11 @@ private slots:
 	void AudioMixerCopyFilters();
 	void AudioMixerPasteFilters();
 	void SourcePasteFilters(OBSSource source, OBSSource dstSource);
+
+	void on_previewXScrollBar_valueChanged(int value);
+	void on_previewYScrollBar_valueChanged(int value);
+
+	void PreviewScalingModeChanged(int value);
 
 	void ColorChange();
 
@@ -1043,8 +1058,6 @@ public:
 					     obs_data_array_t *undo_array,
 					     obs_data_array_t *redo_array);
 
-	void UpdateEditMenu();
-
 	void SetDisplayAffinity(QWindow *window);
 
 	QColor GetSelectionColor() const;
@@ -1152,6 +1165,7 @@ private slots:
 	void on_actionRemoveSceneCollection_triggered();
 	void on_actionImportSceneCollection_triggered();
 	void on_actionExportSceneCollection_triggered();
+	void on_actionRemigrateSceneCollection_triggered();
 
 	void on_actionNewProfile_triggered();
 	void on_actionDupProfile_triggered();
@@ -1307,6 +1321,12 @@ signals:
 
 	/* Studio Mode signal */
 	void PreviewProgramModeChanged(bool enabled);
+	void CanvasResized(uint32_t width, uint32_t height);
+	void OutputResized(uint32_t width, uint32_t height);
+
+	/* Preview signals */
+	void PreviewXScrollBarMoved(int value);
+	void PreviewYScrollBarMoved(int value);
 
 private:
 	std::unique_ptr<Ui::OBSBasic> ui;

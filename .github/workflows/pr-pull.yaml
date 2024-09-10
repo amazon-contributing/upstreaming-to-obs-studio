@@ -31,7 +31,7 @@ jobs:
   compatibility-validation:
     name: Validate Compatibility 🕵️
     if: github.base_ref == 'master' || github.base_ref == 'plugin'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       checks: write
@@ -54,7 +54,7 @@ jobs:
   services-validation:
     name: Validate Services 🕵️
     if: github.base_ref == 'master' || github.base_ref == 'plugin'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       checks: write
@@ -81,7 +81,7 @@ jobs:
   update-documentation:
     name: Update Documentation 📖
     if: github.repository_owner == 'obsproject' && github.base_ref == 'master'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
