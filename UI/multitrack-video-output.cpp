@@ -657,7 +657,8 @@ void MultitrackVideoOutput::PrepareStreaming(
 	auto audio_encoders = std::vector<OBSEncoderAutoRelease>();
 	auto video_encoders = std::vector<OBSEncoderAutoRelease>();
 	std::shared_ptr<obs_encoder_group_t> video_encoder_group;
-	auto outputs = SetupOBSOutput(dump_stream_to_file_config, output_config,
+	auto outputs = SetupOBSOutput(parent, multitrack_video_name,
+				      dump_stream_to_file_config, output_config,
 				      audio_encoders, video_encoder_group,
 				      video_encoders, audio_encoder_id,
 				      main_audio_mixer, vod_track_mixer,
@@ -1067,7 +1068,8 @@ static void handle_speaker_layout_issues(
 }
 
 static OBSOutputs
-SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
+SetupOBSOutput(QWidget *parent, const QString &multitrack_video_name,
+	       obs_data_t *dump_stream_to_file_config,
 	       const GoLiveApi::Config &go_live_config,
 	       std::vector<OBSEncoderAutoRelease> &audio_encoders,
 	       std::shared_ptr<obs_encoder_group_t> &video_encoder_group,
@@ -1093,9 +1095,15 @@ SetupOBSOutput(obs_data_t *dump_stream_to_file_config,
 			    bitrate_interpolation_array.dump().c_str());
 	obs_output_update(output, settings);
 
+	std::vector<speaker_layout> requested_speaker_layouts;
+	speaker_layout current_layout = SPEAKERS_UNKNOWN;
 	create_audio_encoders(go_live_config, audio_encoders, output,
 			      recording_output, audio_encoder_id,
-			      main_audio_mixer, vod_track_mixer);
+			      main_audio_mixer, vod_track_mixer,
+			      requested_speaker_layouts, current_layout);
+
+	handle_speaker_layout_issues(parent, multitrack_video_name,
+				     requested_speaker_layouts, current_layout);
 
 	return {std::move(output), std::move(recording_output)};
 }
