@@ -423,7 +423,7 @@ bool AutoConfigStreamPage::validatePage()
 		wiz->testMultitrackVideo = ui->useMultitrackVideo->isChecked();
 
 		if (wiz->testMultitrackVideo) {
-			std::map<std::string, video_t*> extra_views;
+			std::map<std::string, video_t *> extra_views;
 			auto postData = constructGoLivePost(
 				QString::fromStdString(wiz->key), std::nullopt,
 				std::nullopt, false, extra_views);
