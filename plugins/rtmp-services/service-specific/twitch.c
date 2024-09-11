@@ -31,17 +31,6 @@ struct ingest twitch_ingest(size_t idx)
 	return get_ingest(&twitch, idx);
 }
 
-struct twitch_ingest twitch_ingest(size_t idx)
-{
-	return get_ingest(&twitch, idx);
-}
-
-void init_service_data(struct service_ingests *si)
-{
-	da_init(si->cur_ingests);
-	pthread_mutex_init(&si->mutex, NULL);
-}
-
 void init_twitch_data(void)
 {
 	init_service_data(&twitch);
