@@ -23,6 +23,7 @@
 #include <string>
 #include <sstream>
 #include <mutex>
+#include <filesystem>
 #include <util/bmem.h>
 #include <util/dstr.hpp>
 #include <util/platform.h>
@@ -30,6 +31,8 @@
 #include <util/cf-parser.h>
 #include <obs-config.h>
 #include <obs.hpp>
+#include <qt-wrappers.hpp>
+#include <slider-ignorewheel.hpp>
 
 #include <QDir>
 #include <QFile>
@@ -38,7 +41,6 @@
 #include <QProcess>
 #include <QAccessible>
 
-#include "qt-wrappers.hpp"
 #include "obs-app.hpp"
 #include "obs-proxy-style.hpp"
 #include "log-viewer.hpp"
@@ -439,99 +441,119 @@ static void do_log(int log_level, const char *msg, va_list args, void *param)
 
 bool OBSApp::InitGlobalConfigDefaults()
 {
-	config_set_default_uint(globalConfig, "General", "MaxLogs", 10);
-	config_set_default_int(globalConfig, "General", "InfoIncrement", -1);
-	config_set_default_string(globalConfig, "General", "ProcessPriority",
+	config_set_default_uint(appConfig, "General", "MaxLogs", 10);
+	config_set_default_int(appConfig, "General", "InfoIncrement", -1);
+	config_set_default_string(appConfig, "General", "ProcessPriority",
 				  "Normal");
-	config_set_default_bool(globalConfig, "General", "EnableAutoUpdates",
+	config_set_default_bool(appConfig, "General", "EnableAutoUpdates",
 				true);
-
-	config_set_default_bool(globalConfig, "General", "ConfirmOnExit", true);
 
 #if _WIN32
-	config_set_default_string(globalConfig, "Video", "Renderer",
+	config_set_default_string(appConfig, "Video", "Renderer",
 				  "Direct3D 11");
 #else
-	config_set_default_string(globalConfig, "Video", "Renderer", "OpenGL");
+	config_set_default_string(appConfig, "Video", "Renderer", "OpenGL");
 #endif
 
-	config_set_default_bool(globalConfig, "BasicWindow", "PreviewEnabled",
-				true);
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"PreviewProgramMode", false);
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"SceneDuplicationMode", true);
-	config_set_default_bool(globalConfig, "BasicWindow", "SwapScenesMode",
-				true);
-	config_set_default_bool(globalConfig, "BasicWindow", "SnappingEnabled",
-				true);
-	config_set_default_bool(globalConfig, "BasicWindow", "ScreenSnapping",
-				true);
-	config_set_default_bool(globalConfig, "BasicWindow", "SourceSnapping",
-				true);
-	config_set_default_bool(globalConfig, "BasicWindow", "CenterSnapping",
-				false);
-	config_set_default_double(globalConfig, "BasicWindow", "SnapDistance",
-				  10.0);
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"SpacingHelpersEnabled", true);
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"RecordWhenStreaming", false);
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"KeepRecordingWhenStreamStops", false);
-	config_set_default_bool(globalConfig, "BasicWindow", "SysTrayEnabled",
-				true);
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"SysTrayWhenStarted", false);
-	config_set_default_bool(globalConfig, "BasicWindow", "SaveProjectors",
-				false);
-	config_set_default_bool(globalConfig, "BasicWindow", "ShowTransitions",
-				true);
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"ShowListboxToolbars", true);
-	config_set_default_bool(globalConfig, "BasicWindow", "ShowStatusBar",
-				true);
-	config_set_default_bool(globalConfig, "BasicWindow", "ShowSourceIcons",
-				true);
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"ShowContextToolbars", true);
-	config_set_default_bool(globalConfig, "BasicWindow", "StudioModeLabels",
-				true);
-
-	config_set_default_string(globalConfig, "General", "HotkeyFocusType",
-				  "NeverDisableHotkeys");
-
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"VerticalVolControl", false);
-
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"MultiviewMouseSwitch", true);
-
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"MultiviewDrawNames", true);
-
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"MultiviewDrawAreas", true);
-
 #ifdef _WIN32
-	config_set_default_bool(globalConfig, "Audio", "DisableAudioDucking",
+	config_set_default_bool(appConfig, "Audio", "DisableAudioDucking",
 				true);
-	config_set_default_bool(globalConfig, "General", "BrowserHWAccel",
-				true);
+	config_set_default_bool(appConfig, "General", "BrowserHWAccel", true);
 #endif
 
 #ifdef __APPLE__
-	config_set_default_bool(globalConfig, "General", "BrowserHWAccel",
-				true);
-	config_set_default_bool(globalConfig, "Video", "DisableOSXVSync", true);
-	config_set_default_bool(globalConfig, "Video", "ResetOSXVSyncOnExit",
+	config_set_default_bool(appConfig, "General", "BrowserHWAccel", true);
+	config_set_default_bool(appConfig, "Video", "DisableOSXVSync", true);
+	config_set_default_bool(appConfig, "Video", "ResetOSXVSyncOnExit",
 				true);
 #endif
 
-	config_set_default_bool(globalConfig, "BasicWindow",
-				"MediaControlsCountdownTimer", true);
+	return true;
+}
+
+bool OBSApp::InitGlobalLocationDefaults()
+{
+	char path[512];
+
+	int len = GetAppConfigPath(path, sizeof(path), nullptr);
+	if (len <= 0) {
+		OBSErrorBox(NULL, "Unable to get global configuration path.");
+		return false;
+	}
+
+	config_set_default_string(appConfig, "Locations", "Configuration",
+				  path);
+	config_set_default_string(appConfig, "Locations", "SceneCollections",
+				  path);
+	config_set_default_string(appConfig, "Locations", "Profiles", path);
 
 	return true;
+}
+
+void OBSApp::InitUserConfigDefaults()
+{
+	config_set_default_bool(userConfig, "General", "ConfirmOnExit", true);
+
+	config_set_default_string(userConfig, "General", "HotkeyFocusType",
+				  "NeverDisableHotkeys");
+
+	config_set_default_bool(userConfig, "BasicWindow", "PreviewEnabled",
+				true);
+	config_set_default_bool(userConfig, "BasicWindow", "PreviewProgramMode",
+				false);
+	config_set_default_bool(userConfig, "BasicWindow",
+				"SceneDuplicationMode", true);
+	config_set_default_bool(userConfig, "BasicWindow", "SwapScenesMode",
+				true);
+	config_set_default_bool(userConfig, "BasicWindow", "SnappingEnabled",
+				true);
+	config_set_default_bool(userConfig, "BasicWindow", "ScreenSnapping",
+				true);
+	config_set_default_bool(userConfig, "BasicWindow", "SourceSnapping",
+				true);
+	config_set_default_bool(userConfig, "BasicWindow", "CenterSnapping",
+				false);
+	config_set_default_double(userConfig, "BasicWindow", "SnapDistance",
+				  10.0);
+	config_set_default_bool(userConfig, "BasicWindow",
+				"SpacingHelpersEnabled", true);
+	config_set_default_bool(userConfig, "BasicWindow",
+				"RecordWhenStreaming", false);
+	config_set_default_bool(userConfig, "BasicWindow",
+				"KeepRecordingWhenStreamStops", false);
+	config_set_default_bool(userConfig, "BasicWindow", "SysTrayEnabled",
+				true);
+	config_set_default_bool(userConfig, "BasicWindow", "SysTrayWhenStarted",
+				false);
+	config_set_default_bool(userConfig, "BasicWindow", "SaveProjectors",
+				false);
+	config_set_default_bool(userConfig, "BasicWindow", "ShowTransitions",
+				true);
+	config_set_default_bool(userConfig, "BasicWindow",
+				"ShowListboxToolbars", true);
+	config_set_default_bool(userConfig, "BasicWindow", "ShowStatusBar",
+				true);
+	config_set_default_bool(userConfig, "BasicWindow", "ShowSourceIcons",
+				true);
+	config_set_default_bool(userConfig, "BasicWindow",
+				"ShowContextToolbars", true);
+	config_set_default_bool(userConfig, "BasicWindow", "StudioModeLabels",
+				true);
+
+	config_set_default_bool(userConfig, "BasicWindow", "VerticalVolControl",
+				false);
+
+	config_set_default_bool(userConfig, "BasicWindow",
+				"MultiviewMouseSwitch", true);
+
+	config_set_default_bool(userConfig, "BasicWindow", "MultiviewDrawNames",
+				true);
+
+	config_set_default_bool(userConfig, "BasicWindow", "MultiviewDrawAreas",
+				true);
+
+	config_set_default_bool(userConfig, "BasicWindow",
+				"MediaControlsCountdownTimer", true);
 }
 
 static bool do_mkdir(const char *path)
@@ -548,146 +570,80 @@ static bool MakeUserDirs()
 {
 	char path[512];
 
-	if (GetConfigPath(path, sizeof(path), "obs-studio/basic") <= 0)
+	if (GetAppConfigPath(path, sizeof(path), "obs-studio/basic") <= 0)
 		return false;
 	if (!do_mkdir(path))
 		return false;
 
-	if (GetConfigPath(path, sizeof(path), "obs-studio/logs") <= 0)
+	if (GetAppConfigPath(path, sizeof(path), "obs-studio/logs") <= 0)
 		return false;
 	if (!do_mkdir(path))
 		return false;
 
-	if (GetConfigPath(path, sizeof(path), "obs-studio/profiler_data") <= 0)
+	if (GetAppConfigPath(path, sizeof(path), "obs-studio/profiler_data") <=
+	    0)
 		return false;
 	if (!do_mkdir(path))
 		return false;
 
 #ifdef _WIN32
-	if (GetConfigPath(path, sizeof(path), "obs-studio/crashes") <= 0)
+	if (GetAppConfigPath(path, sizeof(path), "obs-studio/crashes") <= 0)
 		return false;
 	if (!do_mkdir(path))
 		return false;
 #endif
 
 #ifdef WHATSNEW_ENABLED
-	if (GetConfigPath(path, sizeof(path), "obs-studio/updates") <= 0)
+	if (GetAppConfigPath(path, sizeof(path), "obs-studio/updates") <= 0)
 		return false;
 	if (!do_mkdir(path))
 		return false;
 #endif
 
-	if (GetConfigPath(path, sizeof(path), "obs-studio/plugin_config") <= 0)
+	if (GetAppConfigPath(path, sizeof(path), "obs-studio/plugin_config") <=
+	    0)
 		return false;
 	if (!do_mkdir(path))
 		return false;
 
 	return true;
 }
+
+constexpr std::string_view OBSProfileSubDirectory = "obs-studio/basic/profiles";
+constexpr std::string_view OBSScenesSubDirectory = "obs-studio/basic/scenes";
 
 static bool MakeUserProfileDirs()
 {
-	char path[512];
+	const std::filesystem::path userProfilePath =
+		App()->userProfilesLocation /
+		std::filesystem::u8path(OBSProfileSubDirectory);
+	const std::filesystem::path userScenesPath =
+		App()->userScenesLocation /
+		std::filesystem::u8path(OBSScenesSubDirectory);
 
-	if (GetConfigPath(path, sizeof(path), "obs-studio/basic/profiles") <= 0)
-		return false;
-	if (!do_mkdir(path))
-		return false;
+	if (!std::filesystem::exists(userProfilePath)) {
+		try {
+			std::filesystem::create_directories(userProfilePath);
+		} catch (const std::filesystem::filesystem_error &error) {
+			blog(LOG_ERROR,
+			     "Failed to create user profile directory '%s'\n%s",
+			     userProfilePath.u8string().c_str(), error.what());
+			return false;
+		}
+	}
 
-	if (GetConfigPath(path, sizeof(path), "obs-studio/basic/scenes") <= 0)
-		return false;
-	if (!do_mkdir(path))
-		return false;
+	if (!std::filesystem::exists(userScenesPath)) {
+		try {
+			std::filesystem::create_directories(userScenesPath);
+		} catch (const std::filesystem::filesystem_error &error) {
+			blog(LOG_ERROR,
+			     "Failed to create user scene collection directory '%s'\n%s",
+			     userScenesPath.u8string().c_str(), error.what());
+			return false;
+		}
+	}
 
 	return true;
-}
-
-static string GetProfileDirFromName(const char *name)
-{
-	string outputPath;
-	os_glob_t *glob;
-	char path[512];
-
-	if (GetConfigPath(path, sizeof(path), "obs-studio/basic/profiles") <= 0)
-		return outputPath;
-
-	strcat(path, "/*");
-
-	if (os_glob(path, 0, &glob) != 0)
-		return outputPath;
-
-	for (size_t i = 0; i < glob->gl_pathc; i++) {
-		struct os_globent ent = glob->gl_pathv[i];
-		if (!ent.directory)
-			continue;
-
-		strcpy(path, ent.path);
-		strcat(path, "/basic.ini");
-
-		ConfigFile config;
-		if (config.Open(path, CONFIG_OPEN_EXISTING) != 0)
-			continue;
-
-		const char *curName =
-			config_get_string(config, "General", "Name");
-		if (astrcmpi(curName, name) == 0) {
-			outputPath = ent.path;
-			break;
-		}
-	}
-
-	os_globfree(glob);
-
-	if (!outputPath.empty()) {
-		replace(outputPath.begin(), outputPath.end(), '\\', '/');
-		const char *start = strrchr(outputPath.c_str(), '/');
-		if (start)
-			outputPath.erase(0, start - outputPath.c_str() + 1);
-	}
-
-	return outputPath;
-}
-
-static string GetSceneCollectionFileFromName(const char *name)
-{
-	string outputPath;
-	os_glob_t *glob;
-	char path[512];
-
-	if (GetConfigPath(path, sizeof(path), "obs-studio/basic/scenes") <= 0)
-		return outputPath;
-
-	strcat(path, "/*.json");
-
-	if (os_glob(path, 0, &glob) != 0)
-		return outputPath;
-
-	for (size_t i = 0; i < glob->gl_pathc; i++) {
-		struct os_globent ent = glob->gl_pathv[i];
-		if (ent.directory)
-			continue;
-
-		OBSDataAutoRelease data =
-			obs_data_create_from_json_file_safe(ent.path, "bak");
-		const char *curName = obs_data_get_string(data, "name");
-
-		if (astrcmpi(name, curName) == 0) {
-			outputPath = ent.path;
-			break;
-		}
-	}
-
-	os_globfree(glob);
-
-	if (!outputPath.empty()) {
-		outputPath.resize(outputPath.size() - 5);
-		replace(outputPath.begin(), outputPath.end(), '\\', '/');
-		const char *start = strrchr(outputPath.c_str(), '/');
-		if (start)
-			outputPath.erase(0, start - outputPath.c_str() + 1);
-	}
-
-	return outputPath;
 }
 
 bool OBSApp::UpdatePre22MultiviewLayout(const char *layout)
@@ -697,7 +653,7 @@ bool OBSApp::UpdatePre22MultiviewLayout(const char *layout)
 
 	if (astrcmpi(layout, "horizontaltop") == 0) {
 		config_set_int(
-			globalConfig, "BasicWindow", "MultiviewLayout",
+			userConfig, "BasicWindow", "MultiviewLayout",
 			static_cast<int>(
 				MultiviewLayout::HORIZONTAL_TOP_8_SCENES));
 		return true;
@@ -705,7 +661,7 @@ bool OBSApp::UpdatePre22MultiviewLayout(const char *layout)
 
 	if (astrcmpi(layout, "horizontalbottom") == 0) {
 		config_set_int(
-			globalConfig, "BasicWindow", "MultiviewLayout",
+			userConfig, "BasicWindow", "MultiviewLayout",
 			static_cast<int>(
 				MultiviewLayout::HORIZONTAL_BOTTOM_8_SCENES));
 		return true;
@@ -713,7 +669,7 @@ bool OBSApp::UpdatePre22MultiviewLayout(const char *layout)
 
 	if (astrcmpi(layout, "verticalleft") == 0) {
 		config_set_int(
-			globalConfig, "BasicWindow", "MultiviewLayout",
+			userConfig, "BasicWindow", "MultiviewLayout",
 			static_cast<int>(
 				MultiviewLayout::VERTICAL_LEFT_8_SCENES));
 		return true;
@@ -721,7 +677,7 @@ bool OBSApp::UpdatePre22MultiviewLayout(const char *layout)
 
 	if (astrcmpi(layout, "verticalright") == 0) {
 		config_set_int(
-			globalConfig, "BasicWindow", "MultiviewLayout",
+			userConfig, "BasicWindow", "MultiviewLayout",
 			static_cast<int>(
 				MultiviewLayout::VERTICAL_RIGHT_8_SCENES));
 		return true;
@@ -733,120 +689,212 @@ bool OBSApp::UpdatePre22MultiviewLayout(const char *layout)
 bool OBSApp::InitGlobalConfig()
 {
 	char path[512];
-	bool changed = false;
 
-	int len = GetConfigPath(path, sizeof(path), "obs-studio/global.ini");
+	int len = GetAppConfigPath(path, sizeof(path), "obs-studio/global.ini");
 	if (len <= 0) {
 		return false;
 	}
 
-	int errorcode = globalConfig.Open(path, CONFIG_OPEN_ALWAYS);
+	int errorcode = appConfig.Open(path, CONFIG_OPEN_ALWAYS);
 	if (errorcode != CONFIG_SUCCESS) {
 		OBSErrorBox(NULL, "Failed to open global.ini: %d", errorcode);
 		return false;
 	}
 
+	uint32_t lastVersion =
+		config_get_int(appConfig, "General", "LastVersion");
+
+	if (lastVersion < MAKE_SEMANTIC_VERSION(31, 0, 0)) {
+		bool migratedUserSettings =
+			config_get_bool(appConfig, "General", "Pre31Migrated");
+
+		if (!migratedUserSettings) {
+			bool migrated = MigrateGlobalSettings();
+
+			config_set_bool(appConfig, "General", "Pre31Migrated",
+					migrated);
+			config_save_safe(appConfig, "tmp", nullptr);
+		}
+	}
+
+	InitGlobalConfigDefaults();
+	InitGlobalLocationDefaults();
+
+	userConfigLocation = std::filesystem::u8path(
+		config_get_string(appConfig, "Locations", "Configuration"));
+	userScenesLocation = std::filesystem::u8path(
+		config_get_string(appConfig, "Locations", "SceneCollections"));
+	userProfilesLocation = std::filesystem::u8path(
+		config_get_string(appConfig, "Locations", "Profiles"));
+
+	bool userConfigResult = InitUserConfig(userConfigLocation, lastVersion);
+
+	return userConfigResult;
+}
+
+bool OBSApp::InitUserConfig(std::filesystem::path &userConfigLocation,
+			    uint32_t lastVersion)
+{
+	bool hasChanges = false;
+
+	const std::string userConfigFile =
+		userConfigLocation.u8string() + "/obs-studio/user.ini";
+
+	int errorCode =
+		userConfig.Open(userConfigFile.c_str(), CONFIG_OPEN_ALWAYS);
+
+	if (errorCode != CONFIG_SUCCESS) {
+		OBSErrorBox(nullptr, "Failed to open user.ini: %d", errorCode);
+		return false;
+	}
+
+	hasChanges = MigrateLegacySettings(lastVersion);
+
 	if (!opt_starting_collection.empty()) {
-		string path = GetSceneCollectionFileFromName(
-			opt_starting_collection.c_str());
-		if (!path.empty()) {
-			config_set_string(globalConfig, "Basic",
+		const OBSBasic *basic =
+			reinterpret_cast<OBSBasic *>(GetMainWindow());
+		const std::optional<OBSSceneCollection> foundCollection =
+			basic->GetSceneCollectionByName(
+				opt_starting_collection);
+
+		if (foundCollection) {
+			config_set_string(userConfig, "Basic",
 					  "SceneCollection",
-					  opt_starting_collection.c_str());
-			config_set_string(globalConfig, "Basic",
-					  "SceneCollectionFile", path.c_str());
-			changed = true;
+					  foundCollection.value().name.c_str());
+			config_set_string(
+				userConfig, "Basic", "SceneCollectionFile",
+				foundCollection.value().fileName.c_str());
+			hasChanges = true;
 		}
 	}
 
 	if (!opt_starting_profile.empty()) {
-		string path =
-			GetProfileDirFromName(opt_starting_profile.c_str());
-		if (!path.empty()) {
-			config_set_string(globalConfig, "Basic", "Profile",
-					  opt_starting_profile.c_str());
-			config_set_string(globalConfig, "Basic", "ProfileDir",
-					  path.c_str());
-			changed = true;
+		const OBSBasic *basic =
+			reinterpret_cast<OBSBasic *>(GetMainWindow());
+
+		const std::optional<OBSProfile> foundProfile =
+			basic->GetProfileByName(opt_starting_profile);
+
+		if (foundProfile) {
+			config_set_string(userConfig, "Basic", "Profile",
+					  foundProfile.value().name.c_str());
+			config_set_string(
+				userConfig, "Basic", "ProfileDir",
+				foundProfile.value().directoryName.c_str());
+
+			hasChanges = true;
 		}
 	}
 
-	uint32_t lastVersion =
-		config_get_int(globalConfig, "General", "LastVersion");
-
-	if (!config_has_user_value(globalConfig, "General", "Pre19Defaults")) {
-		bool useOldDefaults = lastVersion &&
-				      lastVersion <
-					      MAKE_SEMANTIC_VERSION(19, 0, 0);
-
-		config_set_bool(globalConfig, "General", "Pre19Defaults",
-				useOldDefaults);
-		changed = true;
+	if (hasChanges) {
+		config_save_safe(userConfig, "tmp", nullptr);
 	}
 
-	if (!config_has_user_value(globalConfig, "General", "Pre21Defaults")) {
-		bool useOldDefaults = lastVersion &&
-				      lastVersion <
-					      MAKE_SEMANTIC_VERSION(21, 0, 0);
+	InitUserConfigDefaults();
 
-		config_set_bool(globalConfig, "General", "Pre21Defaults",
-				useOldDefaults);
-		changed = true;
+	return true;
+}
+
+bool OBSApp::MigrateLegacySettings(const uint32_t lastVersion)
+{
+	bool hasChanges = false;
+
+	const uint32_t v19 = MAKE_SEMANTIC_VERSION(19, 0, 0);
+	const uint32_t v21 = MAKE_SEMANTIC_VERSION(21, 0, 0);
+	const uint32_t v23 = MAKE_SEMANTIC_VERSION(23, 0, 0);
+	const uint32_t v24 = MAKE_SEMANTIC_VERSION(24, 0, 0);
+	const uint32_t v24_1 = MAKE_SEMANTIC_VERSION(24, 1, 0);
+
+	const map<uint32_t, string> defaultsMap{{{v19, "Pre19Defaults"},
+						 {v21, "Pre21Defaults"},
+						 {v23, "Pre23Defaults"},
+						 {v24_1, "Pre24.1Defaults"}}};
+
+	for (auto &[version, configKey] : defaultsMap) {
+		if (!config_has_user_value(userConfig, "General",
+					   configKey.c_str())) {
+			bool useOldDefaults = lastVersion &&
+					      lastVersion < version;
+			config_set_bool(userConfig, "General",
+					configKey.c_str(), useOldDefaults);
+
+			hasChanges = true;
+		}
 	}
 
-	if (!config_has_user_value(globalConfig, "General", "Pre23Defaults")) {
-		bool useOldDefaults = lastVersion &&
-				      lastVersion <
-					      MAKE_SEMANTIC_VERSION(23, 0, 0);
-
-		config_set_bool(globalConfig, "General", "Pre23Defaults",
-				useOldDefaults);
-		changed = true;
-	}
-
-#define PRE_24_1_DEFS "Pre24.1Defaults"
-	if (!config_has_user_value(globalConfig, "General", PRE_24_1_DEFS)) {
-		bool useOldDefaults = lastVersion &&
-				      lastVersion <
-					      MAKE_SEMANTIC_VERSION(24, 1, 0);
-
-		config_set_bool(globalConfig, "General", PRE_24_1_DEFS,
-				useOldDefaults);
-		changed = true;
-	}
-#undef PRE_24_1_DEFS
-
-	if (config_has_user_value(globalConfig, "BasicWindow",
+	if (config_has_user_value(userConfig, "BasicWindow",
 				  "MultiviewLayout")) {
 		const char *layout = config_get_string(
-			globalConfig, "BasicWindow", "MultiviewLayout");
-		changed |= UpdatePre22MultiviewLayout(layout);
+			userConfig, "BasicWindow", "MultiviewLayout");
+
+		bool layoutUpdated = UpdatePre22MultiviewLayout(layout);
+
+		hasChanges = hasChanges | layoutUpdated;
 	}
 
-	if (lastVersion && lastVersion < MAKE_SEMANTIC_VERSION(24, 0, 0)) {
+	if (lastVersion && lastVersion < v24) {
 		bool disableHotkeysInFocus = config_get_bool(
-			globalConfig, "General", "DisableHotkeysInFocus");
-		if (disableHotkeysInFocus)
-			config_set_string(globalConfig, "General",
+			userConfig, "General", "DisableHotkeysInFocus");
+
+		if (disableHotkeysInFocus) {
+			config_set_string(userConfig, "General",
 					  "HotkeyFocusType",
 					  "DisableHotkeysInFocus");
-		changed = true;
+		}
+
+		hasChanges = true;
 	}
 
-	if (changed)
-		config_save_safe(globalConfig, "tmp", nullptr);
+	return hasChanges;
+}
 
-	return InitGlobalConfigDefaults();
+static constexpr string_view OBSGlobalIniPath = "/obs-studio/global.ini";
+static constexpr string_view OBSUserIniPath = "/obs-studio/user.ini";
+
+bool OBSApp::MigrateGlobalSettings()
+{
+	char path[512];
+
+	int len = GetAppConfigPath(path, sizeof(path), nullptr);
+	if (len <= 0) {
+		OBSErrorBox(nullptr,
+			    "Unable to get global configuration path.");
+		return false;
+	}
+
+	std::string legacyConfigFileString;
+	legacyConfigFileString.reserve(strlen(path) + OBSGlobalIniPath.size());
+	legacyConfigFileString.append(path).append(OBSGlobalIniPath);
+
+	const std::filesystem::path legacyGlobalConfigFile =
+		std::filesystem::u8path(legacyConfigFileString);
+
+	std::string configFileString;
+	configFileString.reserve(strlen(path) + OBSUserIniPath.size());
+	configFileString.append(path).append(OBSUserIniPath);
+
+	const std::filesystem::path userConfigFile =
+		std::filesystem::u8path(configFileString);
+
+	if (std::filesystem::exists(userConfigFile)) {
+		OBSErrorBox(
+			nullptr,
+			"Unable to migrate global configuration - user configuration file already exists.");
+		return false;
+	}
+
+	std::filesystem::copy(legacyGlobalConfigFile, userConfigFile);
+
+	return true;
 }
 
 bool OBSApp::InitLocale()
 {
 	ProfileScope("OBSApp::InitLocale");
 
-	const char *lang =
-		config_get_string(globalConfig, "General", "Language");
+	const char *lang = config_get_string(userConfig, "General", "Language");
 	bool userLocale =
-		config_has_user_value(globalConfig, "General", "Language");
+		config_has_user_value(userConfig, "General", "Language");
 	if (!userLocale || !lang || lang[0] == '\0')
 		lang = DEFAULT_LANG;
 
@@ -962,7 +1010,7 @@ bool LoadBranchesFile(vector<UpdateBranch> &out)
 	string branchesText;
 
 	BPtr<char> branchesFilePath =
-		GetConfigPathPtr("obs-studio/updates/branches.json");
+		GetAppConfigPathPtr("obs-studio/updates/branches.json");
 
 	QFile branchesFile(branchesFilePath.Get());
 	if (!branchesFile.open(QIODevice::ReadOnly)) {
@@ -1068,7 +1116,7 @@ OBSApp::~OBSApp()
 {
 #ifdef _WIN32
 	bool disableAudioDucking =
-		config_get_bool(globalConfig, "Audio", "DisableAudioDucking");
+		config_get_bool(userConfig, "Audio", "DisableAudioDucking");
 	if (disableAudioDucking)
 		DisableAudioDucking(false);
 #else
@@ -1079,9 +1127,9 @@ OBSApp::~OBSApp()
 
 #ifdef __APPLE__
 	bool vsyncDisabled =
-		config_get_bool(globalConfig, "Video", "DisableOSXVSync");
+		config_get_bool(userConfig, "Video", "DisableOSXVSync");
 	bool resetVSync =
-		config_get_bool(globalConfig, "Video", "ResetOSXVSyncOnExit");
+		config_get_bool(userConfig, "Video", "ResetOSXVSyncOnExit");
 	if (vsyncDisabled && resetVSync)
 		EnableOSXVSync(true);
 #endif
@@ -1096,82 +1144,124 @@ OBSApp::~OBSApp()
 static void move_basic_to_profiles(void)
 {
 	char path[512];
-	char new_path[512];
-	os_glob_t *glob;
 
-	/* if not first time use */
-	if (GetConfigPath(path, 512, "obs-studio/basic") <= 0)
+	if (GetAppConfigPath(path, 512, "obs-studio/basic") <= 0) {
 		return;
-	if (!os_file_exists(path))
-		return;
-
-	/* if the profiles directory doesn't already exist */
-	if (GetConfigPath(new_path, 512, "obs-studio/basic/profiles") <= 0)
-		return;
-	if (os_file_exists(new_path))
-		return;
-
-	if (os_mkdir(new_path) == MKDIR_ERROR)
-		return;
-
-	strcat(new_path, "/");
-	strcat(new_path, Str("Untitled"));
-	if (os_mkdir(new_path) == MKDIR_ERROR)
-		return;
-
-	strcat(path, "/*.*");
-	if (os_glob(path, 0, &glob) != 0)
-		return;
-
-	strcpy(path, new_path);
-
-	for (size_t i = 0; i < glob->gl_pathc; i++) {
-		struct os_globent ent = glob->gl_pathv[i];
-		char *file;
-
-		if (ent.directory)
-			continue;
-
-		file = strrchr(ent.path, '/');
-		if (!file++)
-			continue;
-
-		if (astrcmpi(file, "scenes.json") == 0)
-			continue;
-
-		strcpy(new_path, path);
-		strcat(new_path, "/");
-		strcat(new_path, file);
-		os_rename(ent.path, new_path);
 	}
 
-	os_globfree(glob);
+	const std::filesystem::path basicPath = std::filesystem::u8path(path);
+
+	if (!std::filesystem::exists(basicPath)) {
+		return;
+	}
+
+	const std::filesystem::path profilesPath =
+		App()->userProfilesLocation /
+		std::filesystem::u8path("obs-studio/basic/profiles");
+
+	if (std::filesystem::exists(profilesPath)) {
+		return;
+	}
+
+	try {
+		std::filesystem::create_directories(profilesPath);
+	} catch (const std::filesystem::filesystem_error &error) {
+		blog(LOG_ERROR,
+		     "Failed to create profiles directory for migration from basic profile\n%s",
+		     error.what());
+		return;
+	}
+
+	const std::filesystem::path newProfilePath =
+		profilesPath / std::filesystem::u8path(Str("Untitled"));
+
+	for (auto &entry : std::filesystem::directory_iterator(basicPath)) {
+		if (entry.is_directory()) {
+			continue;
+		}
+
+		if (entry.path().filename().u8string() == "scenes.json") {
+			continue;
+		}
+
+		if (!std::filesystem::exists(newProfilePath)) {
+			try {
+				std::filesystem::create_directory(
+					newProfilePath);
+			} catch (
+				const std::filesystem::filesystem_error &error) {
+				blog(LOG_ERROR,
+				     "Failed to create profile directory for 'Untitled'\n%s",
+				     error.what());
+				return;
+			}
+		}
+
+		const filesystem::path destinationFile =
+			newProfilePath / entry.path().filename();
+
+		const auto copyOptions =
+			std::filesystem::copy_options::overwrite_existing;
+
+		try {
+			std::filesystem::copy(entry.path(), destinationFile,
+					      copyOptions);
+		} catch (const std::filesystem::filesystem_error &error) {
+			blog(LOG_ERROR,
+			     "Failed to copy basic profile file '%s' to new profile 'Untitled'\n%s",
+			     entry.path().filename().u8string().c_str(),
+			     error.what());
+
+			return;
+		}
+	}
 }
 
 static void move_basic_to_scene_collections(void)
 {
 	char path[512];
-	char new_path[512];
 
-	if (GetConfigPath(path, 512, "obs-studio/basic") <= 0)
+	if (GetAppConfigPath(path, 512, "obs-studio/basic") <= 0) {
 		return;
-	if (!os_file_exists(path))
-		return;
+	}
 
-	if (GetConfigPath(new_path, 512, "obs-studio/basic/scenes") <= 0)
-		return;
-	if (os_file_exists(new_path))
-		return;
+	const std::filesystem::path basicPath = std::filesystem::u8path(path);
 
-	if (os_mkdir(new_path) == MKDIR_ERROR)
+	if (!std::filesystem::exists(basicPath)) {
 		return;
+	}
 
-	strcat(path, "/scenes.json");
-	strcat(new_path, "/");
-	strcat(new_path, Str("Untitled"));
-	strcat(new_path, ".json");
+	const std::filesystem::path sceneCollectionPath =
+		App()->userScenesLocation /
+		std::filesystem::u8path("obs-studio/basic/scenes");
 
-	os_rename(path, new_path);
+	if (std::filesystem::exists(sceneCollectionPath)) {
+		return;
+	}
+
+	try {
+		std::filesystem::create_directories(sceneCollectionPath);
+	} catch (const std::filesystem::filesystem_error &error) {
+		blog(LOG_ERROR,
+		     "Failed to create scene collection directory for migration from basic scene collection\n%s",
+		     error.what());
+		return;
+	}
+
+	const std::filesystem::path sourceFile =
+		basicPath / std::filesystem::u8path("scenes.json");
+	const std::filesystem::path destinationFile =
+		(sceneCollectionPath / std::filesystem::u8path(Str("Untitled")))
+			.replace_extension(".json");
+
+	try {
+		std::filesystem::rename(sourceFile, destinationFile);
+	} catch (const std::filesystem::filesystem_error &error) {
+		blog(LOG_ERROR,
+		     "Failed to rename basic scene collection file:\n%s",
+		     error.what());
+		return;
+	}
 }
 
 void OBSApp::AppInit()
@@ -1187,40 +1277,40 @@ void OBSApp::AppInit()
 	if (!InitTheme())
 		throw "Failed to load theme";
 
-	config_set_default_string(globalConfig, "Basic", "Profile",
+	config_set_default_string(userConfig, "Basic", "Profile",
 				  Str("Untitled"));
-	config_set_default_string(globalConfig, "Basic", "ProfileDir",
+	config_set_default_string(userConfig, "Basic", "ProfileDir",
 				  Str("Untitled"));
-	config_set_default_string(globalConfig, "Basic", "SceneCollection",
+	config_set_default_string(userConfig, "Basic", "SceneCollection",
 				  Str("Untitled"));
-	config_set_default_string(globalConfig, "Basic", "SceneCollectionFile",
+	config_set_default_string(userConfig, "Basic", "SceneCollectionFile",
 				  Str("Untitled"));
-	config_set_default_bool(globalConfig, "Basic", "ConfigOnNewProfile",
+	config_set_default_bool(userConfig, "Basic", "ConfigOnNewProfile",
 				true);
 
-	if (!config_has_user_value(globalConfig, "Basic", "Profile")) {
-		config_set_string(globalConfig, "Basic", "Profile",
+	if (!config_has_user_value(userConfig, "Basic", "Profile")) {
+		config_set_string(userConfig, "Basic", "Profile",
 				  Str("Untitled"));
-		config_set_string(globalConfig, "Basic", "ProfileDir",
+		config_set_string(userConfig, "Basic", "ProfileDir",
 				  Str("Untitled"));
 	}
 
-	if (!config_has_user_value(globalConfig, "Basic", "SceneCollection")) {
-		config_set_string(globalConfig, "Basic", "SceneCollection",
+	if (!config_has_user_value(userConfig, "Basic", "SceneCollection")) {
+		config_set_string(userConfig, "Basic", "SceneCollection",
 				  Str("Untitled"));
-		config_set_string(globalConfig, "Basic", "SceneCollectionFile",
+		config_set_string(userConfig, "Basic", "SceneCollectionFile",
 				  Str("Untitled"));
 	}
 
 #ifdef _WIN32
 	bool disableAudioDucking =
-		config_get_bool(globalConfig, "Audio", "DisableAudioDucking");
+		config_get_bool(userConfig, "Audio", "DisableAudioDucking");
 	if (disableAudioDucking)
 		DisableAudioDucking(true);
 #endif
 
 #ifdef __APPLE__
-	if (config_get_bool(globalConfig, "Video", "DisableOSXVSync"))
+	if (config_get_bool(userConfig, "Video", "DisableOSXVSync"))
 		EnableOSXVSync(false);
 #endif
 
@@ -1236,7 +1326,7 @@ void OBSApp::AppInit()
 const char *OBSApp::GetRenderModule() const
 {
 	const char *renderer =
-		config_get_string(globalConfig, "Video", "Renderer");
+		config_get_string(userConfig, "Video", "Renderer");
 
 	return (astrcmpi(renderer, "Direct3D 11") == 0) ? DL_D3D11 : DL_OPENGL;
 }
@@ -1245,7 +1335,8 @@ static bool StartupOBS(const char *locale, profiler_name_store_t *store)
 {
 	char path[512];
 
-	if (GetConfigPath(path, sizeof(path), "obs-studio/plugin_config") <= 0)
+	if (GetAppConfigPath(path, sizeof(path), "obs-studio/plugin_config") <=
+	    0)
 		return false;
 
 	return obs_startup(locale, path, store);
@@ -1264,7 +1355,7 @@ void OBSApp::UpdateHotkeyFocusSetting(bool resetState)
 	enableHotkeysOutOfFocus = true;
 
 	const char *hotkeyFocusType =
-		config_get_string(globalConfig, "General", "HotkeyFocusType");
+		config_get_string(userConfig, "General", "HotkeyFocusType");
 
 	if (astrcmpi(hotkeyFocusType, "DisableHotkeysInFocus") == 0) {
 		enableHotkeysInFocus = false;
@@ -1340,7 +1431,7 @@ bool OBSApp::OBSInit()
 
 #if defined(_WIN32) || defined(__APPLE__)
 	bool browserHWAccel =
-		config_get_bool(globalConfig, "General", "BrowserHWAccel");
+		config_get_bool(userConfig, "General", "BrowserHWAccel");
 
 	OBSDataAutoRelease settings = obs_data_create();
 	obs_data_set_bool(settings, "BrowserHWAccel", browserHWAccel);
@@ -1353,7 +1444,7 @@ bool OBSApp::OBSInit()
 	     browserHWAccel ? "true" : "false");
 #endif
 #ifdef _WIN32
-	bool hideFromCapture = config_get_bool(globalConfig, "BasicWindow",
+	bool hideFromCapture = config_get_bool(userConfig, "BasicWindow",
 					       "HideOBSWindowsFromCapture");
 	blog(LOG_INFO, "Hide OBS windows from screen capture: %s",
 	     hideFromCapture ? "true" : "false");
@@ -1596,13 +1687,13 @@ static uint64_t convert_log_name(bool has_prefix, const char *name)
 
 static void delete_oldest_file(bool has_prefix, const char *location)
 {
-	BPtr<char> logDir(GetConfigPathPtr(location));
+	BPtr<char> logDir(GetAppConfigPathPtr(location));
 	string oldestLog;
 	uint64_t oldest_ts = (uint64_t)-1;
 	struct os_dirent *entry;
 
 	unsigned int maxLogs = (unsigned int)config_get_uint(
-		App()->GlobalConfig(), "General", "MaxLogs");
+		App()->GetUserConfig(), "General", "MaxLogs");
 
 	os_dir_t *dir = os_opendir(logDir);
 	if (dir) {
@@ -1639,7 +1730,7 @@ static void delete_oldest_file(bool has_prefix, const char *location)
 static void get_last_log(bool has_prefix, const char *subdir_to_use,
 			 std::string &last)
 {
-	BPtr<char> logDir(GetConfigPathPtr(subdir_to_use));
+	BPtr<char> logDir(GetAppConfigPathPtr(subdir_to_use));
 	struct os_dirent *entry;
 	os_dir_t *dir = os_opendir(logDir);
 	uint64_t highest_ts = 0;
@@ -1865,7 +1956,7 @@ static void create_log_file(fstream &logFile)
 	currentLogFile = GenerateTimeDateFilename("txt");
 	dst << "obs-studio/logs/" << currentLogFile.c_str();
 
-	BPtr<char> path(GetConfigPathPtr(dst.str().c_str()));
+	BPtr<char> path(GetAppConfigPathPtr(dst.str().c_str()));
 
 #ifdef _WIN32
 	BPtr<wchar_t> wpath;
@@ -1924,7 +2015,7 @@ static void SaveProfilerData(const ProfilerSnapshot &snap)
 	dst.write(LITERAL_SIZE(".csv.gz"));
 #undef LITERAL_SIZE
 
-	BPtr<char> path = GetConfigPathPtr(dst.str().c_str());
+	BPtr<char> path = GetAppConfigPathPtr(dst.str().c_str());
 	if (!profiler_snapshot_dump_csv_gz(snap.get(), path))
 		blog(LOG_WARNING, "Could not save profiler data to '%s'",
 		     static_cast<const char *>(path));
@@ -2049,20 +2140,6 @@ static int run_program(fstream &logFile, int argc, char *argv[])
 	const char *platform_theme = getenv("QT_QPA_PLATFORMTHEME");
 	if (platform_theme && strcmp(platform_theme, "qt5ct") == 0)
 		unsetenv("QT_QPA_PLATFORMTHEME");
-
-#if defined(ENABLE_WAYLAND) && defined(USE_XDG) && \
-	QT_VERSION < QT_VERSION_CHECK(6, 3, 0)
-	/* NOTE: Qt doesn't use the Wayland platform on GNOME, so we have to
-	 * force it using the QT_QPA_PLATFORM env var. It's still possible to
-	 * use other QPA platforms using this env var, or the -platform command
-	 * line option. Remove after Qt 6.3 is everywhere. */
-
-	const char *desktop = getenv("XDG_CURRENT_DESKTOP");
-	const char *session_type = getenv("XDG_SESSION_TYPE");
-	if (session_type && desktop && strstr(desktop, "GNOME") != nullptr &&
-	    strcmp(session_type, "wayland") == 0)
-		setenv("QT_QPA_PLATFORM", "wayland", false);
-#endif
 #endif
 
 	/* NOTE: This disables an optimisation in Qt that attempts to determine if
@@ -2228,7 +2305,7 @@ static int run_program(fstream &logFile, int argc, char *argv[])
 			CheckPermission(kScreenCapture);
 
 		int permissionsDialogLastShown =
-			config_get_int(GetGlobalConfig(), "General",
+			config_get_int(App()->GetAppConfig(), "General",
 				       "MacOSPermissionsDialogLastShown");
 		if (permissionsDialogLastShown <
 		    MACOS_PERMISSIONS_DIALOG_VERSION) {
@@ -2320,7 +2397,7 @@ static void main_crash_handler(const char *format, va_list args,
 	string name = crashFilePath + "/";
 	name += "Crash " + GenerateTimeDateFilename("txt");
 
-	BPtr<char> path(GetConfigPathPtr(name.c_str()));
+	BPtr<char> path(GetAppConfigPathPtr(name.c_str()));
 
 	fstream file;
 
@@ -2424,7 +2501,7 @@ static void load_debug_privilege(void)
 #define ALLOW_PORTABLE_MODE 0
 #endif
 
-int GetConfigPath(char *path, size_t size, const char *name)
+int GetAppConfigPath(char *path, size_t size, const char *name)
 {
 #if ALLOW_PORTABLE_MODE
 	if (portable_mode) {
@@ -2441,7 +2518,7 @@ int GetConfigPath(char *path, size_t size, const char *name)
 #endif
 }
 
-char *GetConfigPathPtr(const char *name)
+char *GetAppConfigPathPtr(const char *name)
 {
 #if ALLOW_PORTABLE_MODE
 	if (portable_mode) {
@@ -2529,36 +2606,6 @@ bool GetClosestUnusedFileName(std::string &path, const char *extension)
 	return true;
 }
 
-bool GetUnusedSceneCollectionFile(std::string &name, std::string &file)
-{
-	char path[512];
-	int ret;
-
-	if (!GetFileSafeName(name.c_str(), file)) {
-		blog(LOG_WARNING, "Failed to create safe file name for '%s'",
-		     name.c_str());
-		return false;
-	}
-
-	ret = GetConfigPath(path, sizeof(path), "obs-studio/basic/scenes/");
-	if (ret <= 0) {
-		blog(LOG_WARNING, "Failed to get scene collection config path");
-		return false;
-	}
-
-	file.insert(0, path);
-
-	if (!GetClosestUnusedFileName(file, "json")) {
-		blog(LOG_WARNING, "Failed to get closest file name for %s",
-		     file.c_str());
-		return false;
-	}
-
-	file.erase(file.size() - 5, 5);
-	file.erase(0, strlen(path));
-	return true;
-}
-
 bool WindowPositionValid(QRect rect)
 {
 	for (QScreen *screen : QGuiApplication::screens()) {
@@ -2575,330 +2622,6 @@ static inline bool arg_is(const char *arg, const char *long_form,
 	       (short_form && strcmp(arg, short_form) == 0);
 }
 
-static bool update_ffmpeg_output(ConfigFile &config)
-{
-	if (config_has_user_value(config, "AdvOut", "FFOutputToFile"))
-		return false;
-
-	const char *url = config_get_string(config, "AdvOut", "FFURL");
-	if (!url)
-		return false;
-
-	bool isActualURL = strstr(url, "://") != nullptr;
-	if (isActualURL)
-		return false;
-
-	string urlStr = url;
-	string extension;
-
-	for (size_t i = urlStr.length(); i > 0; i--) {
-		size_t idx = i - 1;
-
-		if (urlStr[idx] == '.') {
-			extension = &urlStr[i];
-		}
-
-		if (urlStr[idx] == '\\' || urlStr[idx] == '/') {
-			urlStr[idx] = 0;
-			break;
-		}
-	}
-
-	if (urlStr.empty() || extension.empty())
-		return false;
-
-	config_remove_value(config, "AdvOut", "FFURL");
-	config_set_string(config, "AdvOut", "FFFilePath", urlStr.c_str());
-	config_set_string(config, "AdvOut", "FFExtension", extension.c_str());
-	config_set_bool(config, "AdvOut", "FFOutputToFile", true);
-	return true;
-}
-
-static bool move_reconnect_settings(ConfigFile &config, const char *sec)
-{
-	bool changed = false;
-
-	if (config_has_user_value(config, sec, "Reconnect")) {
-		bool reconnect = config_get_bool(config, sec, "Reconnect");
-		config_set_bool(config, "Output", "Reconnect", reconnect);
-		changed = true;
-	}
-	if (config_has_user_value(config, sec, "RetryDelay")) {
-		int delay = (int)config_get_uint(config, sec, "RetryDelay");
-		config_set_uint(config, "Output", "RetryDelay", delay);
-		changed = true;
-	}
-	if (config_has_user_value(config, sec, "MaxRetries")) {
-		int retries = (int)config_get_uint(config, sec, "MaxRetries");
-		config_set_uint(config, "Output", "MaxRetries", retries);
-		changed = true;
-	}
-
-	return changed;
-}
-
-static bool update_reconnect(ConfigFile &config)
-{
-	if (!config_has_user_value(config, "Output", "Mode"))
-		return false;
-
-	const char *mode = config_get_string(config, "Output", "Mode");
-	if (!mode)
-		return false;
-
-	const char *section = (strcmp(mode, "Advanced") == 0) ? "AdvOut"
-							      : "SimpleOutput";
-
-	if (move_reconnect_settings(config, section)) {
-		config_remove_value(config, "SimpleOutput", "Reconnect");
-		config_remove_value(config, "SimpleOutput", "RetryDelay");
-		config_remove_value(config, "SimpleOutput", "MaxRetries");
-		config_remove_value(config, "AdvOut", "Reconnect");
-		config_remove_value(config, "AdvOut", "RetryDelay");
-		config_remove_value(config, "AdvOut", "MaxRetries");
-		return true;
-	}
-
-	return false;
-}
-
-static void convert_nvenc_h264_presets(obs_data_t *data)
-{
-	const char *preset = obs_data_get_string(data, "preset");
-	const char *rc = obs_data_get_string(data, "rate_control");
-
-	// If already using SDK10+ preset, return early.
-	if (astrcmpi_n(preset, "p", 1) == 0) {
-		obs_data_set_string(data, "preset2", preset);
-		return;
-	}
-
-	if (astrcmpi(rc, "lossless") == 0 && astrcmpi(preset, "mq")) {
-		obs_data_set_string(data, "preset2", "p3");
-		obs_data_set_string(data, "tune", "lossless");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(rc, "lossless") == 0 && astrcmpi(preset, "hp")) {
-		obs_data_set_string(data, "preset2", "p2");
-		obs_data_set_string(data, "tune", "lossless");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "mq") == 0) {
-		obs_data_set_string(data, "preset2", "p5");
-		obs_data_set_string(data, "tune", "hq");
-		obs_data_set_string(data, "multipass", "qres");
-
-	} else if (astrcmpi(preset, "hq") == 0) {
-		obs_data_set_string(data, "preset2", "p5");
-		obs_data_set_string(data, "tune", "hq");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "default") == 0) {
-		obs_data_set_string(data, "preset2", "p3");
-		obs_data_set_string(data, "tune", "hq");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "hp") == 0) {
-		obs_data_set_string(data, "preset2", "p1");
-		obs_data_set_string(data, "tune", "hq");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "ll") == 0) {
-		obs_data_set_string(data, "preset2", "p3");
-		obs_data_set_string(data, "tune", "ll");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "llhq") == 0) {
-		obs_data_set_string(data, "preset2", "p4");
-		obs_data_set_string(data, "tune", "ll");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "llhp") == 0) {
-		obs_data_set_string(data, "preset2", "p2");
-		obs_data_set_string(data, "tune", "ll");
-		obs_data_set_string(data, "multipass", "disabled");
-	}
-}
-
-static void convert_nvenc_hevc_presets(obs_data_t *data)
-{
-	const char *preset = obs_data_get_string(data, "preset");
-	const char *rc = obs_data_get_string(data, "rate_control");
-
-	// If already using SDK10+ preset, return early.
-	if (astrcmpi_n(preset, "p", 1) == 0) {
-		obs_data_set_string(data, "preset2", preset);
-		return;
-	}
-
-	if (astrcmpi(rc, "lossless") == 0 && astrcmpi(preset, "mq")) {
-		obs_data_set_string(data, "preset2", "p5");
-		obs_data_set_string(data, "tune", "lossless");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(rc, "lossless") == 0 && astrcmpi(preset, "hp")) {
-		obs_data_set_string(data, "preset2", "p3");
-		obs_data_set_string(data, "tune", "lossless");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "mq") == 0) {
-		obs_data_set_string(data, "preset2", "p6");
-		obs_data_set_string(data, "tune", "hq");
-		obs_data_set_string(data, "multipass", "qres");
-
-	} else if (astrcmpi(preset, "hq") == 0) {
-		obs_data_set_string(data, "preset2", "p6");
-		obs_data_set_string(data, "tune", "hq");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "default") == 0) {
-		obs_data_set_string(data, "preset2", "p5");
-		obs_data_set_string(data, "tune", "hq");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "hp") == 0) {
-		obs_data_set_string(data, "preset2", "p1");
-		obs_data_set_string(data, "tune", "hq");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "ll") == 0) {
-		obs_data_set_string(data, "preset2", "p3");
-		obs_data_set_string(data, "tune", "ll");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "llhq") == 0) {
-		obs_data_set_string(data, "preset2", "p4");
-		obs_data_set_string(data, "tune", "ll");
-		obs_data_set_string(data, "multipass", "disabled");
-
-	} else if (astrcmpi(preset, "llhp") == 0) {
-		obs_data_set_string(data, "preset2", "p2");
-		obs_data_set_string(data, "tune", "ll");
-		obs_data_set_string(data, "multipass", "disabled");
-	}
-}
-
-static void convert_28_1_encoder_setting(const char *encoder, const char *file)
-{
-	OBSDataAutoRelease data =
-		obs_data_create_from_json_file_safe(file, "bak");
-	bool modified = false;
-
-	if (astrcmpi(encoder, "jim_nvenc") == 0 ||
-	    astrcmpi(encoder, "ffmpeg_nvenc") == 0) {
-
-		if (obs_data_has_user_value(data, "preset") &&
-		    !obs_data_has_user_value(data, "preset2")) {
-			convert_nvenc_h264_presets(data);
-
-			modified = true;
-		}
-	} else if (astrcmpi(encoder, "jim_hevc_nvenc") == 0 ||
-		   astrcmpi(encoder, "ffmpeg_hevc_nvenc") == 0) {
-
-		if (obs_data_has_user_value(data, "preset") &&
-		    !obs_data_has_user_value(data, "preset2")) {
-			convert_nvenc_hevc_presets(data);
-
-			modified = true;
-		}
-	}
-
-	if (modified)
-		obs_data_save_json_safe(data, file, "tmp", "bak");
-}
-
-bool update_nvenc_presets(ConfigFile &config)
-{
-	if (config_has_user_value(config, "SimpleOutput", "NVENCPreset2") ||
-	    !config_has_user_value(config, "SimpleOutput", "NVENCPreset"))
-		return false;
-
-	const char *streamEncoder =
-		config_get_string(config, "SimpleOutput", "StreamEncoder");
-	const char *nvencPreset =
-		config_get_string(config, "SimpleOutput", "NVENCPreset");
-
-	OBSDataAutoRelease data = obs_data_create();
-	obs_data_set_string(data, "preset", nvencPreset);
-
-	if (astrcmpi(streamEncoder, "nvenc_hevc") == 0) {
-		convert_nvenc_hevc_presets(data);
-	} else {
-		convert_nvenc_h264_presets(data);
-	}
-
-	config_set_string(config, "SimpleOutput", "NVENCPreset2",
-			  obs_data_get_string(data, "preset2"));
-
-	return true;
-}
-
-static void upgrade_settings(void)
-{
-	char path[512];
-	int pathlen = GetConfigPath(path, 512, "obs-studio/basic/profiles");
-
-	if (pathlen <= 0)
-		return;
-	if (!os_file_exists(path))
-		return;
-
-	os_dir_t *dir = os_opendir(path);
-	if (!dir)
-		return;
-
-	struct os_dirent *ent = os_readdir(dir);
-
-	while (ent) {
-		if (ent->directory && strcmp(ent->d_name, ".") != 0 &&
-		    strcmp(ent->d_name, "..") != 0) {
-			strcat(path, "/");
-			strcat(path, ent->d_name);
-			strcat(path, "/basic.ini");
-
-			ConfigFile config;
-			int ret;
-
-			ret = config.Open(path, CONFIG_OPEN_EXISTING);
-			if (ret == CONFIG_SUCCESS) {
-				if (update_ffmpeg_output(config) ||
-				    update_reconnect(config)) {
-					config_save_safe(config, "tmp",
-							 nullptr);
-				}
-			}
-
-			if (config) {
-				const char *sEnc = config_get_string(
-					config, "AdvOut", "Encoder");
-				const char *rEnc = config_get_string(
-					config, "AdvOut", "RecEncoder");
-
-				/* replace "cbr" option with "rate_control" for
-				 * each profile's encoder data */
-				path[pathlen] = 0;
-				strcat(path, "/");
-				strcat(path, ent->d_name);
-				strcat(path, "/recordEncoder.json");
-				convert_28_1_encoder_setting(rEnc, path);
-
-				path[pathlen] = 0;
-				strcat(path, "/");
-				strcat(path, ent->d_name);
-				strcat(path, "/streamEncoder.json");
-				convert_28_1_encoder_setting(sEnc, path);
-			}
-
-			path[pathlen] = 0;
-		}
-
-		ent = os_readdir(dir);
-	}
-
-	os_closedir(dir);
-}
-
 static void check_safe_mode_sentinel(void)
 {
 #ifndef NDEBUG
@@ -2909,7 +2632,7 @@ static void check_safe_mode_sentinel(void)
 	if (disable_shutdown_check)
 		return;
 
-	BPtr sentinelPath = GetConfigPathPtr("obs-studio/safe_mode");
+	BPtr sentinelPath = GetAppConfigPathPtr("obs-studio/safe_mode");
 	if (os_file_exists(sentinelPath)) {
 		unclean_shutdown = true;
 		return;
@@ -2921,8 +2644,12 @@ static void check_safe_mode_sentinel(void)
 
 static void delete_safe_mode_sentinel(void)
 {
-	BPtr sentinelPath = GetConfigPathPtr("obs-studio/safe_mode");
+#ifndef NDEBUG
+	return;
+#else
+	BPtr sentinelPath = GetAppConfigPathPtr("obs-studio/safe_mode");
 	os_unlink(sentinelPath);
+#endif
 }
 
 #ifndef _WIN32
@@ -3182,7 +2909,6 @@ int main(int argc, char *argv[])
 #endif
 
 	check_safe_mode_sentinel();
-	upgrade_settings();
 
 	fstream logFile;
 

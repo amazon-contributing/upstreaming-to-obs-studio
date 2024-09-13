@@ -2,12 +2,12 @@
 #include <QScreen>
 
 #include <obs.hpp>
+#include <qt-wrappers.hpp>
 
 #include <nlohmann/json.hpp>
 
-#include "window-basic-auto-config.hpp"
+#include "moc_window-basic-auto-config.cpp"
 #include "window-basic-main.hpp"
-#include "qt-wrappers.hpp"
 #include "obs-app.hpp"
 #include "url-push-button.hpp"
 
@@ -39,18 +39,24 @@ extern QCefCookieManager *panel_cookies;
 
 /* ------------------------------------------------------------------------- */
 
-#define SERVICE_PATH "service.json"
+constexpr std::string_view OBSServiceFileName = "service.json";
 
 static OBSData OpenServiceSettings(std::string &type)
 {
-	char serviceJsonPath[512];
-	int ret = GetProfilePath(serviceJsonPath, sizeof(serviceJsonPath),
-				 SERVICE_PATH);
-	if (ret <= 0)
-		return OBSData();
+	const OBSBasic *basic =
+		reinterpret_cast<OBSBasic *>(App()->GetMainWindow());
+	const OBSProfile &currentProfile = basic->GetCurrentProfile();
 
-	OBSDataAutoRelease data =
-		obs_data_create_from_json_file_safe(serviceJsonPath, "bak");
+	const std::filesystem::path jsonFilePath =
+		currentProfile.path /
+		std::filesystem::u8path(OBSServiceFileName);
+
+	if (!std::filesystem::exists(jsonFilePath)) {
+		return OBSData();
+	}
+
+	OBSDataAutoRelease data = obs_data_create_from_json_file_safe(
+		jsonFilePath.u8string().c_str(), "bak");
 
 	obs_data_set_default_string(data, "type", "rtmp_common");
 	type = obs_data_get_string(data, "type");
@@ -422,80 +428,92 @@ bool AutoConfigStreamPage::validatePage()
 	if (wiz->service == AutoConfig::Service::Twitch) {
 		wiz->testMultitrackVideo = ui->useMultitrackVideo->isChecked();
 
-		std::map<std::string, video_t *> extra_views;
-		auto postData = constructGoLivePost(
-			QString::fromStdString(wiz->key), std::nullopt,
-			std::nullopt, false, extra_views);
+		if (wiz->testMultitrackVideo) {
+			std::map<std::string, video_t *> extra_views;
+			auto postData = constructGoLivePost(
+				QString::fromStdString(wiz->key), std::nullopt,
+				std::nullopt, false, extra_views);
 
-		OBSDataAutoRelease service_settings =
-			obs_service_get_settings(service);
-		auto multitrack_video_name =
-			QTStr("Basic.Settings.Stream.MultitrackVideoLabel");
-		if (obs_data_has_user_value(service_settings,
-					    "multitrack_video_name")) {
-			multitrack_video_name = obs_data_get_string(
-				service_settings, "multitrack_video_name");
-		}
-
-		try {
-			auto config = DownloadGoLiveConfig(
-				this, MultitrackVideoAutoConfigURL(service),
-				postData, multitrack_video_name);
-
-			for (const auto &endpoint : config.ingest_endpoints) {
-				if (qstrnicmp("RTMP", endpoint.protocol.c_str(),
-					      4) != 0)
-					continue;
-
-				std::string address = endpoint.url_template;
-				auto pos = address.find("/{stream_key}");
-				if (pos != address.npos)
-					address.erase(pos);
-
-				wiz->serviceConfigServers.push_back(
-					{address, address});
+			OBSDataAutoRelease service_settings =
+				obs_service_get_settings(service);
+			auto multitrack_video_name = QTStr(
+				"Basic.Settings.Stream.MultitrackVideoLabel");
+			if (obs_data_has_user_value(service_settings,
+						    "multitrack_video_name")) {
+				multitrack_video_name = obs_data_get_string(
+					service_settings,
+					"multitrack_video_name");
 			}
 
-			int multitrackVideoBitrate = 0;
-			for (auto &encoder_config :
-			     config.encoder_configurations) {
-				auto it =
-					encoder_config.settings.find("bitrate");
-				if (it == encoder_config.settings.end())
-					continue;
+			try {
+				auto config = DownloadGoLiveConfig(
+					this,
+					MultitrackVideoAutoConfigURL(service),
+					postData, multitrack_video_name);
 
-				if (!it->is_number_integer())
-					continue;
+				for (const auto &endpoint :
+				     config.ingest_endpoints) {
+					if (qstrnicmp("RTMP",
+						      endpoint.protocol.c_str(),
+						      4) != 0)
+						continue;
 
-				int bitrate = 0;
-				it->get_to(bitrate);
-				multitrackVideoBitrate += bitrate;
-			}
+					std::string address =
+						endpoint.url_template;
+					auto pos =
+						address.find("/{stream_key}");
+					if (pos != address.npos)
+						address.erase(pos);
 
-			// grab a streamkey from the go live config if we can
-			for (auto &endpoint : config.ingest_endpoints) {
-				const char *p = endpoint.protocol.c_str();
-				const char *auth =
-					endpoint.authentication
-						? endpoint.authentication
-							  ->c_str()
-						: nullptr;
-				if (qstrnicmp("RTMP", p, 4) == 0 && auth &&
-				    *auth) {
-					wiz->key = auth;
-					break;
+					wiz->serviceConfigServers.push_back(
+						{address, address});
 				}
-			}
 
-			if (multitrackVideoBitrate > 0) {
-				wiz->startingBitrate = multitrackVideoBitrate;
-				wiz->idealBitrate = multitrackVideoBitrate;
-				wiz->multitrackVideo.targetBitrate =
-					multitrackVideoBitrate;
-				wiz->multitrackVideo.testSuccessful = true;
+				int multitrackVideoBitrate = 0;
+				for (auto &encoder_config :
+				     config.encoder_configurations) {
+					auto it = encoder_config.settings.find(
+						"bitrate");
+					if (it == encoder_config.settings.end())
+						continue;
+
+					if (!it->is_number_integer())
+						continue;
+
+					int bitrate = 0;
+					it->get_to(bitrate);
+					multitrackVideoBitrate += bitrate;
+				}
+
+				// grab a streamkey from the go live config if we can
+				for (auto &endpoint : config.ingest_endpoints) {
+					const char *p =
+						endpoint.protocol.c_str();
+					const char *auth =
+						endpoint.authentication
+							? endpoint.authentication
+								  ->c_str()
+							: nullptr;
+					if (qstrnicmp("RTMP", p, 4) == 0 &&
+					    auth && *auth) {
+						wiz->key = auth;
+						break;
+					}
+				}
+
+				if (multitrackVideoBitrate > 0) {
+					wiz->startingBitrate =
+						multitrackVideoBitrate;
+					wiz->idealBitrate =
+						multitrackVideoBitrate;
+					wiz->multitrackVideo.targetBitrate =
+						multitrackVideoBitrate;
+					wiz->multitrackVideo.testSuccessful =
+						true;
+				}
+			} catch (const MultitrackVideoError & /*err*/) {
+				// FIXME: do something sensible
 			}
-		} catch (const MultitrackVideoError & /*err*/) {
-			// FIXME: do something sensible
 		}
 	}
 

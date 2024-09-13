@@ -1,10 +1,12 @@
 #include "window-basic-main.hpp"
-#include "volume-control.hpp"
-#include "qt-wrappers.hpp"
+#include "moc_volume-control.cpp"
 #include "obs-app.hpp"
 #include "mute-checkbox.hpp"
 #include "absolute-slider.hpp"
 #include "source-label.hpp"
+
+#include <slider-ignorewheel.hpp>
+#include <qt-wrappers.hpp>
 #include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -13,7 +15,6 @@
 
 using namespace std;
 
-#define CLAMP(x, min, max) ((x) < (min) ? (min) : ((x) > (max) ? (max) : (x)))
 #define FADER_PRECISION 4096.0
 
 // Size of the audio indicator in pixels
@@ -60,9 +61,10 @@ static void ShowUnassignedWarning(const char *name)
 		msgbox.exec();
 
 		if (cb->isChecked()) {
-			config_set_bool(App()->GlobalConfig(), "General",
+			config_set_bool(App()->GetUserConfig(), "General",
 					"WarnedAboutUnassignedSources", true);
-			config_save_safe(App()->GlobalConfig(), "tmp", nullptr);
+			config_save_safe(App()->GetUserConfig(), "tmp",
+					 nullptr);
 		}
 	};
 
@@ -149,7 +151,7 @@ void VolControl::SetMuted(bool)
 		mute->setCheckState(Qt::PartiallyChecked);
 		/* Show notice about the source no being assigned to any tracks */
 		bool has_shown_warning =
-			config_get_bool(App()->GlobalConfig(), "General",
+			config_get_bool(App()->GetUserConfig(), "General",
 					"WarnedAboutUnassignedSources");
 		if (!has_shown_warning)
 			ShowUnassignedWarning(obs_source_get_name(source));
@@ -458,10 +460,10 @@ void VolumeMeter::setBackgroundNominalColor(QColor c)
 {
 	p_backgroundNominalColor = std::move(c);
 
-	if (config_get_bool(GetGlobalConfig(), "Accessibility",
+	if (config_get_bool(App()->GetUserConfig(), "Accessibility",
 			    "OverrideColors")) {
 		backgroundNominalColor = color_from_int(config_get_int(
-			GetGlobalConfig(), "Accessibility", "MixerGreen"));
+			App()->GetUserConfig(), "Accessibility", "MixerGreen"));
 	} else {
 		backgroundNominalColor = p_backgroundNominalColor;
 	}
@@ -486,10 +488,11 @@ void VolumeMeter::setBackgroundWarningColor(QColor c)
 {
 	p_backgroundWarningColor = std::move(c);
 
-	if (config_get_bool(GetGlobalConfig(), "Accessibility",
+	if (config_get_bool(App()->GetUserConfig(), "Accessibility",
 			    "OverrideColors")) {
-		backgroundWarningColor = color_from_int(config_get_int(
-			GetGlobalConfig(), "Accessibility", "MixerYellow"));
+		backgroundWarningColor = color_from_int(
+			config_get_int(App()->GetUserConfig(), "Accessibility",
+				       "MixerYellow"));
 	} else {
 		backgroundWarningColor = p_backgroundWarningColor;
 	}
@@ -514,10 +517,10 @@ void VolumeMeter::setBackgroundErrorColor(QColor c)
 {
 	p_backgroundErrorColor = std::move(c);
 
-	if (config_get_bool(GetGlobalConfig(), "Accessibility",
+	if (config_get_bool(App()->GetUserConfig(), "Accessibility",
 			    "OverrideColors")) {
 		backgroundErrorColor = color_from_int(config_get_int(
-			GetGlobalConfig(), "Accessibility", "MixerRed"));
+			App()->GetUserConfig(), "Accessibility", "MixerRed"));
 	} else {
 		backgroundErrorColor = p_backgroundErrorColor;
 	}
@@ -542,10 +545,10 @@ void VolumeMeter::setForegroundNominalColor(QColor c)
 {
 	p_foregroundNominalColor = std::move(c);
 
-	if (config_get_bool(GetGlobalConfig(), "Accessibility",
+	if (config_get_bool(App()->GetUserConfig(), "Accessibility",
 			    "OverrideColors")) {
 		foregroundNominalColor = color_from_int(
-			config_get_int(GetGlobalConfig(), "Accessibility",
+			config_get_int(App()->GetUserConfig(), "Accessibility",
 				       "MixerGreenActive"));
 	} else {
 		foregroundNominalColor = p_foregroundNominalColor;
@@ -571,10 +574,10 @@ void VolumeMeter::setForegroundWarningColor(QColor c)
 {
 	p_foregroundWarningColor = std::move(c);
 
-	if (config_get_bool(GetGlobalConfig(), "Accessibility",
+	if (config_get_bool(App()->GetUserConfig(), "Accessibility",
 			    "OverrideColors")) {
 		foregroundWarningColor = color_from_int(
-			config_get_int(GetGlobalConfig(), "Accessibility",
+			config_get_int(App()->GetUserConfig(), "Accessibility",
 				       "MixerYellowActive"));
 	} else {
 		foregroundWarningColor = p_foregroundWarningColor;
@@ -600,10 +603,11 @@ void VolumeMeter::setForegroundErrorColor(QColor c)
 {
 	p_foregroundErrorColor = std::move(c);
 
-	if (config_get_bool(GetGlobalConfig(), "Accessibility",
+	if (config_get_bool(App()->GetUserConfig(), "Accessibility",
 			    "OverrideColors")) {
-		foregroundErrorColor = color_from_int(config_get_int(
-			GetGlobalConfig(), "Accessibility", "MixerRedActive"));
+		foregroundErrorColor = color_from_int(
+			config_get_int(App()->GetUserConfig(), "Accessibility",
+				       "MixerRedActive"));
 	} else {
 		foregroundErrorColor = p_foregroundErrorColor;
 	}
@@ -1002,8 +1006,9 @@ VolumeMeter::calculateBallisticsForChannel(int channelNr, uint64_t ts,
 		// 20 dB / 1.7 seconds for Medium Profile (Type I PPM)
 		// 24 dB / 2.8 seconds for Slow Profile (Type II PPM)
 		float decay = float(peakDecayRate * timeSinceLastRedraw);
-		displayPeak[channelNr] = CLAMP(displayPeak[channelNr] - decay,
-					       currentPeak[channelNr], 0);
+		displayPeak[channelNr] =
+			std::clamp(displayPeak[channelNr] - decay,
+				   currentPeak[channelNr], 0.f);
 	}
 
 	if (currentPeak[channelNr] >= displayPeakHold[channelNr] ||
@@ -1058,8 +1063,8 @@ VolumeMeter::calculateBallisticsForChannel(int channelNr, uint64_t ts,
 			      (timeSinceLastRedraw / magnitudeIntegrationTime) *
 			      0.99);
 		displayMagnitude[channelNr] =
-			CLAMP(displayMagnitude[channelNr] + attack,
-			      (float)minimumLevel, 0);
+			std::clamp(displayMagnitude[channelNr] + attack,
+				   (float)minimumLevel, 0.f);
 	}
 }
 

@@ -2,7 +2,7 @@
 #include "window-basic-main.hpp"
 #include "obs-frontend-api.h"
 #include "obs-app.hpp"
-#include "qt-wrappers.hpp"
+#include <qt-wrappers.hpp>
 #include <QColorDialog>
 
 enum ColorPreset {
@@ -10,11 +10,6 @@ enum ColorPreset {
 	COLOR_PRESET_COLOR_BLIND_1,
 	COLOR_PRESET_CUSTOM = 99,
 };
-
-static inline bool WidgetChanged(QWidget *widget)
-{
-	return widget->property("changed").toBool();
-}
 
 static inline QColor color_from_int(long long val)
 {
@@ -48,7 +43,7 @@ QColor OBSBasicSettings::GetColor(uint32_t colorVal, QString label)
 
 void OBSBasicSettings::LoadA11ySettings(bool presetChange)
 {
-	config_t *config = GetGlobalConfig();
+	config_t *config = App()->GetUserConfig();
 
 	loading = true;
 	if (!presetChange) {
@@ -114,7 +109,7 @@ void OBSBasicSettings::LoadA11ySettings(bool presetChange)
 
 void OBSBasicSettings::SaveA11ySettings()
 {
-	config_t *config = GetGlobalConfig();
+	config_t *config = App()->GetUserConfig();
 
 	config_set_bool(config, "Accessibility", "OverrideColors",
 			ui->colorsGroupBox->isChecked());
@@ -168,7 +163,7 @@ void OBSBasicSettings::UpdateA11yColors()
 
 void OBSBasicSettings::SetDefaultColors()
 {
-	config_t *config = GetGlobalConfig();
+	config_t *config = App()->GetUserConfig();
 	config_set_default_int(config, "Accessibility", "SelectRed", selectRed);
 	config_set_default_int(config, "Accessibility", "SelectGreen",
 			       selectGreen);

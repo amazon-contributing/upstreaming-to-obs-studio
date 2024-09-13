@@ -294,6 +294,7 @@ void obs_output_destroy(obs_output_t *output)
 			if (output->video_encoders[i]) {
 				obs_encoder_remove_output(
 					output->video_encoders[i], output);
+				obs_encoder_release(output->video_encoders[i]);
 			}
 			if (output->caption_tracks[i]) {
 				destroy_caption_track(
@@ -305,6 +306,7 @@ void obs_output_destroy(obs_output_t *output)
 			if (output->audio_encoders[i]) {
 				obs_encoder_remove_output(
 					output->audio_encoders[i], output);
+				obs_encoder_release(output->audio_encoders[i]);
 			}
 		}
 
@@ -981,14 +983,18 @@ void obs_output_remove_encoder_internal(struct obs_output *output,
 	if (encoder->info.type == OBS_ENCODER_VIDEO) {
 		for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
 			obs_encoder_t *video = output->video_encoders[i];
-			if (video == encoder)
+			if (video == encoder) {
 				output->video_encoders[i] = NULL;
+				obs_encoder_release(video);
+			}
 		}
 	} else if (encoder->info.type == OBS_ENCODER_AUDIO) {
 		for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
 			obs_encoder_t *audio = output->audio_encoders[i];
-			if (audio == encoder)
+			if (audio == encoder) {
 				output->audio_encoders[i] = NULL;
+				obs_encoder_release(audio);
+			}
 		}
 	}
 }
@@ -1052,8 +1058,10 @@ void obs_output_set_video_encoder2(obs_output_t *output, obs_encoder_t *encoder,
 		return;
 
 	obs_encoder_remove_output(output->video_encoders[idx], output);
-	obs_encoder_add_output(encoder, output);
-	output->video_encoders[idx] = encoder;
+	obs_encoder_release(output->video_encoders[idx]);
+
+	output->video_encoders[idx] = obs_encoder_get_ref(encoder);
+	obs_encoder_add_output(output->video_encoders[idx], output);
 
 	destroy_caption_track(&output->caption_tracks[idx]);
 	if (encoder != NULL) {
@@ -1115,8 +1123,10 @@ void obs_output_set_audio_encoder(obs_output_t *output, obs_encoder_t *encoder,
 		return;
 
 	obs_encoder_remove_output(output->audio_encoders[idx], output);
-	obs_encoder_add_output(encoder, output);
-	output->audio_encoders[idx] = encoder;
+	obs_encoder_release(output->audio_encoders[idx]);
+
+	output->audio_encoders[idx] = obs_encoder_get_ref(encoder);
+	obs_encoder_add_output(output->audio_encoders[idx], output);
 }
 
 obs_encoder_t *obs_output_get_video_encoder2(const obs_output_t *output,
@@ -2796,8 +2806,12 @@ static inline void pair_encoders(obs_output_t *output)
 
 		pthread_mutex_lock(&audio->init_mutex);
 		if (!audio->active && !audio->paired_encoders.num) {
-			da_push_back(video->paired_encoders, &audio);
-			da_push_back(audio->paired_encoders, &video);
+			obs_weak_encoder_t *weak_audio =
+				obs_encoder_get_weak_encoder(audio);
+			obs_weak_encoder_t *weak_video =
+				obs_encoder_get_weak_encoder(video);
+			da_push_back(video->paired_encoders, &weak_audio);
+			da_push_back(audio->paired_encoders, &weak_video);
 		}
 		pthread_mutex_unlock(&audio->init_mutex);
 	}
@@ -3156,14 +3170,6 @@ void obs_output_signal_stop(obs_output_t *output, int code)
 			os_atomic_set_bool(&output->delay_active, false);
 		obs_output_end_data_capture(output);
 	}
-}
-
-void obs_output_addref(obs_output_t *output)
-{
-	if (!output)
-		return;
-
-	obs_ref_addref(&output->context.control->ref);
 }
 
 void obs_output_release(obs_output_t *output)

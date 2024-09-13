@@ -1,5 +1,5 @@
 #include "window-basic-main.hpp"
-#include "media-controls.hpp"
+#include "moc_media-controls.cpp"
 #include "obs-app.hpp"
 #include <QToolTip>
 #include <QStyle>
@@ -67,7 +67,7 @@ MediaControls::MediaControls(QWidget *parent)
 	connect(ui->slider, &AbsoluteSlider::sliderMoved, this,
 		&MediaControls::AbsoluteSliderMoved);
 
-	countDownTimer = config_get_bool(App()->GlobalConfig(), "BasicWindow",
+	countDownTimer = config_get_bool(App()->GetUserConfig(), "BasicWindow",
 					 "MediaControlsCountdownTimer");
 
 	QAction *restartAction = new QAction(this);
@@ -465,7 +465,7 @@ void MediaControls::on_durationLabel_clicked()
 {
 	countDownTimer = !countDownTimer;
 
-	config_set_bool(App()->GlobalConfig(), "BasicWindow",
+	config_set_bool(App()->GetUserConfig(), "BasicWindow",
 			"MediaControlsCountdownTimer", countDownTimer);
 
 	if (MediaPaused())

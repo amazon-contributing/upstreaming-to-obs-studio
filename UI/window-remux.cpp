@@ -15,7 +15,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
 
-#include "window-remux.hpp"
+#include "moc_window-remux.cpp"
 
 #include "obs-app.hpp"
 
@@ -31,8 +31,8 @@
 #include <QStyledItemDelegate>
 #include <QToolButton>
 #include <QTimer>
+#include <qt-wrappers.hpp>
 
-#include "qt-wrappers.hpp"
 #include "window-basic-main.hpp"
 
 #include <memory>

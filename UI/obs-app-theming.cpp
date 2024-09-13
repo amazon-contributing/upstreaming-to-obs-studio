@@ -44,42 +44,42 @@ struct CFParser {
 	cf_parser *operator->() { return &cfp; }
 };
 
-static OBSTheme *ParseThemeMeta(const QString &path)
+static optional<OBSTheme> ParseThemeMeta(const QString &path)
 {
 	QFile themeFile(path);
 	if (!themeFile.open(QIODeviceBase::ReadOnly))
-		return nullptr;
+		return nullopt;
 
-	OBSTheme *meta = nullptr;
+	OBSTheme meta;
 	const QByteArray data = themeFile.readAll();
 	CFParser cfp;
 	int ret;
 
 	if (!cf_parser_parse(cfp, data.constData(), QT_TO_UTF8(path)))
-		return nullptr;
+		return nullopt;
 
 	if (cf_token_is(cfp, "@") || cf_go_to_token(cfp, "@", nullptr)) {
 		while (cf_next_token(cfp)) {
-			if (cf_token_is(cfp, "OBSThemeMeta"))
+			if (cf_token_is(cfp, "OBSThemeMeta")) {
 				break;
+			}
 
 			if (!cf_go_to_token(cfp, "@", nullptr))
-				return nullptr;
+				return nullopt;
 		}
 
+		if (!cf_token_is(cfp, "OBSThemeMeta"))
+			return nullopt;
+
 		if (!cf_next_token(cfp))
-			return nullptr;
+			return nullopt;
 
 		if (!cf_token_is(cfp, "{"))
-			return nullptr;
-
-		meta = new OBSTheme();
+			return nullopt;
 
 		for (;;) {
-			if (!cf_next_token(cfp)) {
-				delete meta;
-				return nullptr;
-			}
+			if (!cf_next_token(cfp))
+				return nullopt;
 
 			ret = cf_token_is_type(cfp, CFTOKEN_NAME, "name",
 					       nullptr);
@@ -93,10 +93,8 @@ static OBSTheme *ParseThemeMeta(const QString &path)
 			if (ret != PARSE_SUCCESS)
 				continue;
 
-			if (!cf_next_token(cfp)) {
-				delete meta;
-				return nullptr;
-			}
+			if (!cf_next_token(cfp))
+				return nullopt;
 
 			ret = cf_token_is_type(cfp, CFTOKEN_STRING, "value",
 					       ";");
@@ -109,39 +107,34 @@ static OBSTheme *ParseThemeMeta(const QString &path)
 
 			if (str) {
 				if (name == "dark")
-					meta->isDark = strcmp(str, "true") == 0;
+					meta.isDark = strcmp(str, "true") == 0;
 				else if (name == "extends")
-					meta->extends = str;
+					meta.extends = str;
 				else if (name == "author")
-					meta->author = str;
+					meta.author = str;
 				else if (name == "id")
-					meta->id = str;
+					meta.id = str;
 				else if (name == "name")
-					meta->name = str;
+					meta.name = str;
 			}
 
-			if (!cf_go_to_token(cfp, ";", nullptr)) {
-				delete meta;
-				return nullptr;
-			}
+			if (!cf_go_to_token(cfp, ";", nullptr))
+				return nullopt;
 		}
 	}
 
-	if (meta) {
-		auto filepath = filesystem::u8path(path.toStdString());
-		meta->isBaseTheme = filepath.extension() == ".obt";
-		meta->filename = filepath.stem();
+	auto filepath = filesystem::u8path(path.toStdString());
+	meta.isBaseTheme = filepath.extension() == ".obt";
+	meta.filename = filepath.stem();
 
-		if (meta->id.isEmpty() || meta->name.isEmpty() ||
-		    (!meta->isBaseTheme && meta->extends.isEmpty())) {
-			/* Theme is invalid */
-			delete meta;
-			meta = nullptr;
-		} else {
-			meta->location = absolute(filepath);
-			meta->isHighContrast = path.endsWith(".oha");
-			meta->isVisible = !path.contains("System");
-		}
+	if (meta.id.isEmpty() || meta.name.isEmpty() ||
+	    (!meta.isBaseTheme && meta.extends.isEmpty())) {
+		/* Theme is invalid */
+		return nullopt;
+	} else {
+		meta.location = absolute(filepath);
+		meta.isHighContrast = path.endsWith(".oha");
+		meta.isVisible = !path.contains("System");
 	}
 
 	return meta;
@@ -416,8 +409,6 @@ static vector<OBSThemeVariable> ParseThemeVariables(const char *themeData)
 
 void OBSApp::FindThemes()
 {
-	string themeDir;
-	unique_ptr<OBSTheme> theme;
 
 	QStringList filters;
 	filters << "*.obt" // OBS Base Theme
@@ -425,22 +416,28 @@ void OBSApp::FindThemes()
 		<< "*.oha" // OBS High-contrast Adjustment layer
 		;
 
-	GetDataFilePath("themes/", themeDir);
-	QDirIterator it(QString::fromStdString(themeDir), filters, QDir::Files);
-	while (it.hasNext()) {
-		theme.reset(ParseThemeMeta(it.next()));
-		if (theme && !themes.contains(theme->id))
-			themes[theme->id] = std::move(*theme);
+	{
+		string themeDir;
+		GetDataFilePath("themes/", themeDir);
+		QDirIterator it(QString::fromStdString(themeDir), filters,
+				QDir::Files);
+		while (it.hasNext()) {
+			auto theme = ParseThemeMeta(it.next());
+			if (theme && !themes.contains(theme->id))
+				themes[theme->id] = std::move(*theme);
+		}
 	}
 
-	themeDir.resize(1024);
-	if (GetConfigPath(themeDir.data(), themeDir.capacity(),
-			  "obs-studio/themes/") > 0) {
-		QDirIterator it(QT_UTF8(themeDir.c_str()), filters,
+	{
+		const std::string themeDir =
+			App()->userConfigLocation.u8string() +
+			"/obs-studio/themes";
+
+		QDirIterator it(QString::fromStdString(themeDir), filters,
 				QDir::Files);
 
 		while (it.hasNext()) {
-			theme.reset(ParseThemeMeta(it.next()));
+			auto theme = ParseThemeMeta(it.next());
 			if (theme && !themes.contains(theme->id))
 				themes[theme->id] = std::move(*theme);
 		}
@@ -519,25 +516,22 @@ void OBSApp::FindThemes()
 static bool ResolveVariable(const QHash<QString, OBSThemeVariable> &vars,
 			    OBSThemeVariable &var)
 {
-	const OBSThemeVariable *varPtr = &var;
-	const OBSThemeVariable *realVar = varPtr;
+	if (var.type != OBSThemeVariable::Alias)
+		return true;
 
-	while (realVar->type == OBSThemeVariable::Alias) {
-		QString newKey = realVar->value.toString();
+	QString key = var.value.toString();
+	while (vars[key].type == OBSThemeVariable::Alias) {
+		key = vars[key].value.toString();
 
-		if (!vars.contains(newKey)) {
+		if (!vars.contains(key)) {
 			blog(LOG_ERROR,
 			     R"(Variable "%s" (aliased by "%s") does not exist!)",
-			     QT_TO_UTF8(newKey), QT_TO_UTF8(var.name));
+			     QT_TO_UTF8(key), QT_TO_UTF8(var.name));
 			return false;
 		}
-
-		const OBSThemeVariable &newVar = vars[newKey];
-		realVar = &newVar;
 	}
 
-	if (realVar != varPtr)
-		var = *realVar;
+	var = vars[key];
 
 	return true;
 }
@@ -887,7 +881,8 @@ bool OBSApp::SetTheme(const QString &name)
 
 	filesystem::path debugOut;
 	char configPath[512];
-	if (GetConfigPath(configPath, sizeof(configPath), filename.c_str())) {
+	if (GetAppConfigPath(configPath, sizeof(configPath),
+			     filename.c_str())) {
 		debugOut = absolute(filesystem::u8path(configPath));
 		filesystem::create_directories(debugOut.parent_path());
 	}
@@ -951,7 +946,7 @@ bool OBSApp::InitTheme()
 	}
 
 	char userDir[512];
-	if (GetConfigPath(userDir, sizeof(userDir), "obs-studio/themes")) {
+	if (GetAppConfigPath(userDir, sizeof(userDir), "obs-studio/themes")) {
 		auto configSearchDir = filesystem::u8path(userDir);
 		QDir::addSearchPath("theme", absolute(configSearchDir));
 	}
@@ -959,7 +954,7 @@ bool OBSApp::InitTheme()
 	/* Load list of themes and read their metadata */
 	FindThemes();
 
-	if (config_get_bool(globalConfig, "Appearance", "AutoReload")) {
+	if (config_get_bool(userConfig, "Appearance", "AutoReload")) {
 		/* Set up Qt file watcher to automatically reload themes */
 		themeWatcher = new QFileSystemWatcher(this);
 		connect(themeWatcher.get(), &QFileSystemWatcher::fileChanged,
@@ -967,19 +962,19 @@ bool OBSApp::InitTheme()
 	}
 
 	/* Migrate old theme config key */
-	if (config_has_user_value(globalConfig, "General", "CurrentTheme3") &&
-	    !config_has_user_value(globalConfig, "Appearance", "Theme")) {
-		const char *old = config_get_string(globalConfig, "General",
+	if (config_has_user_value(userConfig, "General", "CurrentTheme3") &&
+	    !config_has_user_value(userConfig, "Appearance", "Theme")) {
+		const char *old = config_get_string(userConfig, "General",
 						    "CurrentTheme3");
 
 		if (themeMigrations.count(old)) {
-			config_set_string(globalConfig, "Appearance", "Theme",
+			config_set_string(userConfig, "Appearance", "Theme",
 					  themeMigrations[old].c_str());
 		}
 	}
 
 	QString themeName =
-		config_get_string(globalConfig, "Appearance", "Theme");
+		config_get_string(userConfig, "Appearance", "Theme");
 
 	if (themeName.isEmpty() || !GetTheme(themeName)) {
 		if (!themeName.isEmpty()) {

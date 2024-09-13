@@ -1,7 +1,7 @@
-#include "window-basic-vcam-config.hpp"
+#include "moc_window-basic-vcam-config.cpp"
 #include "window-basic-main.hpp"
-#include "qt-wrappers.hpp"
 
+#include <qt-wrappers.hpp>
 #include <util/util.hpp>
 #include <util/platform.h>
 

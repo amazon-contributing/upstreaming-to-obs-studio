@@ -16,7 +16,7 @@
 ******************************************************************************/
 
 #include <QLabel>
-#include "window-permissions.hpp"
+#include "moc_window-permissions.cpp"
 #include "obs-app.hpp"
 
 OBSPermissions::OBSPermissions(QWidget *parent, MacPermissionStatus capture,
@@ -96,7 +96,7 @@ void OBSPermissions::on_accessibilityPermissionButton_clicked()
 
 void OBSPermissions::on_continueButton_clicked()
 {
-	config_set_int(GetGlobalConfig(), "General",
+	config_set_int(App()->GetAppConfig(), "General",
 		       "MacOSPermissionsDialogLastShown",
 		       MACOS_PERMISSIONS_DIALOG_VERSION);
 	close();

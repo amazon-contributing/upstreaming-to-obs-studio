@@ -135,6 +135,39 @@ private:
 	std::shared_ptr<OBSSignal> renamedSignal;
 };
 
+struct OBSProfile {
+	std::string name;
+	std::string directoryName;
+	std::filesystem::path path;
+	std::filesystem::path profileFile;
+};
+
+struct OBSSceneCollection {
+	std::string name;
+	std::string fileName;
+	std::filesystem::path collectionFile;
+};
+
+struct OBSPromptResult {
+	bool success;
+	std::string promptValue;
+	bool optionValue;
+};
+
+struct OBSPromptRequest {
+	std::string title;
+	std::string prompt;
+	std::string promptValue;
+	bool withOption;
+	std::string optionPrompt;
+	bool optionValue;
+};
+
+using OBSPromptCallback = std::function<bool(const OBSPromptResult &result)>;
+
+using OBSProfileCache = std::map<std::string, OBSProfile>;
+using OBSSceneCollectionCache = std::map<std::string, OBSSceneCollection>;
+
 class ColorSelect : public QWidget {
 
 public:
@@ -314,7 +347,7 @@ private:
 	int previewCX = 0, previewCY = 0;
 	float previewScale = 0.0f;
 
-	ConfigFile basicConfig;
+	ConfigFile activeConfiguration;
 
 	std::vector<SavedProjectorInfo *> savedProjectorsArray;
 	std::vector<OBSProjector *> projectors;
@@ -364,6 +397,12 @@ private:
 
 	std::atomic<obs_scene_t *> currentScene = nullptr;
 	std::optional<std::pair<uint32_t, uint32_t>> lastOutputResolution;
+	std::optional<std::pair<uint32_t, uint32_t>> migrationBaseResolution;
+	bool usingAbsoluteCoordinates = false;
+
+	void DisableRelativeCoordinates(bool disable);
+
+	void OnEvent(enum obs_frontend_event event);
 
 	void UpdateMultiviewProjectorMenu();
 
@@ -381,8 +420,9 @@ private:
 	void UploadLog(const char *subdir, const char *file, const bool crash);
 
 	void Save(const char *file);
-	void LoadData(obs_data_t *data, const char *file);
-	void Load(const char *file);
+	void LoadData(obs_data_t *data, const char *file,
+		      bool remigrate = false);
+	void Load(const char *file, bool remigrate = false);
 
 	void InitHotkeys();
 	void CreateHotkeys();
@@ -439,20 +479,7 @@ private:
 	void ToggleVolControlLayout();
 	void ToggleMixerLayout(bool vertical);
 
-	void RefreshSceneCollections();
-	void ChangeSceneCollection();
 	void LogScenes();
-
-	void ResetProfileData();
-	bool AddProfile(bool create_new, const char *title, const char *text,
-			const char *init_text = nullptr, bool rename = false);
-	bool CreateProfile(const std::string &newName, bool create_new,
-			   bool showWizardChecked, bool rename = false);
-	void DeleteProfile(const char *profile_name, const char *profile_dir);
-	void RefreshProfiles();
-	void ChangeProfile();
-	void CheckForSimpleModeX264Fallback();
-
 	void SaveProjectNow();
 
 	int GetTopSelectedSourceItem();
@@ -674,6 +701,7 @@ private:
 	std::string lastReplay;
 
 	void UpdatePreviewOverflowSettings();
+	void UpdatePreviewScrollbars();
 
 	bool streamingStarting = false;
 
@@ -738,19 +766,14 @@ public slots:
 			       bool manual = false);
 	void SetCurrentScene(OBSSource scene, bool force = false);
 
-	bool AddSceneCollection(bool create_new,
-				const QString &name = QString());
-
-	bool NewProfile(const QString &name);
-	bool DuplicateProfile(const QString &name);
-	void DeleteProfile(const QString &profileName);
-
 	void UpdatePatronJson(const QString &text, const QString &error);
 
 	void ShowContextBar();
 	void HideContextBar();
 	void PauseRecording();
 	void UnpauseRecording();
+
+	void UpdateEditMenu();
 
 private slots:
 
@@ -813,6 +836,11 @@ private slots:
 	void AudioMixerCopyFilters();
 	void AudioMixerPasteFilters();
 	void SourcePasteFilters(OBSSource source, OBSSource dstSource);
+
+	void on_previewXScrollBar_valueChanged(int value);
+	void on_previewYScrollBar_valueChanged(int value);
+
+	void PreviewScalingModeChanged(int value);
 
 	void ColorChange();
 
@@ -1043,8 +1071,6 @@ public:
 					     obs_data_array_t *undo_array,
 					     obs_data_array_t *redo_array);
 
-	void UpdateEditMenu();
-
 	void SetDisplayAffinity(QWindow *window);
 
 	QColor GetSelectionColor() const;
@@ -1145,20 +1171,6 @@ private slots:
 	void on_preview_customContextMenuRequested();
 	void ProgramViewContextMenuRequested();
 	void on_previewDisabledWidget_customContextMenuRequested();
-
-	void on_actionNewSceneCollection_triggered();
-	void on_actionDupSceneCollection_triggered();
-	void on_actionRenameSceneCollection_triggered();
-	void on_actionRemoveSceneCollection_triggered();
-	void on_actionImportSceneCollection_triggered();
-	void on_actionExportSceneCollection_triggered();
-
-	void on_actionNewProfile_triggered();
-	void on_actionDupProfile_triggered();
-	void on_actionRenameProfile_triggered();
-	void on_actionRemoveProfile_triggered(bool skipConfirmation = false);
-	void on_actionImportProfile_triggered();
-	void on_actionExportProfile_triggered();
 
 	void on_actionShowSettingsFolder_triggered();
 	void on_actionShowProfileFolder_triggered();
@@ -1307,6 +1319,12 @@ signals:
 
 	/* Studio Mode signal */
 	void PreviewProgramModeChanged(bool enabled);
+	void CanvasResized(uint32_t width, uint32_t height);
+	void OutputResized(uint32_t width, uint32_t height);
+
+	/* Preview signals */
+	void PreviewXScrollBarMoved(int value);
+	void PreviewYScrollBarMoved(int value);
 
 private:
 	std::unique_ptr<Ui::OBSBasic> ui;
@@ -1334,6 +1352,107 @@ public:
 	void DeleteYouTubeAppDock();
 	YouTubeAppDock *GetYouTubeAppDock();
 #endif
+	// MARK: - Generic UI Helper Functions
+	OBSPromptResult PromptForName(const OBSPromptRequest &request,
+				      const OBSPromptCallback &callback);
+
+	// MARK: - OBS Profile Management
+private:
+	OBSProfileCache profiles{};
+
+	void SetupNewProfile(const std::string &profileName,
+			     bool useWizard = false);
+	void SetupDuplicateProfile(const std::string &profileName);
+	void SetupRenameProfile(const std::string &profileName);
+
+	const OBSProfile &CreateProfile(const std::string &profileName);
+	void RemoveProfile(OBSProfile profile);
+
+	void ChangeProfile();
+
+	void RefreshProfileCache();
+
+	void RefreshProfiles(bool refreshCache = false);
+
+	void ActivateProfile(const OBSProfile &profile, bool reset = false);
+	std::vector<std::string>
+	GetRestartRequirements(const ConfigFile &config) const;
+	void ResetProfileData();
+	void CheckForSimpleModeX264Fallback();
+
+public:
+	inline const OBSProfileCache &GetProfileCache() const noexcept
+	{
+		return profiles;
+	};
+
+	const OBSProfile &GetCurrentProfile() const;
+
+	std::optional<OBSProfile>
+	GetProfileByName(const std::string &profileName) const;
+	std::optional<OBSProfile>
+	GetProfileByDirectoryName(const std::string &directoryName) const;
+
+private slots:
+	void on_actionNewProfile_triggered();
+	void on_actionDupProfile_triggered();
+	void on_actionRenameProfile_triggered();
+	void on_actionRemoveProfile_triggered(bool skipConfirmation = false);
+	void on_actionImportProfile_triggered();
+	void on_actionExportProfile_triggered();
+
+public slots:
+	bool CreateNewProfile(const QString &name);
+	bool CreateDuplicateProfile(const QString &name);
+	void DeleteProfile(const QString &profileName);
+
+	// MARK: - OBS Scene Collection Management
+private:
+	OBSSceneCollectionCache collections{};
+
+	void SetupNewSceneCollection(const std::string &collectionName);
+	void SetupDuplicateSceneCollection(const std::string &collectionName);
+	void SetupRenameSceneCollection(const std::string &collectionName);
+
+	const OBSSceneCollection &
+	CreateSceneCollection(const std::string &collectionName);
+	void RemoveSceneCollection(OBSSceneCollection collection);
+
+	bool CreateDuplicateSceneCollection(const QString &name);
+	void DeleteSceneCollection(const QString &name);
+	void ChangeSceneCollection();
+
+	void RefreshSceneCollectionCache();
+
+	void RefreshSceneCollections(bool refreshCache = false);
+	void ActivateSceneCollection(const OBSSceneCollection &collection);
+
+public:
+	inline const OBSSceneCollectionCache &
+	GetSceneCollectionCache() const noexcept
+	{
+		return collections;
+	};
+
+	const OBSSceneCollection &GetCurrentSceneCollection() const;
+
+	std::optional<OBSSceneCollection>
+	GetSceneCollectionByName(const std::string &collectionName) const;
+	std::optional<OBSSceneCollection>
+	GetSceneCollectionByFileName(const std::string &fileName) const;
+
+private slots:
+	void on_actionNewSceneCollection_triggered();
+	void on_actionDupSceneCollection_triggered();
+	void on_actionRenameSceneCollection_triggered();
+	void
+	on_actionRemoveSceneCollection_triggered(bool skipConfirmation = false);
+	void on_actionImportSceneCollection_triggered();
+	void on_actionExportSceneCollection_triggered();
+	void on_actionRemigrateSceneCollection_triggered();
+
+public slots:
+	bool CreateNewSceneCollection(const QString &name);
 };
 
 extern bool cef_js_avail;

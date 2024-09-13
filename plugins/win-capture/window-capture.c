@@ -126,6 +126,7 @@ static const char *wgc_partial_match_classes[] = {
 static const char *wgc_whole_match_classes[] = {
 	"ApplicationFrameWindow",
 	"Windows.UI.Core.CoreWindow",
+	"WinUIDesktopWin32WindowClass",
 	"GAMINGSERVICESUI_HOSTING_WINDOW_CLASS",
 	"XLMAIN",            /* Microsoft Excel */
 	"PPTFrameClass",     /* Microsoft PowerPoint */
@@ -566,6 +567,15 @@ static obs_properties_t *wc_properties(void *data)
 	p = obs_properties_add_list(ppts, "window", TEXT_WINDOW,
 				    OBS_COMBO_TYPE_LIST,
 				    OBS_COMBO_FORMAT_STRING);
+
+	/* Add "[Select a window]" on first use to prevent the properties list
+	 * widget from selecting the first one in the list automatically */
+	if (wc && (!wc->title || !wc->class || !wc->executable)) {
+		obs_property_list_add_string(
+			p, obs_module_text("SelectAWindow"), "");
+		obs_property_list_item_disable(p, 0, true);
+	}
+
 	ms_fill_window_list(p, EXCLUDE_MINIMIZED, NULL);
 	obs_property_set_modified_callback(p, wc_window_changed);
 

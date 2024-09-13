@@ -63,16 +63,14 @@ void ffmpeg_mpegts_log_error(int log_level, struct ffmpeg_data *data,
 	blog(log_level, "%s", out);
 }
 
-static bool is_rist(struct ffmpeg_output *stream)
+static bool is_rist(const char *url)
 {
-	return !strncmp(stream->ff_data.config.url, RIST_PROTO,
-			sizeof(RIST_PROTO) - 1);
+	return !strncmp(url, RIST_PROTO, sizeof(RIST_PROTO) - 1);
 }
 
-static bool is_srt(struct ffmpeg_output *stream)
+static bool is_srt(const char *url)
 {
-	return !strncmp(stream->ff_data.config.url, SRT_PROTO,
-			sizeof(SRT_PROTO) - 1);
+	return !strncmp(url, SRT_PROTO, sizeof(SRT_PROTO) - 1);
 }
 
 static bool proto_is_allowed(struct ffmpeg_output *stream)
@@ -177,9 +175,6 @@ static bool create_video_stream(struct ffmpeg_output *stream,
 	context->thread_count = 0;
 
 	data->video->time_base = context->time_base;
-#if LIBAVFORMAT_VERSION_MAJOR < 59
-	data->video->codec->time_base = context->time_base;
-#endif
 	data->video->avg_frame_rate = av_inv_q(context->time_base);
 
 	data->video_ctx = context;
@@ -200,17 +195,11 @@ static bool create_video_stream(struct ffmpeg_output *stream,
 			av_content_light_metadata_alloc(&content_size);
 		content->MaxCLL = hdr_nominal_peak_level;
 		content->MaxFALL = hdr_nominal_peak_level;
-#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(60, 31, 102)
-		av_stream_add_side_data(data->video,
-					AV_PKT_DATA_CONTENT_LIGHT_LEVEL,
-					(uint8_t *)content, content_size);
-#else
 		av_packet_side_data_add(
 			&data->video->codecpar->coded_side_data,
 			&data->video->codecpar->nb_coded_side_data,
 			AV_PKT_DATA_CONTENT_LIGHT_LEVEL, (uint8_t *)content,
 			content_size, 0);
-#endif
 
 		AVMasteringDisplayMetadata *const mastering =
 			av_mastering_display_metadata_alloc();
@@ -226,18 +215,11 @@ static bool create_video_stream(struct ffmpeg_output *stream,
 		mastering->max_luminance = av_make_q(hdr_nominal_peak_level, 1);
 		mastering->has_primaries = 1;
 		mastering->has_luminance = 1;
-#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(60, 31, 102)
-		av_stream_add_side_data(data->video,
-					AV_PKT_DATA_MASTERING_DISPLAY_METADATA,
-					(uint8_t *)mastering,
-					sizeof(*mastering));
-#else
 		av_packet_side_data_add(
 			&data->video->codecpar->coded_side_data,
 			&data->video->codecpar->nb_coded_side_data,
 			AV_PKT_DATA_MASTERING_DISPLAY_METADATA,
 			(uint8_t *)mastering, sizeof(*mastering), 0);
-#endif
 	}
 
 	return true;
@@ -272,23 +254,11 @@ static bool create_audio_stream(struct ffmpeg_output *stream,
 	context->bit_rate = (int64_t)data->config.audio_bitrates[idx] * 1000;
 	context->time_base = (AVRational){1, aoi.samples_per_sec};
 	channels = get_audio_channels(aoi.speakers);
-#if LIBAVUTIL_VERSION_INT < AV_VERSION_INT(57, 24, 100)
-	context->channels = get_audio_channels(aoi.speakers);
-#endif
 	context->sample_rate = aoi.samples_per_sec;
 
-#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(59, 24, 100)
-	context->channel_layout =
-		av_get_default_channel_layout(context->channels);
-
-	//avutil default channel layout for 5 channels is 5.0 ; fix for 4.1
-	if (aoi.speakers == SPEAKERS_4POINT1)
-		context->channel_layout = av_get_channel_layout("4.1");
-#else
 	av_channel_layout_default(&context->ch_layout, channels);
 	if (aoi.speakers == SPEAKERS_4POINT1)
 		context->ch_layout = (AVChannelLayout)AV_CHANNEL_LAYOUT_4POINT1;
-#endif
 
 	context->sample_fmt = AV_SAMPLE_FMT_S16;
 	context->frame_size = data->config.frame_size;
@@ -467,8 +437,8 @@ static inline int open_output_file(struct ffmpeg_output *stream,
 				   struct ffmpeg_data *data)
 {
 	int ret;
-	bool rist = is_rist(stream);
-	bool srt = is_srt(stream);
+	bool rist = data->config.is_rist;
+	bool srt = data->config.is_srt;
 	bool allowed_proto = proto_is_allowed(stream);
 	AVDictionary *dict = NULL;
 
@@ -591,10 +561,7 @@ static void close_audio(struct ffmpeg_data *data)
 static void close_mpegts_url(struct ffmpeg_output *stream, bool is_rist)
 {
 	int err = 0;
-	AVIOContext *s = stream->s;
-	if (!s)
-		return;
-	URLContext *h = s->opaque;
+	URLContext *h = stream->h;
 	if (!h)
 		return; /* can happen when opening the url fails */
 
@@ -608,10 +575,14 @@ static void close_mpegts_url(struct ffmpeg_output *stream, bool is_rist)
 	av_freep(h);
 
 	/* close custom avio_context for srt or rist */
-	avio_flush(stream->s);
-	stream->s->opaque = NULL;
-	av_freep(&stream->s->buffer);
-	avio_context_free(&stream->s);
+	AVIOContext *s = stream->s;
+	if (!s)
+		return;
+
+	avio_flush(s);
+	s->opaque = NULL;
+	av_freep(&s->buffer);
+	avio_context_free(&s);
 
 	if (err)
 		info("[ffmpeg mpegts muxer]: Error closing URL %s",
@@ -632,8 +603,8 @@ void ffmpeg_mpegts_data_free(struct ffmpeg_output *stream,
 	}
 
 	if (data->output) {
-		if (is_rist(stream) || is_srt(stream)) {
-			close_mpegts_url(stream, is_rist(stream));
+		if (data->config.is_rist || data->config.is_srt) {
+			close_mpegts_url(stream, data->config.is_rist);
 		} else {
 			avio_close(data->output->pb);
 		}
@@ -663,13 +634,8 @@ bool ffmpeg_mpegts_data_init(struct ffmpeg_output *stream,
 
 	avformat_network_init();
 
-#if LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(59, 0, 100)
-	AVOutputFormat *output_format;
-#else
-	const AVOutputFormat *output_format;
-#endif
-
-	output_format = av_guess_format("mpegts", NULL, "video/M2PT");
+	const AVOutputFormat *output_format =
+		av_guess_format("mpegts", NULL, "video/M2PT");
 
 	if (output_format == NULL) {
 		ffmpeg_mpegts_log_error(LOG_WARNING, data,
@@ -757,10 +723,9 @@ static void ffmpeg_mpegts_destroy(void *data)
 	struct ffmpeg_output *output = data;
 
 	if (output) {
+		ffmpeg_mpegts_full_stop(output);
 		if (output->connecting)
 			pthread_join(output->start_thread, NULL);
-
-		ffmpeg_mpegts_full_stop(output);
 
 		pthread_mutex_destroy(&output->write_mutex);
 		os_sem_destroy(output->write_sem);
@@ -910,7 +875,8 @@ static bool set_config(struct ffmpeg_output *stream)
 		service, OBS_SERVICE_CONNECT_INFO_ENCRYPT_PASSPHRASE);
 	config.format_name = "mpegts";
 	config.format_mime_type = "video/M2PT";
-
+	config.is_rist = is_rist(config.url);
+	config.is_srt = is_srt(config.url);
 	/* 2. video settings */
 
 	// 2.a) set width & height
@@ -1110,6 +1076,7 @@ static void ffmpeg_mpegts_full_stop(void *data)
 		obs_output_end_data_capture(output->output);
 		ffmpeg_mpegts_deactivate(output);
 	}
+	ffmpeg_mpegts_data_free(output, &output->ff_data);
 }
 
 static void ffmpeg_mpegts_stop(void *data, uint64_t ts)
@@ -1144,8 +1111,6 @@ static void ffmpeg_mpegts_deactivate(struct ffmpeg_output *output)
 	da_free(output->packets);
 
 	pthread_mutex_unlock(&output->write_mutex);
-
-	ffmpeg_mpegts_data_free(output, &output->ff_data);
 }
 
 static uint64_t ffmpeg_mpegts_total_bytes(void *data)

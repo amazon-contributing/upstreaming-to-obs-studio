@@ -17,7 +17,8 @@
 
 #include "window-basic-main.hpp"
 #include "screenshot-obj.hpp"
-#include "qt-wrappers.hpp"
+
+#include <qt-wrappers.hpp>
 
 #ifdef _WIN32
 #include <wincodec.h>
@@ -56,9 +57,7 @@ ScreenshotObj::~ScreenshotObj()
 
 			main->lastScreenshot = path;
 
-			if (main->api)
-				main->api->on_event(
-					OBS_FRONTEND_EVENT_SCREENSHOT_TAKEN);
+			main->OnEvent(OBS_FRONTEND_EVENT_SCREENSHOT_TAKEN);
 		}
 	}
 }
