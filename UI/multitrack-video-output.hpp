@@ -19,11 +19,9 @@
 class QString;
 
 void StreamStopHandler(void *arg, calldata_t *data);
-void StreamDeactivateHandler(void *arg, calldata_t *data);
 
 void RecordingStartHandler(void *arg, calldata_t *data);
-void RecordingStopHandler(void *arg, calldata_t *data);
-void RecordingDeactivateHandler(void *arg, calldata_t *data);
+void RecordingStopHandler(void *arg, calldata_t *);
 
 bool MultitrackVideoDeveloperModeEnabled();
 
@@ -87,7 +85,7 @@ private:
 		std::vector<OBSEncoderAutoRelease> video_encoders_;
 		std::vector<OBSEncoderAutoRelease> audio_encoders_;
 		OBSServiceAutoRelease multitrack_video_service_;
-		OBSSignal start_signal, stop_signal, deactivate_signal;
+		OBSSignal start_signal, stop_signal;
 	};
 	std::map<std::string, video_t *> extra_views_;
 
@@ -103,8 +101,6 @@ private:
 	std::optional<OBSOutputObjects> current_stream_dump;
 
 	friend void StreamStopHandler(void *arg, calldata_t *data);
-	friend void StreamDeactivateHandler(void *arg, calldata_t *data);
 	friend void RecordingStartHandler(void *arg, calldata_t *data);
-	friend void RecordingStopHandler(void *arg, calldata_t *data);
-	friend void RecordingDeactivateHandler(void *arg, calldata_t *data);
+	friend void RecordingStopHandler(void *arg, calldata_t *);
 };

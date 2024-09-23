@@ -332,7 +332,7 @@ static OBSOutputs SetupOBSOutput(QWidget *parent, const QString &multitrack_vide
 				 size_t main_audio_mixer, std::optional<size_t> vod_track_mixer,
 				 const std::map<std::string, video_t *> &extra_views);
 static void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self, obs_output_t *output, OBSSignal &start,
-				OBSSignal &stop, OBSSignal &deactivate);
+				OBSSignal &stop);
 
 struct ModuleHash {
 	std::string Algorithm;
@@ -577,15 +577,12 @@ void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *servic
 
 	OBSSignal start_streaming;
 	OBSSignal stop_streaming;
-	OBSSignal deactivate_stream;
-	SetupSignalHandlers(false, this, output, start_streaming, stop_streaming, deactivate_stream);
+	SetupSignalHandlers(false, this, output, start_streaming, stop_streaming);
 
 	if (dump_stream_to_file_config && recording_output) {
 		OBSSignal start_recording;
 		OBSSignal stop_recording;
-		OBSSignal deactivate_recording;
-		SetupSignalHandlers(true, this, recording_output, start_recording, stop_recording,
-				    deactivate_recording);
+		SetupSignalHandlers(true, this, recording_output, start_recording, stop_recording);
 
 		decltype(video_encoders) recording_video_encoders;
 		recording_video_encoders.reserve(video_encoders.size());
@@ -609,7 +606,6 @@ void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *servic
 				nullptr,
 				std::move(start_recording),
 				std::move(stop_recording),
-				std::move(deactivate_recording),
 			});
 		}
 	}
@@ -624,7 +620,6 @@ void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *servic
 			std::move(multitrack_video_service),
 			std::move(start_streaming),
 			std::move(stop_streaming),
-			std::move(deactivate_stream),
 		});
 	}
 
@@ -932,7 +927,7 @@ static OBSOutputs SetupOBSOutput(QWidget *parent, const QString &multitrack_vide
 }
 
 void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self, obs_output_t *output, OBSSignal &start,
-			 OBSSignal &stop, OBSSignal &deactivate)
+			 OBSSignal &stop)
 {
 	auto handler = obs_output_get_signal_handler(output);
 
@@ -940,9 +935,6 @@ void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self, obs_output
 		start.Connect(handler, "start", RecordingStartHandler, self);
 
 	stop.Connect(handler, "stop", !recording ? StreamStopHandler : RecordingStopHandler, self);
-
-	deactivate.Connect(handler, "deactivate", !recording ? StreamDeactivateHandler : RecordingDeactivateHandler,
-			   self);
 }
 
 std::optional<MultitrackVideoOutput::OBSOutputObjects> MultitrackVideoOutput::take_current()
@@ -971,7 +963,7 @@ void MultitrackVideoOutput::ReleaseOnMainThread(std::optional<OBSOutputObjects> 
 		QApplication::instance()->thread(), [objects = std::move(objects)] {}, Qt::QueuedConnection);
 }
 
-void StreamStopHandler(void *arg, calldata_t *params)
+void StreamStopHandler(void *arg, calldata_t *data)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
 	self->StopExtraViews();
@@ -985,8 +977,9 @@ void StreamStopHandler(void *arg, calldata_t *params)
 	if (stream_dump_output)
 		obs_output_stop(stream_dump_output);
 
-	if (obs_output_active(static_cast<obs_output_t *>(calldata_ptr(params, "output"))))
-		return;
+	/* Unregister the BPM (Broadcast Performance Metrics) callback and destroy the allocated metrics data. */
+	obs_output_remove_packet_callback(static_cast<obs_output_t *>(calldata_ptr(data, "output")), bpm_inject, NULL);
+	bpm_destroy(static_cast<obs_output_t *>(calldata_ptr(data, "output")));
 
 	auto object_releaser = self->take_current();
 	QMetaObject::invokeMethod(
@@ -1003,41 +996,14 @@ void StreamStopHandler(void *arg, calldata_t *params)
 	self->berryessa_every_minute_ = std::make_shared<std::optional<BerryessaEveryMinute>>(std::nullopt);
 }
 
-void StreamDeactivateHandler(void *arg, calldata_t *params)
-{
-	auto self = static_cast<MultitrackVideoOutput *>(arg);
-
-	if (obs_output_reconnecting(static_cast<obs_output_t *>(calldata_ptr(params, "output"))))
-		return;
-
-	/* Unregister the BPM (Broadcast Performance Metrics) callback
-	 * and destroy the allocated metrics data.
-	 */
-	obs_output_remove_packet_callback(static_cast<obs_output_t *>(calldata_ptr(params, "output")), bpm_inject,
-					  NULL);
-	bpm_destroy(static_cast<obs_output_t *>(calldata_ptr(params, "output")));
-
-	MultitrackVideoOutput::ReleaseOnMainThread(self->take_current());
-}
-
 void RecordingStartHandler(void * /* arg */, calldata_t * /* data */)
 {
 	blog(LOG_INFO, "MultitrackVideoOutput: recording started");
 }
 
-void RecordingStopHandler(void *arg, calldata_t *params)
+void RecordingStopHandler(void *arg, calldata_t *)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
 	blog(LOG_INFO, "MultitrackVideoOutput: recording stopped");
-
-	if (obs_output_active(static_cast<obs_output_t *>(calldata_ptr(params, "output"))))
-		return;
-
-	MultitrackVideoOutput::ReleaseOnMainThread(self->take_current_stream_dump());
-}
-
-void RecordingDeactivateHandler(void *arg, calldata_t * /*data*/)
-{
-	auto self = static_cast<MultitrackVideoOutput *>(arg);
 	MultitrackVideoOutput::ReleaseOnMainThread(self->take_current_stream_dump());
 }
