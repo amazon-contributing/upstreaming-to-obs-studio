@@ -1008,7 +1008,7 @@ VolumeMeter::calculateBallisticsForChannel(int channelNr, uint64_t ts,
 		float decay = float(peakDecayRate * timeSinceLastRedraw);
 		displayPeak[channelNr] =
 			std::clamp(displayPeak[channelNr] - decay,
-				   currentPeak[channelNr], 0.f);
+				   std::min(currentPeak[channelNr], 0.f), 0.f);
 	}
 
 	if (currentPeak[channelNr] >= displayPeakHold[channelNr] ||
@@ -1249,7 +1249,7 @@ void VolumeMeter::paintHMeter(QPainter &painter, int x, int y, int width,
 				 maximumPosition - peakPosition, height,
 				 muted ? backgroundErrorColorDisabled
 				       : backgroundErrorColor);
-	} else if (int(magnitude) != 0) {
+	} else {
 		if (!clipping) {
 			QTimer::singleShot(CLIP_FLASH_DURATION_MS, this,
 					   [&]() { clipping = false; });

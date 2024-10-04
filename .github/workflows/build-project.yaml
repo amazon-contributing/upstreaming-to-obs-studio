@@ -71,8 +71,8 @@ jobs:
           : Set Up Environment 🔧
           if (( ${+RUNNER_DEBUG} )) setopt XTRACE
 
-          print '::group::Enable Xcode 15.2'
-          sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
+          print '::group::Enable Xcode 15.4'
+          sudo xcode-select --switch /Applications/Xcode_15.4.app/Contents/Developer
           print '::endgroup::'
 
           print '::group::Clean Homebrew Environment'
@@ -330,15 +330,6 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
-
-      - uses: actions/cache@v4
-        id: ccache-cache
-        if: github.event_name == 'pull_request'
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: ${{ runner.os }}-ccache-x86_64-${{ needs.check-event.outputs.config }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-x86_64-
 
       - name: Build OBS Studio 🧱
         uses: ./.github/actions/build-obs

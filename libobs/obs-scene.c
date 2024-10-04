@@ -601,7 +601,7 @@ static inline uint32_t calc_cy(const struct obs_scene_item *item,
 	return (crop_cy > height) ? 2 : (height - crop_cy);
 }
 
-#ifdef _DEBUG
+#ifdef DEBUG_TRANSFORM
 static inline void log_matrix(const struct matrix4 *mat, const char *name)
 {
 	blog(LOG_DEBUG,
@@ -619,6 +619,9 @@ static inline void log_matrix(const struct matrix4 *mat, const char *name)
 static inline void update_nested_scene_crop(struct obs_scene_item *item,
 					    uint32_t width, uint32_t height)
 {
+	if (!item->last_height || !item->last_width)
+		return;
+
 	/* Use last size and new size to calculate factor to adjust crop by. */
 	float scale_x = (float)width / (float)item->last_width;
 	float scale_y = (float)height / (float)item->last_height;
@@ -695,7 +698,7 @@ static void update_item_transform(struct obs_scene_item *item, bool update_tex)
 	matrix4_translate3f(&item->draw_transform, &item->draw_transform,
 			    position.x, position.y, 0.0f);
 
-#ifdef _DEBUG
+#ifdef DEBUG_TRANSFORM
 	blog(LOG_DEBUG, "Transform updated for \"%s\":",
 	     obs_source_get_name(item->source));
 	log_matrix(&item->draw_transform, "draw_transform");
@@ -729,7 +732,7 @@ static void update_item_transform(struct obs_scene_item *item, bool update_tex)
 	matrix4_translate3f(&item->box_transform, &item->box_transform,
 			    position.x, position.y, 0.0f);
 
-#ifdef _DEBUG
+#ifdef DEBUG_TRANSFORM
 	log_matrix(&item->draw_transform, "box_transform");
 #endif
 
@@ -2668,6 +2671,7 @@ static void obs_sceneitem_remove_internal(obs_sceneitem_t *item)
 	obs_scene_t *parent = item->parent;
 	item->removed = true;
 
+	obs_sceneitem_select(item, false);
 	set_visibility(item, false);
 
 	detach_sceneitem(item);
