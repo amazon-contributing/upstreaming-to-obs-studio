@@ -54,6 +54,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 #pragma once
+#define ONEVPL_EXPERIMENTAL
 #include <vpl/mfxstructures.h>
 #include <vpl/mfxvideo++.h>
 #include "QSV_Encoder.h"
@@ -104,7 +105,7 @@ private:
 	void *m_sessionData;
 	mfxFrameAllocator m_mfxAllocator;
 	mfxVideoParam m_mfxEncParams;
-	mfxFrameAllocResponse m_mfxResponse;
+	mfxFrameAllocResponse m_mfxResponse{};
 	mfxFrameSurface1 **m_pmfxSurfaces;
 	mfxU16 m_nSurfNum;
 	MFXVideoENCODE *m_pmfxENC;
@@ -121,6 +122,9 @@ private:
 	mfxExtCodingOption m_co;
 	mfxExtHEVCParam m_ExtHEVCParam{};
 	mfxExtAV1TileParam m_ExtAv1TileParam{};
+#if (MFX_VERSION_MAJOR >= 2 && MFX_VERSION_MINOR >= 11) || MFX_VERSION_MAJOR > 2
+	mfxExtAV1ScreenContentTools m_ExtAV1ScreenContentTools{};
+#endif
 	mfxExtVideoSignalInfo m_ExtVideoSignalInfo{};
 	mfxExtChromaLocInfo m_ExtChromaLocInfo{};
 	mfxExtMasteringDisplayColourVolume m_ExtMasteringDisplayColourVolume{};

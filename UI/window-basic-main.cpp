@@ -1246,10 +1246,6 @@ void OBSBasic::Load(const char *file, bool remigrate)
 			}
 		}
 
-		config_set_string(App()->GetUserConfig(), "Basic",
-				  "SceneCollection", name.c_str());
-		config_set_string(App()->GetUserConfig(), "Basic",
-				  "SceneCollectionFile", name.c_str());
 		blog(LOG_INFO, "No scene file found, creating default scene");
 
 		bool hasFirstRun = config_get_bool(App()->GetUserConfig(),
@@ -8537,7 +8533,7 @@ void OBSBasic::on_actionShowWhatsNew_triggered()
 	if (!cef)
 		return;
 
-	config_set_int(App()->GetUserConfig(), "General", "InfoIncrement", -1);
+	config_set_int(App()->GetAppConfig(), "General", "InfoIncrement", -1);
 
 	WhatsNewInfoThread *wnit = new WhatsNewInfoThread();
 	connect(wnit, &WhatsNewInfoThread::Result, this,

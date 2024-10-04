@@ -21,8 +21,8 @@ if (( ! ${+CI} )) {
   exit 1
 }
 
-autoload -Uz is-at-least && if ! is-at-least 5.2; then
-  print -u2 -PR "%F{1}${funcstack[1]##*/}:%f Running on Zsh version %B${ZSH_VERSION}%b, but Zsh %B5.2%b is the minimum supported version. Upgrade Zsh to fix this issue."
+autoload -Uz is-at-least && if ! is-at-least 5.9; then
+  print -u2 -PR "%F{1}${funcstack[1]##*/}:%f Running on Zsh version %B${ZSH_VERSION}%b, but Zsh %B5.9%b is the minimum supported version. Upgrade Zsh to fix this issue."
   exit 1
 fi
 
@@ -57,7 +57,6 @@ build() {
     macos-x86_64
     macos-arm64
     ubuntu-x86_64
-    ubuntu-aarch64
   )
 
   local config='RelWithDebInfo'
@@ -211,12 +210,9 @@ build() {
       local cmake_bin='/usr/bin/cmake'
       cmake_args+=(
         --preset ubuntu-ci
-        --toolchain ${project_root}/cmake/linux/toolchain-${target##*-}-gcc.cmake
         -DENABLE_BROWSER:BOOL=ON
         -DCEF_ROOT_DIR:PATH="${project_root}/.deps/cef_binary_${CEF_VERSION}_${target//ubuntu-/linux_}"
       )
-
-      if [[ ${target##*-} == aarch64 ]] cmake-args+=(-DENABLE_QSV11:BOOL=OFF)
 
       cmake_build_args+=(build_${target%%-*} --config ${config} --parallel)
       cmake_install_args+=(build_${target%%-*} --prefix ${project_root}/build_${target%%-*}/install/${config})
