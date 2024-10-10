@@ -334,11 +334,11 @@ void OBSBasicStats::Update()
 	fps->setText(str);
 
 	if (curFPS < (obsFPS * 0.8))
-		setThemeID(fps, "error");
+		setClasses(fps, "text-danger");
 	else if (curFPS < (obsFPS * 0.95))
-		setThemeID(fps, "warning");
+		setClasses(fps, "text-warning");
 	else
-		setThemeID(fps, "");
+		setClasses(fps, "");
 
 	/* ------------------ */
 
@@ -370,11 +370,11 @@ void OBSBasicStats::Update()
 	hddSpace->setText(str);
 
 	if (num_bytes < GBYTE)
-		setThemeID(hddSpace, "error");
+		setClasses(hddSpace, "text-danger");
 	else if (num_bytes < (5 * GBYTE))
-		setThemeID(hddSpace, "warning");
+		setClasses(hddSpace, "text-warning");
 	else
-		setThemeID(hddSpace, "");
+		setClasses(hddSpace, "");
 
 	/* ------------------ */
 
@@ -394,11 +394,11 @@ void OBSBasicStats::Update()
 		(long double)ovi.fps_den * 1000.0l / (long double)ovi.fps_num;
 
 	if (num > fpsFrameTime)
-		setThemeID(renderTime, "error");
+		setClasses(renderTime, "text-danger");
 	else if (num > fpsFrameTime * 0.75l)
-		setThemeID(renderTime, "warning");
+		setClasses(renderTime, "text-warning");
 	else
-		setThemeID(renderTime, "");
+		setClasses(renderTime, "");
 
 	/* ------------------ */
 
@@ -425,11 +425,11 @@ void OBSBasicStats::Update()
 	skippedFrames->setText(str);
 
 	if (num > 5.0l)
-		setThemeID(skippedFrames, "error");
+		setClasses(skippedFrames, "text-danger");
 	else if (num > 1.0l)
-		setThemeID(skippedFrames, "warning");
+		setClasses(skippedFrames, "text-warning");
 	else
-		setThemeID(skippedFrames, "");
+		setClasses(skippedFrames, "");
 
 	/* ------------------ */
 
@@ -452,11 +452,11 @@ void OBSBasicStats::Update()
 	missedFrames->setText(str);
 
 	if (num > 5.0l)
-		setThemeID(missedFrames, "error");
+		setClasses(missedFrames, "text-danger");
 	else if (num > 1.0l)
-		setThemeID(missedFrames, "warning");
+		setClasses(missedFrames, "text-warning");
 	else
-		setThemeID(missedFrames, "");
+		setClasses(missedFrames, "");
 
 	/* ------------------------------------------- */
 	/* recording/streaming stats                   */
@@ -587,7 +587,7 @@ bool OBSBasicStats::OutputLabels::Update(obs_output_t *output_)
 		kbps = 0.0l;
 
 	QString str = QTStr("Basic.Stats.Status.Inactive");
-	QString themeID;
+	QString styling;
 	bool active = output ? obs_output_active(output) : false;
 	if (recording) {
 		if (active)
@@ -600,16 +600,16 @@ bool OBSBasicStats::OutputLabels::Update(obs_output_t *output_)
 
 			if (reconnecting) {
 				str = QTStr("Basic.Stats.Status.Reconnecting");
-				themeID = "error";
+				styling = "text-danger";
 			} else {
 				str = QTStr("Basic.Stats.Status.Live");
-				themeID = "good";
+				styling = "text-success";
 			}
 		}
 	}
 
 	status->setText(str);
-	setThemeID(status, themeID);
+	setClasses(status, styling);
 
 	long double num = (long double)totalBytes / (1024.0l * 1024.0l);
 	const char *unit = "MiB";
@@ -650,11 +650,11 @@ bool OBSBasicStats::OutputLabels::Update(obs_output_t *output_)
 		droppedFrames->setText(str);
 
 		if (num > 5.0l)
-			setThemeID(droppedFrames, "error");
+			setClasses(droppedFrames, "text-danger");
 		else if (num > 1.0l)
-			setThemeID(droppedFrames, "warning");
+			setClasses(droppedFrames, "text-warning");
 		else
-			setThemeID(droppedFrames, "");
+			setClasses(droppedFrames, "");
 	}
 
 	lastBytesSent = bytesSent;

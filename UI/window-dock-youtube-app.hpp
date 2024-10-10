@@ -11,13 +11,11 @@ class YouTubeAppDock : public BrowserDock {
 
 public:
 	YouTubeAppDock(const QString &title);
-	~YouTubeAppDock();
 
 	enum streaming_mode_t { YTSM_ACCOUNT, YTSM_STREAM_KEY };
 
 	void AccountConnected();
 	void AccountDisconnected();
-	void SettingsUpdated(bool cleanup = false);
 	void Update();
 
 	void BroadcastCreated(const char *stream_id);
@@ -28,6 +26,9 @@ public:
 	static bool IsYTServiceSelected();
 	static YoutubeApiWrappers *GetYTApi();
 	static void CleanupYouTubeUrls();
+
+public slots:
+	void SettingsUpdated(bool cleanup = false);
 
 protected:
 	void IngestionStarted(const char *stream_id, streaming_mode_t mode);
@@ -43,11 +44,11 @@ private:
 	void DispatchYTEvent(const char *event, const char *video_id,
 			     streaming_mode_t mode);
 	void UpdateChannelId();
+	void ReloadChatDock();
 	void SetInitEvent(streaming_mode_t mode, const char *event = nullptr,
 			  const char *video_id = nullptr,
 			  const char *channelId = nullptr);
 
 	QString channelId;
 	QPointer<QCefWidget> dockBrowser;
-	QCefCookieManager *cookieManager; // is not a Qt object
 };
