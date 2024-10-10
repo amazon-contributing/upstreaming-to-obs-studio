@@ -17,8 +17,7 @@
 
 #include "obs-internal.h"
 
-void handle_encoder_group_reconfigure_request(obs_encoder_t *encoder,
-					      uint64_t frame_timestamp);
+void handle_encoder_group_reconfigure_request(obs_encoder_t *encoder, uint64_t frame_timestamp);
 
 #define NBSP "\xC2\xA0"
 static const char *gpu_encode_frame_name = "gpu_encode_frame";
@@ -33,8 +32,7 @@ static void *gpu_encode_thread(void *data)
 
 	os_set_thread_name("obs gpu encode thread");
 	const char *gpu_encode_thread_name = profile_store_name(
-		obs_get_profiler_name_store(),
-		"obs_gpu_encode_thread(%g" NBSP "ms)", interval / 1000000.);
+		obs_get_profiler_name_store(), "obs_gpu_encode_thread(%g" NBSP "ms)", interval / 1000000.);
 	profile_register_root(gpu_encode_thread_name, interval);
 
 	while (os_sem_wait(video->gpu_encode_semaphore) == 0) {
@@ -69,8 +67,7 @@ static void *gpu_encode_thread(void *data)
 		video_output_inc_texture_frames(video->video);
 
 		for (size_t i = 0; i < video->gpu_encoders.num; i++) {
-			obs_encoder_t *encoder = obs_encoder_get_ref(
-				video->gpu_encoders.array[i]);
+			obs_encoder_t *encoder = obs_encoder_get_ref(video->gpu_encoders.array[i]);
 			if (encoder)
 				da_push_back(encoders, &encoder);
 		}
@@ -86,18 +83,15 @@ static void *gpu_encode_thread(void *data)
 			uint32_t skip = 0;
 
 			obs_encoder_t *encoder = encoders.array[i];
-			obs_weak_encoder_t **paired =
-				encoder->paired_encoders.array;
+			obs_weak_encoder_t **paired = encoder->paired_encoders.array;
 			size_t num_paired = encoder->paired_encoders.num;
 
-			pkt.timebase_num = encoder->timebase_num *
-					   encoder->frame_rate_divisor;
+			pkt.timebase_num = encoder->timebase_num * encoder->frame_rate_divisor;
 			pkt.timebase_den = encoder->timebase_den;
 			pkt.encoder = encoder;
 
 			if (encoder->encoder_group && !encoder->start_ts) {
-				struct obs_encoder_group *group =
-					encoder->encoder_group;
+				struct obs_encoder_group *group = encoder->encoder_group;
 				bool ready = false;
 				pthread_mutex_lock(&group->mutex);
 				ready = group->start_timestamp == timestamp;
@@ -109,17 +103,12 @@ static void *gpu_encode_thread(void *data)
 			if (!encoder->first_received && num_paired) {
 				bool wait_for_audio = false;
 
-				for (size_t idx = 0;
-				     !wait_for_audio && idx < num_paired;
-				     idx++) {
-					obs_encoder_t *enc =
-						obs_weak_encoder_get_encoder(
-							paired[idx]);
+				for (size_t idx = 0; !wait_for_audio && idx < num_paired; idx++) {
+					obs_encoder_t *enc = obs_weak_encoder_get_encoder(paired[idx]);
 					if (!enc)
 						continue;
 
-					if (!enc->first_received ||
-					    enc->first_raw_ts > timestamp) {
+					if (!enc->first_received || enc->first_raw_ts > timestamp) {
 						wait_for_audio = true;
 					}
 
@@ -137,19 +126,16 @@ static void *gpu_encode_thread(void *data)
 			// to allow multiple encoders started at the same time to start on
 			// the same frame
 			skip = encoder->frame_rate_divisor_counter++;
-			if (encoder->frame_rate_divisor_counter ==
-			    encoder->frame_rate_divisor)
+			if (encoder->frame_rate_divisor_counter == encoder->frame_rate_divisor)
 				encoder->frame_rate_divisor_counter = 0;
 			if (skip)
 				continue;
 
-			handle_encoder_group_reconfigure_request(encoder,
-								 timestamp);
+			handle_encoder_group_reconfigure_request(encoder, timestamp);
 
 			if (encoder->reconfigure_requested) {
 				encoder->reconfigure_requested = false;
-				encoder->info.update(encoder->context.data,
-						     encoder->context.settings);
+				encoder->info.update(encoder->context.data, encoder->context.settings);
 			}
 
 			if (!encoder->start_ts)
@@ -173,15 +159,12 @@ static void *gpu_encode_thread(void *data)
 				tex.tex[0] = tf.tex;
 				tex.tex[1] = tf.tex_uv;
 				tex.tex[2] = NULL;
-				success = encoder->info.encode_texture2(
-					encoder->context.data, &tex,
-					encoder->cur_pts, lock_key, &next_key,
-					&pkt, &received);
+				success = encoder->info.encode_texture2(encoder->context.data, &tex, encoder->cur_pts,
+									lock_key, &next_key, &pkt, &received);
 			} else {
-				success = encoder->info.encode_texture(
-					encoder->context.data, tf.handle,
-					encoder->cur_pts, lock_key, &next_key,
-					&pkt, &received);
+				success = encoder->info.encode_texture(encoder->context.data, tf.handle,
+								       encoder->cur_pts, lock_key, &next_key, &pkt,
+								       &received);
 			}
 			profile_end(gpu_encode_frame_name);
 
@@ -190,9 +173,7 @@ static void *gpu_encode_thread(void *data)
 			 * (frame encode request complete) and current PTS. PTS is used to
 			 * associate the frame timing data with the encode packet. */
 			if (tf.timestamp) {
-				struct encoder_packet_time *ept =
-					da_push_back_new(
-						encoder->encoder_packet_times);
+				struct encoder_packet_time *ept = da_push_back_new(encoder->encoder_packet_times);
 				// Get the frame encode request complete timestamp
 				if (success) {
 					ept->ferc = os_gettime_ns();
@@ -206,13 +187,11 @@ static void *gpu_encode_thread(void *data)
 				ept->fer = fer_ts;
 			}
 
-			send_off_encoder_packet(encoder, success, received,
-						&pkt);
+			send_off_encoder_packet(encoder, success, received, &pkt);
 
 			lock_key = next_key;
 
-			encoder->cur_pts += encoder->timebase_num *
-					    encoder->frame_rate_divisor;
+			encoder->cur_pts += encoder->timebase_num * encoder->frame_rate_divisor;
 		}
 
 		/* -------------- */
@@ -223,13 +202,11 @@ static void *gpu_encode_thread(void *data)
 
 		if (--tf.count) {
 			tf.timestamp += interval;
-			deque_push_front(&video->gpu_encoder_queue, &tf,
-					 sizeof(tf));
+			deque_push_front(&video->gpu_encoder_queue, &tf, sizeof(tf));
 
 			video_output_inc_texture_skipped_frames(video->video);
 		} else {
-			deque_push_back(&video->gpu_encoder_avail_queue, &tf,
-					sizeof(tf));
+			deque_push_back(&video->gpu_encoder_avail_queue, &tf, sizeof(tf));
 		}
 
 		pthread_mutex_unlock(&video->gpu_encoder_mutex);
@@ -253,8 +230,7 @@ static void *gpu_encode_thread(void *data)
 
 bool init_gpu_encoding(struct obs_core_video_mix *video)
 {
-	const struct video_output_info *info =
-		video_output_get_info(video->video);
+	const struct video_output_info *info = video_output_get_info(video->video);
 
 	video->gpu_encode_stop = false;
 
@@ -264,13 +240,11 @@ bool init_gpu_encoding(struct obs_core_video_mix *video)
 		gs_texture_t *tex_uv;
 
 		if (info->format == VIDEO_FORMAT_P010) {
-			gs_texture_create_p010(
-				&tex, &tex_uv, info->width, info->height,
-				GS_RENDER_TARGET | GS_SHARED_KM_TEX);
+			gs_texture_create_p010(&tex, &tex_uv, info->width, info->height,
+					       GS_RENDER_TARGET | GS_SHARED_KM_TEX);
 		} else {
-			gs_texture_create_nv12(
-				&tex, &tex_uv, info->width, info->height,
-				GS_RENDER_TARGET | GS_SHARED_KM_TEX);
+			gs_texture_create_nv12(&tex, &tex_uv, info->width, info->height,
+					       GS_RENDER_TARGET | GS_SHARED_KM_TEX);
 		}
 		if (!tex) {
 			return false;
@@ -282,21 +256,16 @@ bool init_gpu_encoding(struct obs_core_video_mix *video)
 		uint32_t handle = (uint32_t)-1;
 #endif
 
-		struct obs_tex_frame frame = {.tex = tex,
-					      .tex_uv = tex_uv,
-					      .handle = handle};
+		struct obs_tex_frame frame = {.tex = tex, .tex_uv = tex_uv, .handle = handle};
 
-		deque_push_back(&video->gpu_encoder_avail_queue, &frame,
-				sizeof(frame));
+		deque_push_back(&video->gpu_encoder_avail_queue, &frame, sizeof(frame));
 	}
 
 	if (os_sem_init(&video->gpu_encode_semaphore, 0) != 0)
 		return false;
-	if (os_event_init(&video->gpu_encode_inactive, OS_EVENT_TYPE_MANUAL) !=
-	    0)
+	if (os_event_init(&video->gpu_encode_inactive, OS_EVENT_TYPE_MANUAL) != 0)
 		return false;
-	if (pthread_create(&video->gpu_encode_thread, NULL, gpu_encode_thread,
-			   video) != 0)
+	if (pthread_create(&video->gpu_encode_thread, NULL, gpu_encode_thread, video) != 0)
 		return false;
 
 	os_event_signal(video->gpu_encode_inactive);

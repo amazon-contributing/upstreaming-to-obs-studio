@@ -31,8 +31,7 @@ public:
 
 private:
 	// You need to hold the mutex before calling this
-	void trimRows(std::vector<ParsedCsvRow> &rows,
-		      const QMutexLocker<QMutex> &ensure_lock);
+	void trimRows(std::vector<ParsedCsvRow> &rows, const QMutexLocker<QMutex> &ensure_lock);
 };
 
 class PresentMonCapture : public QObject {

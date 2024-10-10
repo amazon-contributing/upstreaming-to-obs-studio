@@ -26,8 +26,7 @@ OBSAbout::OBSAbout(QWidget *parent) : QDialog(parent), ui(new Ui::OBSAbout)
 #ifdef HAVE_OBSCONFIG_H
 	ver += obs_get_version_string();
 #else
-	ver += LIBOBS_API_MAJOR_VER + "." + LIBOBS_API_MINOR_VER + "." +
-	       LIBOBS_API_PATCH_VER;
+	ver += LIBOBS_API_MAJOR_VER + "." + LIBOBS_API_MINOR_VER + "." + LIBOBS_API_PATCH_VER;
 #endif
 
 	ui->version->setText(ver + bitness);
@@ -37,9 +36,8 @@ OBSAbout::OBSAbout(QWidget *parent) : QDialog(parent), ui(new Ui::OBSAbout)
 	if (steam) {
 		delete ui->donate;
 	} else {
-		ui->donate->setText(
-			"&nbsp;&nbsp;<a href='https://obsproject.com/contribute'>" +
-			QTStr("About.Donate") + "</a>");
+		ui->donate->setText("&nbsp;&nbsp;<a href='https://obsproject.com/contribute'>" + QTStr("About.Donate") +
+				    "</a>");
 		ui->donate->setTextInteractionFlags(Qt::TextBrowserInteraction);
 		ui->donate->setOpenExternalLinks(true);
 	}
@@ -61,24 +59,18 @@ OBSAbout::OBSAbout(QWidget *parent) : QDialog(parent), ui(new Ui::OBSAbout)
 	ui->license->setProperty("class", "bg-base");
 	ui->info->setProperty("class", "");
 
-	connect(ui->about, &ClickableLabel::clicked, this,
-		&OBSAbout::ShowAbout);
-	connect(ui->authors, &ClickableLabel::clicked, this,
-		&OBSAbout::ShowAuthors);
-	connect(ui->license, &ClickableLabel::clicked, this,
-		&OBSAbout::ShowLicense);
+	connect(ui->about, &ClickableLabel::clicked, this, &OBSAbout::ShowAbout);
+	connect(ui->authors, &ClickableLabel::clicked, this, &OBSAbout::ShowAuthors);
+	connect(ui->license, &ClickableLabel::clicked, this, &OBSAbout::ShowLicense);
 
 	QPointer<OBSAbout> about(this);
 
 	OBSBasic *main = OBSBasic::Get();
 	if (main->patronJson.empty() && !main->patronJsonThread) {
-		RemoteTextThread *thread = new RemoteTextThread(
-			"https://obsproject.com/patreon/about-box.json",
-			"application/json");
-		QObject::connect(thread, &RemoteTextThread::Result, main,
-				 &OBSBasic::UpdatePatronJson);
-		QObject::connect(thread, &RemoteTextThread::Result, this,
-				 &OBSAbout::ShowAbout);
+		RemoteTextThread *thread =
+			new RemoteTextThread("https://obsproject.com/patreon/about-box.json", "application/json");
+		QObject::connect(thread, &RemoteTextThread::Result, main, &OBSBasic::UpdatePatronJson);
+		QObject::connect(thread, &RemoteTextThread::Result, this, &OBSAbout::ShowAbout);
 		main->patronJsonThread.reset(thread);
 		thread->start();
 	} else {
@@ -134,9 +126,7 @@ void OBSAbout::ShowAbout()
 void OBSAbout::ShowAuthors()
 {
 	std::string path;
-	QString error =
-		QTStr("About.Error")
-			.arg("https://github.com/obsproject/obs-studio/blob/master/AUTHORS");
+	QString error = QTStr("About.Error").arg("https://github.com/obsproject/obs-studio/blob/master/AUTHORS");
 
 #ifdef __APPLE__
 	if (!GetDataFilePath("AUTHORS", path)) {
@@ -163,12 +153,9 @@ void OBSAbout::ShowLicense()
 {
 	std::string path;
 	std::string mit_path;
-	QString error =
-		QTStr("About.Error")
-			.arg("https://github.com/obsproject/obs-studio/blob/master/COPYING");
+	QString error = QTStr("About.Error").arg("https://github.com/obsproject/obs-studio/blob/master/COPYING");
 
-	if (!GetDataFilePath("license/gplv2.txt", path) ||
-	    !GetDataFilePath("license/presentmon_mit.txt", mit_path)) {
+	if (!GetDataFilePath("license/gplv2.txt", path) || !GetDataFilePath("license/presentmon_mit.txt", mit_path)) {
 		ui->textBrowser->setPlainText(error);
 		return;
 	}
@@ -181,6 +168,5 @@ void OBSAbout::ShowLicense()
 		return;
 	}
 
-	ui->textBrowser->setPlainText(
-		QTStr("About.LicensesContainer").arg(&*text, &*mit_text));
+	ui->textBrowser->setPlainText(QTStr("About.LicensesContainer").arg(&*text, &*mit_text));
 }

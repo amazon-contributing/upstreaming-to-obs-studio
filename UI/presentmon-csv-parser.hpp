@@ -39,8 +39,7 @@ public:
 	 * If a valid CSV file is missing required columns in any row, or they fail to
 	 * parse as ints/floats, this will be detected as an error.
 	 */
-	bool dataRow(const std::vector<const char *> &columns,
-		     ParsedCsvRow *dest);
+	bool dataRow(const std::vector<const char *> &columns, ParsedCsvRow *dest);
 
 	QString lastError() const;
 
@@ -51,8 +50,7 @@ private:
 	//   struct ColumnFloatTarget { const char* name; int index; float ParsedCsvRow::*destMemberPtr; }
 	//   floatTargets.push_back(ColumnFloatTarget("timeInSeconds", n, &ParsedCsvRow::timeInSeconds));
 	//   floatTargets.push_back(ColumnFloatTarget("msBetweenPresents", n, &ParsedCsvRow::msBetweenPresents));
-	std::optional<size_t> colApplication_, colProcessID_, colTimeInSeconds_,
-		colMsBetweenPresents_;
+	std::optional<size_t> colApplication_, colProcessID_, colTimeInSeconds_, colMsBetweenPresents_;
 
 	QString lastError_;
 

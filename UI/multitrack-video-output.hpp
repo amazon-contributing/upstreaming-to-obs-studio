@@ -41,10 +41,8 @@ struct FutureWaitGuard {
 };
 
 struct MultitrackVideoViewInfo {
-	inline MultitrackVideoViewInfo(const char *name_,
-				       multitrack_video_start_cb start_video_,
-				       multitrack_video_stop_cb stop_video_,
-				       void *param_)
+	inline MultitrackVideoViewInfo(const char *name_, multitrack_video_start_cb start_video_,
+				       multitrack_video_stop_cb stop_video_, void *param_)
 		: start_video(start_video_),
 		  stop_video(stop_video_),
 		  param(param_),
@@ -59,18 +57,12 @@ struct MultitrackVideoViewInfo {
 
 struct MultitrackVideoOutput {
 public:
-	void PrepareStreaming(QWidget *parent, const char *service_name,
-			      obs_service_t *service,
-			      const std::optional<std::string> &rtmp_url,
-			      const QString &stream_key,
-			      const char *audio_encoder_id,
-			      std::optional<uint32_t> maximum_aggregate_bitrate,
-			      std::optional<uint32_t> maximum_video_tracks,
-			      std::optional<std::string> custom_config,
-			      obs_data_t *dump_stream_to_file_config,
-			      size_t main_audio_mixer,
-			      std::optional<size_t> vod_track_mixer,
-			      std::optional<bool> use_rtmps);
+	void PrepareStreaming(QWidget *parent, const char *service_name, obs_service_t *service,
+			      const std::optional<std::string> &rtmp_url, const QString &stream_key,
+			      const char *audio_encoder_id, std::optional<uint32_t> maximum_aggregate_bitrate,
+			      std::optional<uint32_t> maximum_video_tracks, std::optional<std::string> custom_config,
+			      obs_data_t *dump_stream_to_file_config, size_t main_audio_mixer,
+			      std::optional<size_t> vod_track_mixer, std::optional<bool> use_rtmps);
 	signal_handler_t *StreamingSignalHandler();
 	void StartedStreaming(QWidget *parent);
 	void StopStreaming();
@@ -85,10 +77,8 @@ public:
 
 private:
 	std::unique_ptr<BerryessaSubmitter> berryessa_;
-	std::shared_ptr<std::optional<BerryessaEveryMinute>>
-		berryessa_every_minute_ =
-			std::make_shared<std::optional<BerryessaEveryMinute>>(
-				std::nullopt);
+	std::shared_ptr<std::optional<BerryessaEveryMinute>> berryessa_every_minute_ =
+		std::make_shared<std::optional<BerryessaEveryMinute>>(std::nullopt);
 	std::optional<FutureWaitGuard> berryessa_every_minute_initializer_;
 
 	struct OBSOutputObjects {
@@ -104,8 +94,7 @@ private:
 	std::optional<OBSOutputObjects> take_current();
 	std::optional<OBSOutputObjects> take_current_stream_dump();
 
-	static void
-	ReleaseOnMainThread(std::optional<OBSOutputObjects> objects);
+	static void ReleaseOnMainThread(std::optional<OBSOutputObjects> objects);
 
 	std::mutex current_mutex;
 	std::optional<OBSOutputObjects> current;

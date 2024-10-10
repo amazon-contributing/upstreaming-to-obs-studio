@@ -22,12 +22,10 @@ public:
 	static std::shared_ptr<WMIProvider> CreateProvider();
 	bool Refresh();
 
-	static std::optional<WMIDataQuery>
-	AddQuery(std::shared_ptr<WMIProvider> self, const wchar_t *query);
+	static std::optional<WMIDataQuery> AddQuery(std::shared_ptr<WMIProvider> self, const wchar_t *query);
 
 private:
-	WMIProvider(ComPtr<IWbemServices> service_,
-		    ComPtr<IWbemRefresher> refresher_)
+	WMIProvider(ComPtr<IWbemServices> service_, ComPtr<IWbemRefresher> refresher_)
 		: service_(service_),
 		  refresher_(refresher_)
 	{
@@ -57,9 +55,7 @@ public:
 	const wchar_t *query_;
 
 private:
-	WMIDataQuery(const wchar_t *query_,
-		     std::shared_ptr<WMIProvider> provider_,
-		     ComPtr<IWbemHiPerfEnum> enumerator_)
+	WMIDataQuery(const wchar_t *query_, std::shared_ptr<WMIProvider> provider_, ComPtr<IWbemHiPerfEnum> enumerator_)
 		: query_(query_),
 		  provider_(provider_),
 		  enumerator_(enumerator_)
@@ -82,10 +78,8 @@ public:
 	void SummarizeData(obs_data_t *data);
 
 private:
-	WMIQueries(std::shared_ptr<WMIProvider> wmi_provider_,
-		   std::optional<WMIDataQuery> cpu_usage_,
-		   std::optional<WMIDataQuery> gpu_usage_,
-		   std::optional<WMIDataQuery> gpu_memory_usage_)
+	WMIQueries(std::shared_ptr<WMIProvider> wmi_provider_, std::optional<WMIDataQuery> cpu_usage_,
+		   std::optional<WMIDataQuery> gpu_usage_, std::optional<WMIDataQuery> gpu_memory_usage_)
 		: wmi_provider_(wmi_provider_),
 		  cpu_usage_(cpu_usage_),
 		  gpu_usage_(gpu_usage_),

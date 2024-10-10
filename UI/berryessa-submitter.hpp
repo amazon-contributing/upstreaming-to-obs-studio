@@ -19,8 +19,7 @@ private:
 public:
 	SubmissionWorker(QString url) : url_(url)
 	{
-		connect(this, &SubmissionWorker::PendingEvent, this,
-			&SubmissionWorker::AttemptSubmission,
+		connect(this, &SubmissionWorker::PendingEvent, this, &SubmissionWorker::AttemptSubmission,
 			Qt::QueuedConnection);
 	}
 
