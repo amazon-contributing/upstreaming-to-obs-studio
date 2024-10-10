@@ -421,10 +421,7 @@ static PyObject *add_event_callback(PyObject *self, PyObject *args)
 void add_python_frontend_funcs(PyObject *module)
 {
 	static PyMethodDef funcs[] = {
-#define DEF_FUNC(c)                                       \
-	{                                                 \
-		"obs_frontend_" #c, c, METH_VARARGS, NULL \
-	}
+#define DEF_FUNC(c) {"obs_frontend_" #c, c, METH_VARARGS, NULL}
 
 		DEF_FUNC(get_scene_names),
 		DEF_FUNC(get_scenes),

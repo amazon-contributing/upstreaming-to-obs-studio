@@ -270,7 +270,8 @@ bool HighContrastEnabled()
 	QDBusMessage msgXdpSettingsVersion = QDBusMessage::createMethodCall("org.freedesktop.portal.Desktop",
 									    "/org/freedesktop/portal/desktop",
 									    "org.freedesktop.DBus.Properties", "Get");
-	msgXdpSettingsVersion << "org.freedesktop.portal.Settings" << "version";
+	msgXdpSettingsVersion << "org.freedesktop.portal.Settings"
+			      << "version";
 
 	reply = QDBusConnection::sessionBus().call(msgXdpSettingsVersion);
 
@@ -292,7 +293,8 @@ bool HighContrastEnabled()
 		QDBusMessage::createMethodCall("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
 					       "org.freedesktop.portal.Settings", "ReadOne");
 
-	msgXdpSettingsContrast << "org.freedesktop.appearance" << "contrast";
+	msgXdpSettingsContrast << "org.freedesktop.appearance"
+			       << "contrast";
 
 	reply = QDBusConnection::sessionBus().call(msgXdpSettingsContrast);
 

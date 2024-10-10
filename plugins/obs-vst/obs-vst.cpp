@@ -165,7 +165,8 @@ static void fill_out_plugins(obs_property_t *list)
 	QStringList dir_list;
 
 #ifdef __APPLE__
-	dir_list << "/Library/Audio/Plug-Ins/VST/" << "~/Library/Audio/Plug-ins/VST/";
+	dir_list << "/Library/Audio/Plug-Ins/VST/"
+		 << "~/Library/Audio/Plug-ins/VST/";
 #elif WIN32
 #ifndef _WIN64
 	HANDLE hProcess = GetCurrentProcess();
@@ -226,7 +227,8 @@ static void fill_out_plugins(obs_property_t *list)
 #elif WIN32
 	filters << "*.dll";
 #elif __linux__
-	filters << "*.so" << "*.o";
+	filters << "*.so"
+		<< "*.o";
 #endif
 
 	QStringList vst_list;

@@ -9654,7 +9654,12 @@ void OBSBasic::RemoveDockWidget(const QString &name)
 bool OBSBasic::IsDockObjectNameUsed(const QString &name)
 {
 	QStringList list;
-	list << "scenesDock" << "sourcesDock" << "mixerDock" << "transitionsDock" << "controlsDock" << "statsDock";
+	list << "scenesDock"
+	     << "sourcesDock"
+	     << "mixerDock"
+	     << "transitionsDock"
+	     << "controlsDock"
+	     << "statsDock";
 	list << oldExtraDockNames;
 	list << extraDockNames;
 	list << extraCustomDockNames;

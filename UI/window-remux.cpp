@@ -729,7 +729,12 @@ void OBSRemux::dropEvent(QDropEvent *ev)
 
 		if (fileInfo.isDir()) {
 			QStringList directoryFilter;
-			directoryFilter << "*.flv" << "*.mp4" << "*.mov" << "*.mkv" << "*.ts" << "*.m3u8";
+			directoryFilter << "*.flv"
+					<< "*.mp4"
+					<< "*.mov"
+					<< "*.mkv"
+					<< "*.ts"
+					<< "*.m3u8";
 
 			QDirIterator dirIter(fileInfo.absoluteFilePath(), directoryFilter, QDir::Files,
 					     QDirIterator::Subdirectories);

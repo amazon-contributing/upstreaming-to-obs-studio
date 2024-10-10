@@ -1196,10 +1196,7 @@ static PyObject *py_script_log(PyObject *self, PyObject *args)
 static void add_hook_functions(PyObject *module)
 {
 	static PyMethodDef funcs[] = {
-#define DEF_FUNC(n, c)                   \
-	{                                \
-		n, c, METH_VARARGS, NULL \
-	}
+#define DEF_FUNC(n, c) {n, c, METH_VARARGS, NULL}
 
 		DEF_FUNC("script_log_no_endl", py_script_log_no_endl),
 		DEF_FUNC("script_log", py_script_log),
