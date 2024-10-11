@@ -66,8 +66,7 @@ bool CsvRowParser::headerRow(const std::vector<const char *> &columns)
 	return lastError_.isEmpty();
 }
 
-bool CsvRowParser::dataRow(const std::vector<const char *> &columns,
-			   ParsedCsvRow *dest)
+bool CsvRowParser::dataRow(const std::vector<const char *> &columns, ParsedCsvRow *dest)
 {
 	if (*colApplication_ >= columns.size())
 		setError("Data row missing column Application");
@@ -84,8 +83,7 @@ bool CsvRowParser::dataRow(const std::vector<const char *> &columns,
 	char *endptr;
 
 	// We truncate application name if necessary for it to fit
-	strncpy(dest->Application, columns[*colApplication_],
-		sizeof(dest->Application) - 1);
+	strncpy(dest->Application, columns[*colApplication_], sizeof(dest->Application) - 1);
 	dest->Application[sizeof(dest->Application) - 1] = '\0';
 
 	dest->ProcessID = strtol(columns[*colProcessID_], &endptr, 10);
@@ -96,8 +94,7 @@ bool CsvRowParser::dataRow(const std::vector<const char *> &columns,
 	if (*endptr != '\0')
 		setError("Data row TimeInSeconds not a float");
 
-	dest->msBetweenPresents =
-		strtod(columns[*colMsBetweenPresents_], &endptr);
+	dest->msBetweenPresents = strtod(columns[*colMsBetweenPresents_], &endptr);
 	if (*endptr != '\0')
 		setError("Data row msBetweenPresents not a float");
 
@@ -124,16 +121,13 @@ void testCsvParser()
 
 		if (i == 0) {
 			bool ok = parser.headerRow(v);
-			blog(LOG_INFO,
-			     "HARDCODED UNIT TEST LINE: csv line %d ok = %d",
-			     i + 1, ok);
+			blog(LOG_INFO, "HARDCODED UNIT TEST LINE: csv line %d ok = %d", i + 1, ok);
 		} else {
 			bool ok = parser.dataRow(v, &row);
 			blog(LOG_INFO,
 			     "HARDCODED UNIT TEST LINE: csv line %d ok = %d, Application=%s, ProcessID=%" PRIu64
 			     ", TimeInSeconds=%f, msBetweenPresents=%f",
-			     i + 1, ok, row.Application, row.ProcessID,
-			     row.TimeInSeconds, row.msBetweenPresents);
+			     i + 1, ok, row.Application, row.ProcessID, row.TimeInSeconds, row.msBetweenPresents);
 		}
 
 		free(s);

@@ -19,10 +19,7 @@
 class BerryessaSubmitter;
 
 struct OSCPUUsageInfoDeleter {
-	void operator()(os_cpu_usage_info *info)
-	{
-		os_cpu_usage_info_destroy(info);
-	}
+	void operator()(os_cpu_usage_info *info) { os_cpu_usage_info_destroy(info); }
 };
 
 struct OBSFrameCounters {
@@ -38,8 +35,7 @@ struct OBSEncoderFrameCounters {
 class BerryessaEveryMinute : public QObject {
 	Q_OBJECT
 public:
-	BerryessaEveryMinute(QObject *parent, BerryessaSubmitter *berryessa,
-			     const std::vector<OBSEncoder> &outputs);
+	BerryessaEveryMinute(QObject *parent, BerryessaSubmitter *berryessa, const std::vector<OBSEncoder> &outputs);
 	virtual ~BerryessaEveryMinute();
 
 private slots:
@@ -52,8 +48,7 @@ private:
 	QDateTime startTime_;
 
 	struct UsageInfoCounters {
-		std::unique_ptr<os_cpu_usage_info, OSCPUUsageInfoDeleter>
-			obs_cpu_usage_info_;
+		std::unique_ptr<os_cpu_usage_info, OSCPUUsageInfoDeleter> obs_cpu_usage_info_;
 
 		OBSFrameCounters frame_counters_;
 		std::vector<OBSEncoderFrameCounters> encoder_counters_;

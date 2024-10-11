@@ -6,12 +6,9 @@
 
 #include "models/multitrack-video.hpp"
 
-GoLiveApi::PostData
-constructGoLivePost(QString streamKey,
-		    const std::optional<uint64_t> &maximum_aggregate_bitrate,
-		    const std::optional<uint32_t> &maximum_video_tracks,
-		    bool vod_track_enabled,
-		    const std::map<std::string, video_t *> &extra_views)
+GoLiveApi::PostData constructGoLivePost(QString streamKey, const std::optional<uint64_t> &maximum_aggregate_bitrate,
+					const std::optional<uint32_t> &maximum_video_tracks, bool vod_track_enabled,
+					const std::map<std::string, video_t *> &extra_views)
 {
 	GoLiveApi::PostData post_data{};
 	post_data.service = "IVS";
@@ -26,8 +23,7 @@ constructGoLivePost(QString streamKey,
 	client.version = obs_get_version_string();
 
 	auto add_codec = [&](const char *codec) {
-		auto it = std::find(std::begin(client.supported_codecs),
-				    std::end(client.supported_codecs), codec);
+		auto it = std::find(std::begin(client.supported_codecs), std::end(client.supported_codecs), codec);
 		if (it != std::end(client.supported_codecs))
 			return;
 
@@ -69,27 +65,23 @@ constructGoLivePost(QString streamKey,
 
 	if (!extra_views.empty()) {
 		post_data.preferences.extra_views.emplace();
-		auto &extra_views_capability =
-			*post_data.preferences.extra_views;
+		auto &extra_views_capability = *post_data.preferences.extra_views;
 		extra_views_capability.reserve(extra_views.size());
 		for (auto &view : extra_views) {
 			video_t *video = view.second;
 			if (!video)
 				continue;
-			const struct video_output_info *voi =
-				video_output_get_info(video);
+			const struct video_output_info *voi = video_output_get_info(video);
 			if (!voi)
 				continue;
-			extra_views_capability.push_back(GoLiveApi::ExtraView{
-				view.first, voi->width, voi->height,
-				media_frames_per_second{voi->fps_num,
-							voi->fps_den}});
+			extra_views_capability.push_back(
+				GoLiveApi::ExtraView{view.first, voi->width, voi->height,
+						     media_frames_per_second{voi->fps_num, voi->fps_den}});
 		}
 	}
 
 	if (maximum_aggregate_bitrate.has_value())
-		preferences.maximum_aggregate_bitrate =
-			maximum_aggregate_bitrate.value();
+		preferences.maximum_aggregate_bitrate = maximum_aggregate_bitrate.value();
 	if (maximum_video_tracks.has_value())
 		preferences.maximum_video_tracks = maximum_video_tracks.value();
 

@@ -26,10 +26,10 @@ BerryessaSubmitter::BerryessaSubmitter(QObject *parent, QString url)
 	submission_thread_.start();
 	submission_worker_.moveToThread(&submission_thread_);
 
-	connect(&submission_worker_, &SubmissionWorker::SubmissionError, this,
-		&BerryessaSubmitter::SubmissionError, Qt::QueuedConnection);
-	connect(this, &BerryessaSubmitter::SubmitEvent, &submission_worker_,
-		&SubmissionWorker::QueueEvent, Qt::QueuedConnection);
+	connect(&submission_worker_, &SubmissionWorker::SubmissionError, this, &BerryessaSubmitter::SubmissionError,
+		Qt::QueuedConnection);
+	connect(this, &BerryessaSubmitter::SubmitEvent, &submission_worker_, &SubmissionWorker::QueueEvent,
+		Qt::QueuedConnection);
 }
 
 BerryessaSubmitter::~BerryessaSubmitter()
@@ -51,8 +51,7 @@ void BerryessaSubmitter::submit(QString eventName, obs_data_t *properties)
 	obs_data_set_string(toplevel, "event", eventName.toUtf8());
 	obs_data_set_obj(toplevel, "properties", newProperties);
 
-	blog(LOG_INFO, "BerryessaSubmitter: submitting %s",
-	     eventName.toUtf8().constData());
+	blog(LOG_INFO, "BerryessaSubmitter: submitting %s", eventName.toUtf8().constData());
 
 	emit SubmitEvent(OBSData{toplevel});
 }
@@ -66,14 +65,10 @@ void SubmissionWorker::AttemptSubmission()
 		return;
 
 	auto current_time = std::chrono::steady_clock::now();
-	if (last_send_time_.has_value() &&
-	    (current_time - *last_send_time_) < THROTTLE_DURATION) {
+	if (last_send_time_.has_value() && (current_time - *last_send_time_) < THROTTLE_DURATION) {
 		auto diff = current_time - *last_send_time_;
-		QTimer::singleShot(
-			std::chrono::duration_cast<std::chrono::milliseconds>(
-				diff)
-				.count(),
-			this, [this] { AttemptSubmission(); });
+		QTimer::singleShot(std::chrono::duration_cast<std::chrono::milliseconds>(diff).count(), this,
+				   [this] { AttemptSubmission(); });
 		return;
 	}
 
@@ -98,13 +93,12 @@ void SubmissionWorker::AttemptSubmission()
 	std::string httpResponse, httpError;
 	long httpResponseCode;
 
-	bool ok = GetRemoteFile(
-		url_.toUtf8(), httpResponse, httpError, // out params
-		&httpResponseCode,
-		nullptr, // out params (response code and content type)
-		"POST", postEncoded.constData(), headers,
-		nullptr, // signature
-		20);     // timeout in seconds
+	bool ok = GetRemoteFile(url_.toUtf8(), httpResponse, httpError, // out params
+				&httpResponseCode,
+				nullptr, // out params (response code and content type)
+				"POST", postEncoded.constData(), headers,
+				nullptr, // signature
+				20);     // timeout in seconds
 
 	// XXX parse response from berryessa, check response code?
 
@@ -116,12 +110,11 @@ void SubmissionWorker::AttemptSubmission()
 	obs_data_set_string(status, "error", httpError.c_str());
 	obs_data_set_int(status, "response_code", httpResponseCode);
 	if (ok) {
-		blog(LOG_INFO, "Submitted %lld bytes to metrics backend: %s",
-		     postEncoded.size(), obs_data_get_json(status));
+		blog(LOG_INFO, "Submitted %lld bytes to metrics backend: %s", postEncoded.size(),
+		     obs_data_get_json(status));
 	} else {
-		blog(LOG_WARNING,
-		     "Could not submit %lld bytes to metrics backend: %s",
-		     postEncoded.size(), obs_data_get_json(status));
+		blog(LOG_WARNING, "Could not submit %lld bytes to metrics backend: %s", postEncoded.size(),
+		     obs_data_get_json(status));
 		emit SubmissionError(OBSData{status});
 	}
 }
@@ -130,8 +123,7 @@ SubmissionWorker::~SubmissionWorker()
 {
 	DStr events;
 	for (const auto &event : pending_events_) {
-		dstr_catf(events, "\n    %s",
-			  obs_data_get_string(event, "event"));
+		dstr_catf(events, "\n    %s", obs_data_get_string(event, "event"));
 	}
 
 	if (!events->len) {
@@ -139,27 +131,22 @@ SubmissionWorker::~SubmissionWorker()
 		return;
 	}
 
-	blog(LOG_WARNING, "BerryessaSubmitter: %zu events remaining on exit:%s",
-	     pending_events_.size(), events->array);
+	blog(LOG_WARNING, "BerryessaSubmitter: %zu events remaining on exit:%s", pending_events_.size(), events->array);
 }
 
 void BerryessaSubmitter::setAlwaysBool(QString propertyKey, bool propertyValue)
 {
-	obs_data_set_bool(this->alwaysProperties_, propertyKey.toUtf8(),
-			  propertyValue);
+	obs_data_set_bool(this->alwaysProperties_, propertyKey.toUtf8(), propertyValue);
 }
 
-void BerryessaSubmitter::setAlwaysString(QString propertyKey,
-					 QString propertyValue)
+void BerryessaSubmitter::setAlwaysString(QString propertyKey, QString propertyValue)
 {
-	obs_data_set_string(this->alwaysProperties_, propertyKey.toUtf8(),
-			    propertyValue.toUtf8());
+	obs_data_set_string(this->alwaysProperties_, propertyKey.toUtf8(), propertyValue.toUtf8());
 }
 
 void BerryessaSubmitter::unsetAlways(QString propertyKey)
 {
-	obs_data_unset_user_value(this->alwaysProperties_,
-				  propertyKey.toUtf8());
+	obs_data_unset_user_value(this->alwaysProperties_, propertyKey.toUtf8());
 }
 
 void BerryessaSubmitter::SubmissionError(OBSData error)
