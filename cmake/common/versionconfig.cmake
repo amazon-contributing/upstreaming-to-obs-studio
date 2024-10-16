@@ -4,6 +4,7 @@ include_guard(GLOBAL)
 
 set(_obs_version ${_obs_default_version})
 set(_obs_version_canonical ${_obs_default_version})
+set(_obs_commit "")
 
 # Attempt to automatically discover expected OBS version
 if(NOT DEFINED OBS_VERSION_OVERRIDE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
@@ -35,6 +36,26 @@ elseif(DEFINED OBS_VERSION_OVERRIDE)
     set(_obs_version ${OBS_VERSION_OVERRIDE})
   else()
     message(FATAL_ERROR "Invalid version supplied - must be <MAJOR>.<MINOR>.<PATCH>[-(rc|beta)<NUMBER>].")
+  endif()
+endif()
+
+# Attempt to automatically discover commit hash
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+  execute_process(
+    COMMAND git rev-parse HEAD
+    OUTPUT_VARIABLE _obs_commit
+    ERROR_VARIABLE _git_describe_err
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    RESULT_VARIABLE _obs_version_result
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+
+  if(_git_describe_err)
+    message(FATAL_ERROR "Could not fetch OBS commit hash from git.\n" ${_git_describe_err})
+  endif()
+
+  if(_obs_version_result EQUAL 0)
+    set(OBS_COMMIT ${_obs_commit})
   endif()
 endif()
 
@@ -77,3 +98,4 @@ unset(_obs_version_canonical)
 unset(_obs_release_candidate)
 unset(_obs_beta)
 unset(_obs_version_result)
+unset(_obs_commit)
