@@ -38,6 +38,26 @@ elseif(DEFINED OBS_VERSION_OVERRIDE)
   endif()
 endif()
 
+# Attempt to automatically discover commit hash
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+  execute_process(
+    COMMAND git rev-parse HEAD
+    OUTPUT_VARIABLE _obs_commit
+    ERROR_VARIABLE _git_describe_err
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    RESULT_VARIABLE _obs_version_result
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+
+  if(_git_describe_err)
+    message(FATAL_ERROR "Could not fetch OBS commit hash from git.\n" ${_git_describe_err})
+  endif()
+
+  if(_obs_version_result EQUAL 0)
+    set(OBS_COMMIT ${_obs_commit})
+  endif()
+endif()
+
 # Set beta/rc versions if suffix included in version string
 if(_obs_version MATCHES "[0-9]+\\.[0-9]+\\.[0-9]+-rc[0-9]+")
   string(REGEX REPLACE "[0-9]+\\.[0-9]+\\.[0-9]+-rc([0-9]+).*$" "\\1" _obs_release_candidate ${_obs_version})
@@ -77,3 +97,4 @@ unset(_obs_version_canonical)
 unset(_obs_release_candidate)
 unset(_obs_beta)
 unset(_obs_version_result)
+unset(_obs_commit)

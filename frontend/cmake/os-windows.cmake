@@ -60,13 +60,6 @@ target_compile_definitions(obs-studio PRIVATE PSAPI_VERSION=2)
 
 target_link_options(obs-studio PRIVATE /IGNORE:4099 $<$<CONFIG:DEBUG>:/NODEFAULTLIB:MSVCRT>)
 
-# Set commit for untagged version comparisons in the Windows updater
-if(OBS_VERSION MATCHES ".+g[a-f0-9]+.*")
-  string(REGEX REPLACE ".+g([a-f0-9]+).*$" "\\1" OBS_COMMIT ${OBS_VERSION})
-else()
-  set(OBS_COMMIT "")
-endif()
-
 set_source_files_properties(utility/AutoUpdateThread.cpp PROPERTIES COMPILE_DEFINITIONS OBS_COMMIT="${OBS_COMMIT}")
 
 add_subdirectory(updater)
