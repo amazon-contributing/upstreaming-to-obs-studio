@@ -1,14 +1,11 @@
 name: Run bouf Patch Generation
 description: Generates OBS updater manifest and patches
 inputs:
-  gcsAccessKeyId:
-    description: GCS S3 Access Key ID
+  oldBuild:
+    description: URL to old build
     required: true
-  gcsAccessKeySecret:
-    description: GCS S3 Access Key Secret
-    required: true
-  workflowSecret:
-    description: GitHub API token to use for API calls
+  newBuild:
+    description: URL to new build
     required: true
   tagName:
     description: GitHub Release tag
@@ -27,16 +24,17 @@ runs:
         fetch-depth: 0
         ref: ${{ inputs.tagName }}
 
-    - name: Download Release Artifact
+    - name: Download Builds
       shell: pwsh
-      env:
-        GH_TOKEN: ${{ inputs.workflowSecret }}
       run: |
-        # Download OBS release
-        . ${env:GITHUB_ACTION_PATH}\Invoke-External.ps1
-        Invoke-External gh release download "${{ inputs.tagName }}" -p "OBS-Studio-${{ inputs.tagName }}-Windows.zip"
-        Invoke-External gh attestation verify "OBS-Studio-${{ inputs.tagName }}-Windows.zip" --owner obsproject
-        Expand-Archive -Path "OBS-Studio-${{ inputs.tagName }}-Windows.zip" -DestinationPath "${{ github.workspace }}/build"
+        . ${env:GITHUB_ACTION_PATH}\Ensure-Location.ps1
+        Ensure-Location "${{ github.workspace }}/build"
+        Ensure-Location "${{ github.workspace }}/old_builds/builds"
+        Invoke-WebRequest "${{ inputs.oldBuild }}" -OutFile "${{ github.workspace }}/old.zip"
+        Invoke-WebRequest "${{ inputs.newBuild }}" -OutFile "${{ github.workspace }}/new.zip"
+        # Version name doesn't really matter, it just needs to be an "old" build
+        Expand-Archive -Path "${{ github.workspace }}/old.zip" -DestinationPath "${{ github.workspace }}/old_builds/builds/30.2.0-beta1"
+        Expand-Archive -Path "${{ github.workspace }}/new.zip" -DestinationPath "${{ github.workspace }}/build"
 
     - name: Setup bouf
       shell: pwsh
@@ -53,37 +51,25 @@ runs:
         $windows_zip = "bouf-windows-${env:BOUF_TAG}.zip"
         $nsis_zip = "bouf-nsis-${env:BOUF_TAG}.zip"
         Invoke-External gh release download "${env:BOUF_TAG}" -R "obsproject/bouf" -p $windows_zip -p $nsis_zip
-        
+
         if ((Get-FileHash $windows_zip -Algorithm SHA256).Hash -ne "${env:BOUF_HASH}") {
           throw "bouf hash does not match."
         }
         if ((Get-FileHash $nsis_zip -Algorithm SHA256).Hash -ne "${env:BOUF_NSIS_HASH}") {
           throw "NSIS package hash does not match."
         }
-        
+
         Expand-Archive -Path $windows_zip -DestinationPath bin
         Expand-Archive -Path $nsis_zip -DestinationPath nsis
 
-    - name: Install rclone and pandoc
+    - name: Install pandoc
       shell: pwsh
       run: |
-        choco install rclone pandoc -y --no-progress
-
-    - name: Download Previous Builds
-      shell: pwsh
-      env:
-        RCLONE_TRANSFERS: '100'
-        RCLONE_FAST_LIST: 'true'
-        RCLONE_EXCLUDE: '"{pdbs/**,**/${{ inputs.tagName }}/**}"'
-        RCLONE_S3_PROVIDER: 'GCS'
-        RCLONE_S3_ACCESS_KEY_ID: '${{ inputs.gcsAccessKeyId }}'
-        RCLONE_S3_SECRET_ACCESS_KEY: '${{ inputs.gcsAccessKeySecret }}'
-        RCLONE_S3_ENDPOINT: 'https://storage.googleapis.com'
-      run: |
-        rclone -q copy ":s3:obs-builds" "${{ github.workspace }}/old_builds"
+        choco install pandoc -y --no-progress
 
     - name: Prepare Release Notes
       shell: pwsh
+      id: notes
       run: |
         # Release notes are just the tag body on Windows
         Set-Location repo
@@ -91,6 +77,8 @@ runs:
         Write-Output "###################################################" >> "${{ github.workspace }}/notes.rst"
         Write-Output "" >> "${{ github.workspace }}/notes.rst"
         git tag -l --format='%(contents:body)' ${{ inputs.tagName }} >> "${{ github.workspace }}/notes.rst"
+        $commitHash = git rev-list -n 1 ${{ inputs.tagName }}
+        "commitHash=${commitHash}" >> $env:GITHUB_OUTPUT
 
     - name: Run bouf
       shell: pwsh
@@ -99,11 +87,13 @@ runs:
         $boufArgs = @(
            "--config",     "${env:GITHUB_ACTION_PATH}/config.toml",
            "--version",    "${{ inputs.tagName }}"
+           "--commit",     "${{ steps.notes.outputs.commitHash }}"
            "--branch",     "${{ inputs.channel }}"
            "--notes-file", "${{ github.workspace }}/notes.rst"
            "-i",           "${{ github.workspace }}/build"
            "-p",           "${{ github.workspace }}/old_builds"
            "-o",           "${{ github.workspace }}/output"
+           "--skip-patches"
            "--updater-data-only"
         )
         Invoke-External "${{ github.workspace }}\bouf\bin\bouf.exe" @boufArgs
