@@ -1,7 +1,6 @@
 
 #include "berryessa-submitter.hpp"
 #include "berryessa-every-minute.hpp"
-#include "presentmon-csv-capture.hpp"
 
 #include <util/dstr.hpp>
 
@@ -19,7 +18,6 @@ BerryessaEveryMinute::BerryessaEveryMinute(QObject * /*parent*/, BerryessaSubmit
 					   const std::vector<OBSEncoder> &encoders)
 	: QObject(),
 	  berryessa_(berryessa),
-	  presentmon_(this),
 	  timer_(this),
 	  startTime_(QDateTime::currentDateTimeUtc()),
 	  shared_counters_(std::make_shared<UsageInfoCounters>())
@@ -138,8 +136,6 @@ void BerryessaEveryMinute::fire()
 	blog(LOG_INFO, "BerryessaEveryMinute::fire called");
 
 	OBSDataAutoRelease event = obs_data_create();
-
-	presentmon_.summarizeAndReset(event);
 
 	QThreadPool::globalInstance()->start([shared_counters = shared_counters_,
 					      berryessa = QPointer<BerryessaSubmitter>(berryessa_),

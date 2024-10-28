@@ -4,8 +4,8 @@
 #include <QObject>
 #include <QDateTime>
 #include <QTimer>
+#include <obs.hpp>
 
-#include "presentmon-csv-capture.hpp"
 #ifdef _WIN32
 #include "wmi-data-provider.hpp"
 #endif
@@ -43,7 +43,6 @@ private slots:
 
 private:
 	BerryessaSubmitter *berryessa_;
-	PresentMonCapture presentmon_;
 	QTimer timer_;
 	QDateTime startTime_;
 

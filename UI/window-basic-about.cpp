@@ -152,21 +152,19 @@ void OBSAbout::ShowAuthors()
 void OBSAbout::ShowLicense()
 {
 	std::string path;
-	std::string mit_path;
 	QString error = QTStr("About.Error").arg("https://github.com/obsproject/obs-studio/blob/master/COPYING");
 
-	if (!GetDataFilePath("license/gplv2.txt", path) || !GetDataFilePath("license/presentmon_mit.txt", mit_path)) {
+	if (!GetDataFilePath("license/gplv2.txt", path)) {
 		ui->textBrowser->setPlainText(error);
 		return;
 	}
 
 	BPtr<char> text = os_quick_read_utf8_file(path.c_str());
-	BPtr<char> mit_text = os_quick_read_utf8_file(mit_path.c_str());
 
-	if (!text || !*text || !mit_text || !*mit_text) {
+	if (!text || !*text) {
 		ui->textBrowser->setPlainText(error);
 		return;
 	}
 
-	ui->textBrowser->setPlainText(QTStr("About.LicensesContainer").arg(&*text, &*mit_text));
+	ui->textBrowser->setPlainText(QTStr("About.LicensesContainer").arg(&*text));
 }
