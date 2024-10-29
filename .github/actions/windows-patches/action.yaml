@@ -74,7 +74,7 @@ runs:
         # Release notes are just the tag body on Windows
         Set-Location repo
         git tag -l --format='%(contents:subject)' ${{ inputs.tagName }} > "${{ github.workspace }}/notes.rst"
-        Write-Output "###################################################" >> "${{ github.workspace }}/notes.rst"
+        Write-Output "######################################################################################" >> "${{ github.workspace }}/notes.rst"
         Write-Output "" >> "${{ github.workspace }}/notes.rst"
         git tag -l --format='%(contents:body)' ${{ inputs.tagName }} >> "${{ github.workspace }}/notes.rst"
         $commitHash = git rev-list -n 1 ${{ inputs.tagName }}
@@ -97,6 +97,33 @@ runs:
            "--updater-data-only"
         )
         Invoke-External "${{ github.workspace }}\bouf\bin\bouf.exe" @boufArgs
+
+    - name: Fixup Manifest
+      shell: python
+      run: |
+        import json
+        import hashlib
+
+        # create new portable mode file
+        text = b"Portable mode, yay!"
+        # blake2 is used with 160 bit digest size since it was mean to be a drop-in replacement for SHA1
+        hex_hash = hashlib.blake2b(text, digest_size=20).hexdigest()
+        with open(r"${{ github.workspace }}/output/updater/update_studio/${{ inputs.channel }}/core/obs_portable_mode.txt", 'wb') as f:
+            f.write(text)
+
+        # update manifest
+        manifest_path = r"${{ github.workspace }}/output/manifest.json"
+        manifest = json.load(open(manifest_path, encoding='utf-8'))
+
+        manifest['packages'][0]['removed_files'] = [rf for rf in manifest['packages'][0]['removed_files'] if 'portable' not in rf]
+        manifest['packages'][0]['files'].append({
+          "compressed_hash": "",
+          "hash": hex_hash,
+          "name": "obs_portable_mode.txt",
+          "size": len(text)
+        })
+
+        json.dump(manifest, open(manifest_path, 'w', encoding='utf-8', newline='\n'), indent=4, sort_keys=True)
 
     - name: Upload Outputs
       uses: actions/upload-artifact@v4.3.5
