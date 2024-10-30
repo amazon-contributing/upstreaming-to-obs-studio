@@ -249,33 +249,6 @@ jobs:
           fetch-depth: 0
           set-safe-directory: ${{ env.GITHUB_WORKSPACE }}
 
-      - name: Set Up Environment 🔧
-        id: setup
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          : Set Up Environment 🔧
-          if [[ "${RUNNER_DEBUG}" ]]; then set -x; fi
-
-          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
-
-          echo '::group::Install actions/gh-actions-cache'
-          gh extension install actions/gh-actions-cache
-          echo '::endgroup::'
-
-          cache_key='flatpak-builder-${{ hashFiles('build-aux/**/*.json') }}'
-          cache_ref='plugin'
-          read -r key size unit _ ref _ <<< \
-            "$(gh actions-cache list -B ${cache_ref} --key "${cache_key}-x86_64" | head -1)"
-
-          if [[ "${key}" ]]; then
-            echo "cacheHit=true" >> $GITHUB_OUTPUT
-          else
-            echo "cacheHit=false" >> $GITHUB_OUTPUT
-          fi
-
-          echo "cacheKey=${cache_key}" >> $GITHUB_OUTPUT
-
       - name: Validate Flatpak manifest
         uses: ./.github/actions/flatpak-builder-lint
         with:
@@ -290,9 +263,9 @@ jobs:
           branch: teb-beta
           upload-artifact: true
           manifest-path: ${{ github.workspace }}/build-aux/com.obsproject.Studio.json
-          cache: ${{ fromJSON(steps.setup.outputs.cacheHit) || (github.event_name == 'push' && github.ref_name == 'plugin')}}
-          restore-cache: ${{ fromJSON(steps.setup.outputs.cacheHit) }}
-          cache-key: ${{ steps.setup.outputs.cacheKey }}
+          cache: true
+          restore-cache: true
+          cache-key: flatpak-builder-${{ hashFiles('build-aux/**/*.json') }}
           mirror-screenshots-url: https://dl.flathub.org/media
 
       - name: Validate AppStream
