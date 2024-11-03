@@ -31,7 +31,10 @@ jobs:
               config_data=('codesign:false' 'notarize:false' 'package:false' 'config:RelWithDebInfo')
               ;;
             push)
-              config_data=('codesign:false' 'notarize:false' 'package:false' 'config:RelWithDebInfo')
+              config_data=('codesign:false' 'notarize:false' 'package:true' 'config:RelWithDebInfo')
+              if [[ ${GITHUB_REF_NAME} =~ [0-9]+.[0-9]+.[0-9]+.* ]]; then
+                config_data[3]='config:Release'
+              fi
               ;;
             workflow_dispatch)
               config_data=('codesign:true' 'notarize:false' 'package:false' 'config:RelWithDebInfo')
