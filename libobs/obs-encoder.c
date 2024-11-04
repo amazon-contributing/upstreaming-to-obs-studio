@@ -234,6 +234,9 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		if (current_mix->view != current->view)
 			continue;
 
+		if (current->ovi.scale_type != encoder->gpu_scale_type)
+			continue;
+
 		if (voi->width != width || voi->height != height)
 			continue;
 
@@ -278,6 +281,9 @@ static void maybe_set_up_gpu_rescale(struct obs_encoder *encoder)
 		struct obs_core_video_mix *current = obs->video.mixes.array[i];
 		const struct video_output_info *voi = video_output_get_info(current->video);
 		if (current->view != current_mix->view)
+			continue;
+
+		if (current->ovi.scale_type != encoder->gpu_scale_type)
 			continue;
 
 		if (voi->width != width || voi->height != height)
