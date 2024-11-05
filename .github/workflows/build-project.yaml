@@ -201,12 +201,20 @@ jobs:
           target: x86_64
           config: ${{ needs.check-event.outputs.config }}
 
-      - name: Package OBS Studio 📀
+      - name: Package OBS Studio (Portable) 📀
         uses: ./.github/actions/package-obs
         with:
           target: x86_64
           config: ${{ needs.check-event.outputs.config }}
-          package: ${{ fromJSON(needs.check-event.outputs.package) }}
+          package: false
+
+      - name: Package OBS Studio (DEB) 📀
+        if: ${{ fromJSON(needs.check-event.outputs.package) }}
+        uses: ./.github/actions/package-obs
+        with:
+          target: x86_64
+          config: ${{ needs.check-event.outputs.config }}
+          package: true
 
       - name: Upload Source Tarball 🗜️
         uses: actions/upload-artifact@v4
