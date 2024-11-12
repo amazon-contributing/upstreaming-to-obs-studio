@@ -250,6 +250,8 @@ jobs:
         shell: bash
     env:
       FLATPAK_BUILD_SHARE_PATH: flatpak_app/files/share
+      TWITCH_CLIENTID: ${{ secrets.TWITCH_CLIENT_ID }}
+      TWITCH_HASH: ${{ secrets.TWITCH_HASH }}
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.6
       options: --privileged
