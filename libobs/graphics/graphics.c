@@ -312,6 +312,11 @@ const char *gs_get_driver_version(void)
 	return gs_valid("gs_get_driver_version") ? thread_graphics->exports.gpu_get_driver_version() : NULL;
 }
 
+const char *gs_get_renderer(void)
+{
+	return gs_valid("gs_get_renderer") ? thread_graphics->exports.gpu_get_renderer() : NULL;
+}
+
 int gs_get_device_type(void)
 {
 	return gs_valid("gs_get_device_type") ? thread_graphics->exports.device_get_type() : -1;
