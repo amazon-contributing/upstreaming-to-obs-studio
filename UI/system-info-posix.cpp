@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <string>
 #include <fstream>
+#include <regex>
 
 using namespace std;
 
@@ -17,6 +18,16 @@ struct drm_card_info {
 	uint16_t device_id;
 	uint16_t subsystem_vendor;
 	uint16_t subsystem_device;
+
+	/* match_count is the number of matches between
+	 * the tokenized GPU identification string and
+	 * the device_name and vendor_name supplied by
+	 * libpci. It is used to associate the GPU that
+	 * OBS is using and the cards found in a bus scan
+	 * using libpci.
+	 */
+	uint16_t match_count;
+
 	/* The following 2 fields are easily
 	 * obtained for AMD GPUs. Reporting
 	 * for NVIDIA GPUs is not working at
@@ -25,8 +36,11 @@ struct drm_card_info {
 	uint64_t dedicated_vram_total;
 	uint64_t shared_system_memory_total;
 	bool boot_vga;
+
 	// PCI domain:bus:slot:function
 	std::string dbsf;
+	std::string device_name;
+	std::string vendor_name;
 };
 
 const std::string WHITE_SPACE = " \f\n\r\t\v";
@@ -331,14 +345,72 @@ static void adjust_gpu_model(std::string *model)
 	}
 }
 
+bool compare_match_strength(const drm_card_info &a, const drm_card_info &b)
+{
+	return a.match_count > b.match_count;
+}
+
+/* system_gpu_data() returns a sorted vector of GoLiveApi::Gpu
+ * objects needed to build the multitrack video request.
+ *
+ * When a single GPU is installed the case is trivial. In systems
+ * with multiple GPUs (including the CPU iGPU), the GPU that
+ * OBS is currently using must be placed first in the list, so
+ * that composition_gpu_index=0 is valid. composition_gpu_index
+ * is set to to ovi.adapter which is always 0 apparently.
+ *
+ * system_gpu_data() does the following:
+ *   1. Gather information about the GPU being used by OBS
+ *   2. Scan the PCIe bus to identify all GPUs
+ *   3. Find a best match of the GPU in-use in the list found in 2
+ *   4. Generate the sorted list of GoLiveAPI::Gpu entries
+ *
+ * Note that the PCIe device_id and vendor_id are not available
+ * via OpenGL calls, hence the need to match the in-use GPU with
+ * the libpci scanned results and extract the PCIe information.
+ */
 static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 {
 	std::vector<GoLiveApi::Gpu> adapter_info;
+	GoLiveApi::Gpu gpu;
+	std::string gs_driver_version;
+	std::string gs_device_renderer;
+	uint64_t dedicated_video_memory = 0;
+	uint64_t shared_system_memory = 0;
 
+	std::vector<drm_card_info> drm_cards;
 	struct pci_access *pacc;
 	pacc = pci_alloc();
 	pci_init(pacc);
 	char slot[256];
+
+	// Obtain GPU information by querying graphics API
+	obs_enter_graphics();
+	gs_driver_version = gs_get_driver_version();
+	gs_device_renderer = gs_get_renderer();
+	dedicated_video_memory = gs_get_gpu_dmem() * 1024;
+	shared_system_memory = gs_get_gpu_smem() * 1024;
+	obs_leave_graphics();
+
+	/* Split the GPU renderer string into tokens with
+	 * a regex of one or more white-space characters.
+	 */
+	std::regex ws_reg("[\\s]+");
+	vector<std::string> gpu_tokens(sregex_token_iterator(gs_device_renderer.begin(), gs_device_renderer.end(),
+							     ws_reg, -1),
+				       sregex_token_iterator());
+
+	// Remove extraneous characters from the tokens
+	const std::string EXTRA_CHARS = ",()[]{}";
+	// for (long unsigned i = 0; i < gpu_tokens.size(); i++)
+	for (auto token = begin(gpu_tokens); token != end(gpu_tokens); ++token) {
+		for (unsigned int i = 0; i < EXTRA_CHARS.size(); ++i) {
+			token->erase(std::remove(token->begin(), token->end(), EXTRA_CHARS[i]), token->end());
+		}
+		// Convert tokens to lower-case
+		std::transform(token->begin(), token->end(), token->begin(), ::tolower);
+		blog(LOG_DEBUG, "%s: gpu_token: '%s'", __FUNCTION__, token->c_str());
+	}
 
 	// Scan the PCI bus once
 	pci_scan_bus(pacc);
@@ -347,75 +419,120 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 	struct drm_card_info card = {0};
 	uint8_t i = 0;
 	while (get_drm_card_info(&i, &card)) {
-		GoLiveApi::Gpu data;
 		struct pci_dev *pdev;
 		struct pci_filter pfilter;
-		char namebuf[1024], *name;
+		char namebuf[1024];
 
-		data.device_id = card.device_id;
-		data.vendor_id = card.vendor_id;
-
-		// Get around the const char* vs char*
-		// type issue with pci_filter_parse_slot()
+		/* Get around the 'const char*' vs 'char*'
+		 * type issue with pci_filter_parse_slot().
+		 */
 		strncpy(slot, card.dbsf.c_str(), sizeof(slot));
 
+		// Validate the "slot" string according to libpci
 		pci_filter_init(pacc, &pfilter);
 		if (pci_filter_parse_slot(&pfilter, slot)) {
 			blog(LOG_DEBUG, "%s: pci_filter_parse_slot() failed", __FUNCTION__);
 			continue;
 		}
 
+		// Get the device name and vendor name from libpci
 		for (pdev = pacc->devices; pdev; pdev = pdev->next) {
 			if (pci_filter_match(&pfilter, pdev)) {
 				pci_fill_info(pdev, PCI_FILL_IDENT);
-				name = pci_lookup_name(pacc, namebuf, sizeof(namebuf),
-						       PCI_LOOKUP_DEVICE | PCI_LOOKUP_NETWORK, pdev->vendor_id,
-						       pdev->device_id);
-				data.model = name;
-				adjust_gpu_model(&data.model);
+				card.device_name =
+					pci_lookup_name(pacc, namebuf, sizeof(namebuf),
+							PCI_LOOKUP_DEVICE | PCI_LOOKUP_CACHE | PCI_LOOKUP_NETWORK,
+							pdev->vendor_id, pdev->device_id);
+				card.vendor_name =
+					pci_lookup_name(pacc, namebuf, sizeof(namebuf),
+							PCI_LOOKUP_VENDOR | PCI_LOOKUP_CACHE | PCI_LOOKUP_NETWORK,
+							pdev->vendor_id, pdev->device_id);
+				blog(LOG_DEBUG, "libpci lookup: device_name: %s, vendor_name: %s",
+				     card.device_name.c_str(), card.vendor_name.c_str());
 				break;
 			}
 		}
-
-		/* By default OBS should be assigned the GPU with boot_vga=1.
-		 * If this is not the case, the logic below will mixup the
-		 * values when multiple GPU devices are installed. We need
-		 * a better way of detecting at runtime exactly which GPU is
-		 * being used by OBS, preferably the PCIe D:B:S:F (domain:bus:
-		 * slot:function) information. Obtaining PCIe vendor_id/device_id
-		 * from the graphics API would help, but would not solve the case
-		 * of 2 or more GPUs of the exact same model.
-		 */
-		if (card.boot_vga) {
-			// Obtain the GPU memory by querying via graphics API
-			obs_enter_graphics();
-			data.driver_version = gs_get_driver_version();
-			data.dedicated_video_memory = gs_get_gpu_dmem() * 1024;
-			data.shared_system_memory = gs_get_gpu_smem() * 1024;
-			obs_leave_graphics();
-			/* Insert the boot_vga adapter at the beginning. This
-			 * will align it with composition_gpu_index=0, which
-			 * is set to the ovi.adapter value (which is 0).
-			 */
-			adapter_info.insert(adapter_info.begin(), data);
-		} else {
-			/* The driver version for the non-boot-vga device
-			 * is not accessible easily in a common location.
-			 * It is not necessary at the moment so set to unknown.
-			 */
-			data.driver_version = "Unknown";
-
-			/* Use the GPU memory info discovered with get_drm_card_info()
-			 * for the non-boot adapter. amdgpu driver exposes the GPU memory 
-			 * info via sysfs, NVIDIA does not.
-			 */
-			data.dedicated_video_memory = card.dedicated_vram_total;
-			data.shared_system_memory = card.shared_system_memory_total;
-			adapter_info.push_back(data);
-		}
+		drm_cards.push_back(card);
+		card = {0};
 		++i;
 	}
+	blog(LOG_DEBUG, "Number of GPUs detected: %lu", drm_cards.size());
 	pci_cleanup(pacc);
+
+	/* Iterate through drm_cards to determine a string match count
+	 * against the GPU string tokens from the OpenGL identification.
+	 */
+	for (auto card = begin(drm_cards); card != end(drm_cards); ++card) {
+		card->match_count = 0;
+		for (auto token = begin(gpu_tokens); token != end(gpu_tokens); ++token) {
+			std::string card_device_name = card->device_name;
+			std::string card_gpu_vendor = card->vendor_name;
+			std::transform(card_device_name.begin(), card_device_name.end(), card_device_name.begin(),
+				       ::tolower);
+			std::transform(card_gpu_vendor.begin(), card_gpu_vendor.end(), card_gpu_vendor.begin(),
+				       ::tolower);
+
+			// Compare GPU string tokens to PCI device name
+			std::size_t found = card_device_name.find(*token);
+			if (found != std::string::npos) {
+				card->match_count++;
+				blog(LOG_DEBUG, "Found %s in PCI device name", (*token).c_str());
+			}
+			// Compare GPU string tokens to PCI vendor name
+			found = card_gpu_vendor.find(*token);
+			if (found != std::string::npos) {
+				card->match_count++;
+				blog(LOG_DEBUG, "Found %s in PCI vendor name", (*token).c_str());
+			}
+		}
+	}
+
+	/* Sort the cards based on the highest match strength.
+	 * In the case of multiple cards and the first one is not a higher
+	 * match, there is ambiguity and all we can do is log a warning.
+	 * The chance of this happening is low, but not impossible.
+	 */
+	std::sort(drm_cards.begin(), drm_cards.end(), compare_match_strength);
+	if ((drm_cards.size() > 1) && (std::next(begin(drm_cards))->match_count) >= begin(drm_cards)->match_count) {
+		blog(LOG_WARNING, "%s: Ambiguous GPU association. Possible incorrect sort order.", __FUNCTION__);
+		for (auto card = begin(drm_cards); card != end(drm_cards); ++card) {
+			blog(LOG_DEBUG, "Total matches for card %s: %u", card->device_name.c_str(), card->match_count);
+		}
+	}
+
+	/* Iterate through the sorted list of cards and generate
+	 * the GoLiveApi GPU list.
+	 */
+	for (auto card = begin(drm_cards); card != end(drm_cards); ++card) {
+		gpu.device_id = card->device_id;
+		gpu.vendor_id = card->vendor_id;
+		gpu.model = card->device_name;
+		adjust_gpu_model(&gpu.model);
+
+		if (card == begin(drm_cards)) {
+
+			/* The first card in the list corresponds to the
+			 * driver version and GPU memory information obtained
+			 * previously by OpenGL calls into the GPU.
+			 */
+			gpu.driver_version = gs_driver_version;
+			gpu.dedicated_video_memory = dedicated_video_memory;
+			gpu.shared_system_memory = shared_system_memory;
+		} else {
+			/* The driver version for the other device(s)
+			 * is not accessible easily in a common location.
+			 */
+			gpu.driver_version = "Unknown";
+
+			/* Use the GPU memory info discovered with get_drm_card_info()
+			 * stored in drm_cards. amdgpu driver exposes the GPU memory
+			 * info via sysfs, NVIDIA does not.
+			 */
+			gpu.dedicated_video_memory = card->dedicated_vram_total;
+			gpu.shared_system_memory = card->shared_system_memory_total;
+		}
+		adapter_info.push_back(gpu);
+	}
 
 	return adapter_info;
 }

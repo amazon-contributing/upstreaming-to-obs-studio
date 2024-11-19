@@ -502,6 +502,7 @@ struct gs_init_data {
 
 EXPORT const char *gs_get_device_name(void);
 EXPORT const char *gs_get_driver_version(void);
+EXPORT const char *gs_get_renderer(void);
 EXPORT uint64_t gs_get_gpu_dmem(void);
 EXPORT uint64_t gs_get_gpu_smem(void);
 EXPORT int gs_get_device_type(void);

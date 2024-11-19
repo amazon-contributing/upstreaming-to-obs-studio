@@ -219,6 +219,11 @@ const char *gpu_get_driver_version(void)
 	return ((const char *)glGetString(GL_VERSION));
 }
 
+const char *gpu_get_renderer(void)
+{
+	return ((const char *)glGetString(GL_RENDERER));
+}
+
 /* Get the amount of dedicated GDDR memory, aka VRAM, in
  * units of kilobytes.
  */

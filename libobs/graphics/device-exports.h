@@ -25,6 +25,7 @@ extern "C" {
 
 EXPORT const char *device_get_name(void);
 EXPORT const char *gpu_get_driver_version(void);
+EXPORT const char *gpu_get_renderer(void);
 EXPORT uint64_t gpu_get_dmem(void);
 EXPORT uint64_t gpu_get_smem(void);
 EXPORT int device_get_type(void);
