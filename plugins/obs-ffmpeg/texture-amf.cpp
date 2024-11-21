@@ -88,31 +88,29 @@ struct codec_level_entry {
 };
 
 // Ensure the table entries are ordered from lowest to highest
-static const uint8_t num_avc_levels = 19;
-static codec_level_entry avc_levels[num_avc_levels] = {
-	{"1", (uint64_t)1485 * 256, 99 * 256, AMF_H264_LEVEL__1},
-	{"1.1", (uint64_t)3000 * 256, 396 * 256, AMF_H264_LEVEL__1_1},
-	{"1.2", (uint64_t)6000 * 256, 396 * 256, AMF_H264_LEVEL__1_2},
-	{"1.3", (uint64_t)11880 * 256, 396 * 256, AMF_H264_LEVEL__1_3},
-	{"2", (uint64_t)11880 * 256, 396 * 256, AMF_H264_LEVEL__2},
-	{"2.1", (uint64_t)19800 * 256, 792 * 256, AMF_H264_LEVEL__2_1},
-	{"2.2", (uint64_t)20250 * 256, 1620 * 256, AMF_H264_LEVEL__2_2},
-	{"3", (uint64_t)40500 * 256, 1620 * 256, AMF_H264_LEVEL__3},
-	{"3.1", (uint64_t)108000 * 256, 3600 * 256, AMF_H264_LEVEL__3_1},
-	{"3.2", (uint64_t)216000 * 256, 5120 * 256, AMF_H264_LEVEL__3_2},
-	{"4", (uint64_t)245760 * 256, 8192 * 256, AMF_H264_LEVEL__4},
-	{"4.1", (uint64_t)245760 * 256, 8192 * 256, AMF_H264_LEVEL__4_1},
-	{"4.2", (uint64_t)522240 * 256, 8704 * 256, AMF_H264_LEVEL__4_2},
-	{"5", (uint64_t)589824 * 256, 22080 * 256, AMF_H264_LEVEL__5},
-	{"5.1", (uint64_t)983040 * 256, 36864 * 256, AMF_H264_LEVEL__5_1},
-	{"5.2", (uint64_t)2073600 * 256, 36864 * 256, AMF_H264_LEVEL__5_2},
-	{"6", (uint64_t)4177920 * 256, 139264 * 256, AMF_H264_LEVEL__6},
-	{"6.1", (uint64_t)8355840 * 256, 139264 * 256, AMF_H264_LEVEL__6_1},
-	{"6.2", (uint64_t)16711680 * 256, 139264 * 256, AMF_H264_LEVEL__6_2}};
+static std::vector<codec_level_entry> avc_levels = {{"1", (uint64_t)1485 * 256, 99 * 256, AMF_H264_LEVEL__1},
+						    {"1.1", (uint64_t)3000 * 256, 396 * 256, AMF_H264_LEVEL__1_1},
+						    {"1.2", (uint64_t)6000 * 256, 396 * 256, AMF_H264_LEVEL__1_2},
+						    {"1.3", (uint64_t)11880 * 256, 396 * 256, AMF_H264_LEVEL__1_3},
+						    {"2", (uint64_t)11880 * 256, 396 * 256, AMF_H264_LEVEL__2},
+						    {"2.1", (uint64_t)19800 * 256, 792 * 256, AMF_H264_LEVEL__2_1},
+						    {"2.2", (uint64_t)20250 * 256, 1620 * 256, AMF_H264_LEVEL__2_2},
+						    {"3", (uint64_t)40500 * 256, 1620 * 256, AMF_H264_LEVEL__3},
+						    {"3.1", (uint64_t)108000 * 256, 3600 * 256, AMF_H264_LEVEL__3_1},
+						    {"3.2", (uint64_t)216000 * 256, 5120 * 256, AMF_H264_LEVEL__3_2},
+						    {"4", (uint64_t)245760 * 256, 8192 * 256, AMF_H264_LEVEL__4},
+						    {"4.1", (uint64_t)245760 * 256, 8192 * 256, AMF_H264_LEVEL__4_1},
+						    {"4.2", (uint64_t)522240 * 256, 8704 * 256, AMF_H264_LEVEL__4_2},
+						    {"5", (uint64_t)589824 * 256, 22080 * 256, AMF_H264_LEVEL__5},
+						    {"5.1", (uint64_t)983040 * 256, 36864 * 256, AMF_H264_LEVEL__5_1},
+						    {"5.2", (uint64_t)2073600 * 256, 36864 * 256, AMF_H264_LEVEL__5_2},
+						    {"6", (uint64_t)4177920 * 256, 139264 * 256, AMF_H264_LEVEL__6},
+						    {"6.1", (uint64_t)8355840 * 256, 139264 * 256, AMF_H264_LEVEL__6_1},
+						    {"6.2", (uint64_t)16711680 * 256, 139264 * 256,
+						     AMF_H264_LEVEL__6_2}};
 
 // Ensure the table entries are ordered from lowest to highest
-static const uint8_t num_hevc_levels = 13;
-static codec_level_entry hevc_levels[num_hevc_levels] = {
+static std::vector<codec_level_entry> hevc_levels = {
 	{"1", 552960, 36864, AMF_LEVEL_1},           {"2", 3686400, 122880, AMF_LEVEL_2},
 	{"2.1", 7372800, 245760, AMF_LEVEL_2_1},     {"3", 16588800, 552960, AMF_LEVEL_3},
 	{"3.1", 33177600, 983040, AMF_LEVEL_3_1},    {"4", 66846720, 2228224, AMF_LEVEL_4},
@@ -134,8 +132,7 @@ static codec_level_entry hevc_levels[num_hevc_levels] = {
  * Refer to the following for more information:
  * https://github.com/AOMediaCodec/av1-spec/blob/master/annex.a.levels.md
  */
-static const uint8_t num_av1_levels = 14;
-static codec_level_entry av1_levels[num_av1_levels] = {
+static std::vector<codec_level_entry> av1_levels = {
 	{"2.0", (uint64_t)5529600, 147456, AMF_VIDEO_ENCODER_AV1_LEVEL_2_0},
 	{"2.1", (uint64_t)10454400, 278784, AMF_VIDEO_ENCODER_AV1_LEVEL_2_1},
 	{"3.0", (uint64_t)24969600, 665856, AMF_VIDEO_ENCODER_AV1_LEVEL_3_0},
@@ -1370,57 +1367,90 @@ try {
 	return false;
 }
 
-static void amf_set_avc_level(amf_base *enc)
+static void amf_set_codec_level(amf_base *enc)
 {
 	uint64_t luma_pic_size = enc->cx * enc->cy;
 	uint64_t luma_sample_rate = luma_pic_size * (enc->fps_num / enc->fps_den);
+	std::vector<codec_level_entry> *levels;
+
+	if (enc->codec == amf_codec_type::AVC) {
+		levels = &avc_levels;
+	} else if (enc->codec == amf_codec_type::HEVC) {
+		levels = &hevc_levels;
+	} else if (enc->codec == amf_codec_type::AV1) {
+		levels = &av1_levels;
+	} else {
+		blog(LOG_ERROR, "%s: Unknown amf_codec_type", __FUNCTION__);
+		return;
+	}
+
+	std::vector<codec_level_entry>::const_iterator level_it = levels->begin();
 
 	/* First check if the requested sample rate and/or picture
 	 * size is too large for the maximum level.
 	 */
-	uint8_t i;
-	if ((luma_sample_rate > avc_levels[num_avc_levels - 1].max_luma_sample_rate) ||
-	    (luma_pic_size > avc_levels[num_avc_levels - 1].max_luma_picture_size)) {
+	if ((luma_sample_rate > levels->back().max_luma_sample_rate) ||
+	    (luma_pic_size > levels->back().max_luma_picture_size)) {
 		/* If the calculated sample rate is greater than the highest
 		 * value supported by the codec, clamp to the upper limit and
 		 * log an error.
 		 */
-		i = num_avc_levels - 1;
+		level_it = --(levels->end());
 		blog(LOG_ERROR,
 		     "%s: Luma sample rate %u or luma pic size %u is greater than maximum "
-		     "allowed by AVC. Setting to level %s",
-		     __FUNCTION__, luma_sample_rate, luma_pic_size, avc_levels[i].level_str);
+		     "allowed. Setting to level %s",
+		     __FUNCTION__, luma_sample_rate, luma_pic_size, level_it->level_str);
 	} else {
 		/* Walk the table and find the lowest codec level
 		 * value suitable for the given luma sample rate.
 		 */
-		for (i = 0; i < num_avc_levels; ++i) {
-			if ((luma_sample_rate <= avc_levels[i].max_luma_sample_rate) &&
-			    (luma_pic_size <= avc_levels[i].max_luma_picture_size)) {
+		while (level_it != levels->end()) {
+			if ((luma_sample_rate <= level_it->max_luma_sample_rate) &&
+			    (luma_pic_size <= level_it->max_luma_picture_size)) {
 				break;
 			}
+			++level_it;
 		}
 	}
+
 	// Set the level for the encoder
-	set_avc_property(enc, PROFILE_LEVEL, avc_levels[i].amf_level);
+	if (enc->codec == amf_codec_type::AVC) {
+		set_avc_property(enc, PROFILE_LEVEL, level_it->amf_level);
+	} else if (enc->codec == amf_codec_type::HEVC) {
+		set_hevc_property(enc, PROFILE_LEVEL, level_it->amf_level);
+	} else if (enc->codec == amf_codec_type::AV1) {
+		set_av1_property(enc, LEVEL, level_it->amf_level);
+	}
 }
 
-static bool amf_get_avc_level_str(amf_int64 level, char const **level_str)
+static bool amf_get_level_str(amf_base *enc, amf_int64 level, char const **level_str)
 {
 	bool found = false;
+	std::vector<codec_level_entry> *levels;
 
-	uint8_t i;
-	for (i = 0; i < num_avc_levels; ++i) {
-		if (level == avc_levels[i].amf_level) {
+	if (enc->codec == amf_codec_type::AVC) {
+		levels = &avc_levels;
+	} else if (enc->codec == amf_codec_type::HEVC) {
+		levels = &hevc_levels;
+	} else if (enc->codec == amf_codec_type::AV1) {
+		levels = &av1_levels;
+	} else {
+		blog(LOG_ERROR, "%s: Unknown amf_codec_type", __FUNCTION__);
+		return false;
+	}
+
+	for (auto level_it = levels->begin(); level_it != levels->end(); ++level_it) {
+		if (level == level_it->amf_level) {
 			found = true;
+			*level_str = level_it->level_str;
 			break;
 		}
 	}
-	if (found) {
-		*level_str = avc_levels[i].level_str;
-	} else {
+
+	if (!found) {
 		*level_str = "unknown";
 	}
+
 	return found;
 }
 
@@ -1477,7 +1507,7 @@ static bool amf_avc_init(void *data, obs_data_t *settings)
 	set_avc_property(enc, DE_BLOCKING_FILTER, true);
 
 	// Determine and set the appropriate AVC level
-	amf_set_avc_level(enc);
+	amf_set_codec_level(enc);
 
 	check_preset_compatibility(enc, preset);
 
@@ -1494,16 +1524,16 @@ static bool amf_avc_init(void *data, obs_data_t *settings)
 		ffmpeg_opts = "(none)";
 
 	/* The ffmpeg_opts just above may have explicitly set the AVC level to
-	 * a value different than what was determined by amf_set_avc_level().
+	 * a value different than what was determined by amf_set_codec_level().
 	 * Query the final AVC level then lookup the matching string. Warn if
 	 * not found, because ffmpeg_opts is free-form and may have set something
 	 * bogus.
 	 */
-	amf_int64 final_avc_level;
-	get_avc_property(enc, PROFILE_LEVEL, &final_avc_level);
-	char const *avc_level_str = nullptr;
-	if (!amf_get_avc_level_str(final_avc_level, &avc_level_str)) {
-		warn("AVC level string not found. Level %d may be incorrect.", final_avc_level);
+	amf_int64 final_level;
+	get_avc_property(enc, PROFILE_LEVEL, &final_level);
+	char const *level_str = nullptr;
+	if (!amf_get_level_str(enc, final_level, &level_str)) {
+		warn("AVC level string not found. Level %d may be incorrect.", final_level);
 	}
 
 	info("settings:\n"
@@ -1518,7 +1548,7 @@ static bool amf_avc_init(void *data, obs_data_t *settings)
 	     "\twidth:        %d\n"
 	     "\theight:       %d\n"
 	     "\tparams:       %s",
-	     rc_str, bitrate, qp, gop_size, preset, profile, avc_level_str, bf, enc->cx, enc->cy, ffmpeg_opts);
+	     rc_str, bitrate, qp, gop_size, preset, profile, level_str, bf, enc->cx, enc->cy, ffmpeg_opts);
 	return true;
 }
 
@@ -1764,61 +1794,6 @@ try {
 	return false;
 }
 
-static void amf_set_hevc_level(amf_base *enc)
-{
-	uint64_t luma_pic_size = enc->cx * enc->cy;
-	uint64_t luma_sample_rate = luma_pic_size * (enc->fps_num / enc->fps_den);
-
-	/* First check if the requested sample rate and/or picture
-	 * size is too large for the maximum level.
-	 */
-	uint8_t i;
-	if ((luma_sample_rate > hevc_levels[num_hevc_levels - 1].max_luma_sample_rate) ||
-	    (luma_pic_size > hevc_levels[num_hevc_levels - 1].max_luma_picture_size)) {
-		/* If the calculated sample rate is greater than the highest
-		 * value supported by the codec, clamp to the upper limit and
-		 * log an error.
-		 */
-		i = num_hevc_levels - 1;
-		blog(LOG_ERROR,
-		     "%s: Luma sample rate %u or luma pic size %u is greater than maximum "
-		     "allowed by HEVC. Setting to level %s",
-		     __FUNCTION__, luma_sample_rate, luma_pic_size, hevc_levels[i].level_str);
-	} else {
-		/* Walk the table and find the lowest codec level
-		 * value suitable for the given luma sample rate.
-		 */
-		for (i = 0; i < num_hevc_levels; ++i) {
-			if ((luma_sample_rate <= hevc_levels[i].max_luma_sample_rate) &&
-			    (luma_pic_size <= hevc_levels[i].max_luma_picture_size)) {
-				break;
-			}
-		}
-	}
-
-	// Set the level for the encoder
-	set_hevc_property(enc, PROFILE_LEVEL, hevc_levels[i].amf_level);
-}
-
-static bool amf_get_hevc_level_str(amf_int64 level, char const **level_str)
-{
-	bool found = false;
-
-	uint8_t i;
-	for (i = 0; i < num_hevc_levels; ++i) {
-		if (level == hevc_levels[i].amf_level) {
-			found = true;
-			break;
-		}
-	}
-	if (found) {
-		*level_str = hevc_levels[i].level_str;
-	} else {
-		*level_str = "unknown";
-	}
-	return found;
-}
-
 static bool amf_hevc_init(void *data, obs_data_t *settings)
 {
 	amf_base *enc = (amf_base *)data;
@@ -1845,7 +1820,7 @@ static bool amf_hevc_init(void *data, obs_data_t *settings)
 	set_hevc_property(enc, GOP_SIZE, gop_size);
 
 	// Determine and set the appropriate HEVC level
-	amf_set_hevc_level(enc);
+	amf_set_codec_level(enc);
 
 	check_preset_compatibility(enc, preset);
 
@@ -1862,16 +1837,16 @@ static bool amf_hevc_init(void *data, obs_data_t *settings)
 		ffmpeg_opts = "(none)";
 
 	/* The ffmpeg_opts just above may have explicitly set the HEVC level to
-	 * a value different than what was determined by amf_set_hevc_level().
+	 * a value different than what was determined by amf_set_codec_level().
 	 * Query the final HEVC level then lookup the matching string. Warn if
 	 * not found, because ffmpeg_opts is free-form and may have set something
 	 * bogus.
 	 */
-	amf_int64 final_hevc_level;
-	get_hevc_property(enc, PROFILE_LEVEL, &final_hevc_level);
-	char const *hevc_level_str = nullptr;
-	if (!amf_get_hevc_level_str(final_hevc_level, &hevc_level_str)) {
-		warn("HEVC level string not found. Level %d may be incorrect.", final_hevc_level);
+	amf_int64 final_level;
+	get_hevc_property(enc, PROFILE_LEVEL, &final_level);
+	char const *level_str = nullptr;
+	if (!amf_get_level_str(enc, final_level, &level_str)) {
+		warn("HEVC level string not found. Level %d may be incorrect.", final_level);
 	}
 
 	info("settings:\n"
@@ -1885,7 +1860,7 @@ static bool amf_hevc_init(void *data, obs_data_t *settings)
 	     "\twidth:        %d\n"
 	     "\theight:       %d\n"
 	     "\tparams:       %s",
-	     rc_str, bitrate, qp, gop_size, preset, profile, hevc_level_str, enc->cx, enc->cy, ffmpeg_opts);
+	     rc_str, bitrate, qp, gop_size, preset, profile, level_str, enc->cx, enc->cy, ffmpeg_opts);
 
 	return true;
 }
@@ -2182,61 +2157,6 @@ try {
 	return false;
 }
 
-static void amf_set_av1_level(amf_base *enc)
-{
-	uint64_t luma_pic_size = enc->cx * enc->cy;
-	uint64_t luma_sample_rate = luma_pic_size * (enc->fps_num / enc->fps_den);
-
-	/* First check if the requested sample rate and/or picture
-	 * size is too large for the maximum level.
-	 */
-	uint8_t i;
-	if ((luma_sample_rate > av1_levels[num_av1_levels - 1].max_luma_sample_rate) ||
-	    (luma_pic_size > av1_levels[num_av1_levels - 1].max_luma_picture_size)) {
-		/* If the calculated sample rate is greater than the highest
-		 * value supported by the codec, clamp to the upper limit and
-		 * log an error.
-		 */
-		i = num_av1_levels - 1;
-		blog(LOG_ERROR,
-		     "%s: Luma sample rate %u or luma pic size %u is greater than maximum "
-		     "allowed by AV1. Setting to level %s",
-		     __FUNCTION__, luma_sample_rate, luma_pic_size, av1_levels[i].level_str);
-	} else {
-		/* Walk the table and find the lowest codec level
-		 * value suitable for the given luma sample rate.
-		 */
-		for (i = 0; i < num_av1_levels; ++i) {
-			if ((luma_sample_rate <= av1_levels[i].max_luma_sample_rate) &&
-			    (luma_pic_size <= av1_levels[i].max_luma_picture_size)) {
-				break;
-			}
-		}
-	}
-
-	// Set the level for the encoder
-	set_av1_property(enc, LEVEL, av1_levels[i].amf_level);
-}
-
-static bool amf_get_av1_level_str(amf_int64 level, char const **level_str)
-{
-	bool found = false;
-
-	uint8_t i;
-	for (i = 0; i < num_av1_levels; ++i) {
-		if (level == av1_levels[i].amf_level) {
-			found = true;
-			break;
-		}
-	}
-	if (found) {
-		*level_str = av1_levels[i].level_str;
-	} else {
-		*level_str = "unknown";
-	}
-	return found;
-}
-
 static bool amf_av1_init(void *data, obs_data_t *settings)
 {
 	amf_base *enc = (amf_base *)data;
@@ -2254,7 +2174,8 @@ static bool amf_av1_init(void *data, obs_data_t *settings)
 
 	set_av1_property(enc, ENFORCE_HRD, true);
 
-	amf_set_av1_level(enc);
+	// Determine and set the appropriate AV1 level
+	amf_set_codec_level(enc);
 
 	int keyint_sec = (int)obs_data_get_int(settings, "keyint_sec");
 	int gop_size = (keyint_sec) ? keyint_sec * enc->fps_num / enc->fps_den : 250;
@@ -2269,26 +2190,23 @@ static bool amf_av1_init(void *data, obs_data_t *settings)
 		obs_free_options(opts);
 	}
 
-	// Determine and set the appropriate AV1 level
-	amf_set_av1_level(enc);
+	/* The ffmpeg_opts just above may have explicitly set the AV1 level to
+	 * a value different than what was determined by amf_set_codec_level().
+	 * Query the final AV1 level then lookup the matching string. Warn if
+	 * not found, because ffmpeg_opts is free-form and may have set something
+	 * bogus.
+	 */
+	amf_int64 final_level;
+	get_av1_property(enc, LEVEL, &final_level);
+	char const *level_str = nullptr;
+	if (!amf_get_level_str(enc, final_level, &level_str)) {
+		warn("AV1 level string not found. Level %d may be incorrect.", final_level);
+	}
 
 	check_preset_compatibility(enc, preset);
 
 	if (!ffmpeg_opts || !*ffmpeg_opts)
 		ffmpeg_opts = "(none)";
-
-	/* The ffmpeg_opts just above may have explicitly set the AV1 level to
-	 * a value different than what was determined by amf_set_av1_level().
-	 * Query the final AV1 level then lookup the matching string. Warn if
-	 * not found, because ffmpeg_opts is free-form and may have set something
-	 * bogus.
-	 */
-	amf_int64 final_av1_level;
-	get_av1_property(enc, LEVEL, &final_av1_level);
-	char const *av1_level_str = nullptr;
-	if (!amf_get_av1_level_str(final_av1_level, &av1_level_str)) {
-		warn("AV1 level string not found. Level %d may be incorrect.", final_av1_level);
-	}
 
 	info("settings:\n"
 	     "\trate_control: %s\n"
@@ -2301,7 +2219,7 @@ static bool amf_av1_init(void *data, obs_data_t *settings)
 	     "\twidth:        %d\n"
 	     "\theight:       %d\n"
 	     "\tparams:       %s",
-	     rc_str, bitrate, qp, gop_size, preset, profile, av1_level_str, enc->cx, enc->cy, ffmpeg_opts);
+	     rc_str, bitrate, qp, gop_size, preset, profile, level_str, enc->cx, enc->cy, ffmpeg_opts);
 	return true;
 }
 
