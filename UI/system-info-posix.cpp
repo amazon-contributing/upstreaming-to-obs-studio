@@ -327,7 +327,7 @@ static void adjust_gpu_model(std::string *model)
 	}
 }
 
-bool compare_match_strength(const drm_card_info &a, const drm_card_info &b)
+static bool compare_match_strength(const drm_card_info &a, const drm_card_info &b)
 {
 	return a.match_count > b.match_count;
 }
