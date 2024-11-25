@@ -35,7 +35,6 @@ struct drm_card_info {
 	 */
 	uint64_t dedicated_vram_total;
 	uint64_t shared_system_memory_total;
-	bool boot_vga;
 
 	// PCI domain:bus:slot:function
 	std::string dbsf;
@@ -171,161 +170,144 @@ static bool get_cpu_freq(uint32_t *cpu_freq)
 	return true;
 }
 
-/* get_drm_card_info() will update the card_idx pointer argument
- * if an entry was skipped due to discovering a software framebuffer
- * entry instead of hardware.
+/* get_drm_cards() will find all render-capable cards
+ * in /sys/class/drm and populate a vector of drm_card_info.
  */
-static bool get_drm_card_info(uint8_t *card_idx, struct drm_card_info *dci)
+static void get_drm_cards(std::vector<drm_card_info> &cards)
 {
-	string drm_path;
-	size_t base_length = 0;
+	struct drm_card_info dci;
 	char *file_str = NULL;
-	uint val;
-
-	if (!dci)
-		return false;
-
-	drm_path = "/sys/class/drm/card";
-	base_length = drm_path.length();
-
-	// Walk the entries looking for the next non-framebuffer GPU
 	char buf[256];
 	int len = 0;
-	bool found_card = false;
-	while (!found_card) {
-		drm_path += std::to_string(*card_idx) + "/device";
+	uint val = 0;
 
-		/* Get the PCI D:B:S:F (domain:bus:slot:function) in string form
-		 * by reading the device symlink.
-		 */
-		if ((len = readlink(drm_path.c_str(), buf, sizeof(buf) - 1)) != -1) {
-			// readlink() doesn't null terminate strings, so do it explicitly
-			buf[len] = '\0';
-			// If the entry is a simple framebuffer, skip it
-			if (strstr(buf, "framebuffer")) {
-				(*card_idx)++;
-				drm_path.resize(base_length);
-				continue;
-			} else {
-				dci->dbsf = buf;
+	string base_path = "/sys/class/drm/";
+	string drm_path = base_path;
+	size_t base_len = base_path.length();
+	size_t node_len = 0;
+
+	os_dir_t *dir = os_opendir(base_path.c_str());
+	struct os_dirent *ent;
+
+	while ((ent = os_readdir(dir)) != NULL) {
+		string entry_name = ent->d_name;
+		if (ent->directory && (entry_name.find("renderD") != std::string::npos)) {
+			dci = {0};
+			drm_path.resize(base_len);
+			drm_path += ent->d_name;
+			drm_path += "/device";
+
+			/* Get the PCI D:B:S:F (domain:bus:slot:function) in string form
+			 * by reading the device symlink.
+			 */
+			if ((len = readlink(drm_path.c_str(), buf, sizeof(buf) - 1)) != -1) {
+				// readlink() doesn't null terminate strings, so do it explicitly
+				buf[len] = '\0';
+				dci.dbsf = buf;
+
 				/* The DBSF string is of the form: "../../../0000:65:00.0/".
 				* Remove all the '/' characters, and
 				* remove all the leading '.' characters.
 				*/
-				dci->dbsf.erase(std::remove(dci->dbsf.begin(), dci->dbsf.end(), '/'), dci->dbsf.end());
-				dci->dbsf.erase(0, dci->dbsf.find_first_not_of("."));
-				found_card = true;
+				dci.dbsf.erase(std::remove(dci.dbsf.begin(), dci.dbsf.end(), '/'), dci.dbsf.end());
+				dci.dbsf.erase(0, dci.dbsf.find_first_not_of("."));
+
+				node_len = drm_path.length();
+
+				// Get the device_id
+				drm_path += "/device";
+				file_str = os_quick_read_utf8_file(drm_path.c_str());
+				if (!file_str) {
+					blog(LOG_ERROR, "Could not read from '%s'", drm_path.c_str());
+					dci.device_id = 0;
+				} else {
+					// Skip over the "0x" and convert
+					sscanf(file_str + 2, "%x", &val);
+					dci.device_id = val;
+					bfree(file_str);
+				}
+
+				// Get the vendor_id
+				drm_path.resize(node_len);
+				drm_path += "/vendor";
+				file_str = os_quick_read_utf8_file(drm_path.c_str());
+				if (!file_str) {
+					blog(LOG_ERROR, "Could not read from '%s'", drm_path.c_str());
+					dci.vendor_id = 0;
+				} else {
+					// Skip over the "0x" and convert
+					sscanf(file_str + 2, "%x", &val);
+					dci.vendor_id = val;
+					bfree(file_str);
+				}
+
+				// Get the subsystem_vendor
+				drm_path.resize(node_len);
+				drm_path += "/subsystem_vendor";
+				file_str = os_quick_read_utf8_file(drm_path.c_str());
+				if (!file_str) {
+					dci.subsystem_vendor = 0;
+				} else {
+					// Skip over the "0x" and convert
+					sscanf(file_str + 2, "%x", &val);
+					dci.subsystem_vendor = val;
+					bfree(file_str);
+				}
+
+				// Get the subsystem_device
+				drm_path.resize(node_len);
+				drm_path += "/subsystem_device";
+				file_str = os_quick_read_utf8_file(drm_path.c_str());
+				if (!file_str) {
+					dci.subsystem_device = 0;
+				} else {
+					// Skip over the "0x" and convert
+					sscanf(file_str + 2, "%x", &val);
+					dci.subsystem_device = val;
+					bfree(file_str);
+				}
+
+				/* The amdgpu driver exports the GPU memory information
+				 * via sysfs nodes. Sadly NVIDIA doesn't have the same
+				 * information via sysfs. Read the amdgpu-based nodes
+				 * if present and get the required fields.
+				 *
+				 * Get the GPU total dedicated VRAM, if available
+				 */
+				drm_path.resize(node_len);
+				drm_path += "/mem_info_vram_total";
+				file_str = os_quick_read_utf8_file(drm_path.c_str());
+				if (!file_str) {
+					dci.dedicated_vram_total = 0;
+				} else {
+					sscanf(file_str, "%lu", &dci.dedicated_vram_total);
+					bfree(file_str);
+				}
+
+				// Get the GPU total shared system memory, if available
+				drm_path.resize(node_len);
+				drm_path += "/mem_info_gtt_total";
+				file_str = os_quick_read_utf8_file(drm_path.c_str());
+				if (!file_str) {
+					dci.shared_system_memory_total = 0;
+				} else {
+					sscanf(file_str, "%lu", &dci.shared_system_memory_total);
+					bfree(file_str);
+				}
+
+				cards.push_back(dci);
+				blog(LOG_DEBUG,
+				     "%s: drm_adapter_info: PCI B:D:S:F: %s, device_id:0x%x,"
+				     "vendor_id:0x%x, sub_device:0x%x, sub_vendor:0x%x,"
+				     "vram_total: %lu, sys_memory: %lu",
+				     __FUNCTION__, dci.dbsf.c_str(), dci.device_id, dci.vendor_id, dci.subsystem_device,
+				     dci.subsystem_vendor, dci.dedicated_vram_total, dci.shared_system_memory_total);
+			} else {
+				blog(LOG_DEBUG, "%s: Failed to read symlink for %s", __FUNCTION__, drm_path.c_str());
 			}
-		} else {
-			return false;
 		}
 	}
-	base_length = drm_path.length();
-
-	if (os_file_exists(drm_path.c_str())) {
-		// Get the device_id
-		drm_path += "/device";
-		file_str = os_quick_read_utf8_file(drm_path.c_str());
-		if (!file_str) {
-			blog(LOG_ERROR, "Could not read from '%s'", drm_path.c_str());
-			return false;
-		}
-		// Skip over the "0x" and convert
-		sscanf(file_str + 2, "%x", &val);
-		dci->device_id = val;
-		bfree(file_str);
-
-		// Get the vendor_id
-		drm_path.resize(base_length);
-		drm_path += "/vendor";
-		file_str = os_quick_read_utf8_file(drm_path.c_str());
-		if (!file_str) {
-			blog(LOG_ERROR, "Could not read from '%s'", drm_path.c_str());
-			return false;
-		}
-		// Skip over the "0x" and convert
-		sscanf(file_str + 2, "%x", &val);
-		dci->vendor_id = val;
-		bfree(file_str);
-
-		// Get the subsystem_vendor
-		drm_path.resize(base_length);
-		drm_path += "/subsystem_vendor";
-		file_str = os_quick_read_utf8_file(drm_path.c_str());
-		if (!file_str) {
-			dci->subsystem_vendor = 0;
-		} else {
-			// Skip over the "0x" and convert
-			sscanf(file_str + 2, "%x", &val);
-			dci->subsystem_vendor = val;
-			bfree(file_str);
-		}
-
-		// Get the subsystem_device
-		drm_path.resize(base_length);
-		drm_path += "/subsystem_device";
-		file_str = os_quick_read_utf8_file(drm_path.c_str());
-		if (!file_str) {
-			dci->subsystem_device = 0;
-		} else {
-			// Skip over the "0x" and convert
-			sscanf(file_str + 2, "%x", &val);
-			dci->subsystem_device = val;
-			bfree(file_str);
-		}
-
-		// Get the boot_vga flag
-		dci->boot_vga = false;
-		drm_path.resize(base_length);
-		drm_path += "/boot_vga";
-		file_str = os_quick_read_utf8_file(drm_path.c_str());
-		// 'boot_vga' is not present for some adapters (iGPU)
-		if (file_str) {
-			sscanf(file_str, "%d", &val);
-			if (val == 1)
-				dci->boot_vga = true;
-			bfree(file_str);
-		}
-
-		/* The amdgpu driver exports the GPU memory information
-		 * via sysfs nodes. Sadly NVIDIA doesn't have the same
-		 * information via sysfs. Read the amdgpu-based nodes
-		 * if present and get the required fields.
-		 */
-
-		// Get the GPU total dedicated VRAM, if available
-		drm_path.resize(base_length);
-		drm_path += "/mem_info_vram_total";
-		file_str = os_quick_read_utf8_file(drm_path.c_str());
-		if (!file_str) {
-			dci->dedicated_vram_total = 0;
-		} else {
-			sscanf(file_str, "%lu", &dci->dedicated_vram_total);
-			bfree(file_str);
-		}
-
-		// Get the GPU total shared system memory, if available
-		drm_path.resize(base_length);
-		drm_path += "/mem_info_gtt_total";
-		file_str = os_quick_read_utf8_file(drm_path.c_str());
-		if (!file_str) {
-			dci->shared_system_memory_total = 0;
-		} else {
-			sscanf(file_str, "%lu", &dci->shared_system_memory_total);
-			bfree(file_str);
-		}
-
-		blog(LOG_DEBUG,
-		     "%s: drm_adapter_info: PCI B:D:S:F: %s, device_id:0x%x,"
-		     "vendor_id:0x%x, sub_device:0x%x, sub_vendor:0x%x,"
-		     "boot_flag:%d, vram_total: %lu, sys_memory: %lu",
-		     __FUNCTION__, dci->dbsf.c_str(), dci->device_id, dci->vendor_id, dci->subsystem_device,
-		     dci->subsystem_vendor, dci->boot_vga, dci->dedicated_vram_total, dci->shared_system_memory_total);
-	} else {
-		return false;
-	}
-
-	return true;
+	os_closedir(dir);
 }
 
 static void adjust_gpu_model(std::string *model)
@@ -345,7 +327,7 @@ static void adjust_gpu_model(std::string *model)
 	}
 }
 
-bool compare_match_strength(const drm_card_info &a, const drm_card_info &b)
+static bool compare_match_strength(const drm_card_info &a, const drm_card_info &b)
 {
 	return a.match_count > b.match_count;
 }
@@ -402,7 +384,6 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 
 	// Remove extraneous characters from the tokens
 	const std::string EXTRA_CHARS = ",()[]{}";
-	// for (long unsigned i = 0; i < gpu_tokens.size(); i++)
 	for (auto token = begin(gpu_tokens); token != end(gpu_tokens); ++token) {
 		for (unsigned int i = 0; i < EXTRA_CHARS.size(); ++i) {
 			token->erase(std::remove(token->begin(), token->end(), EXTRA_CHARS[i]), token->end());
@@ -415,10 +396,12 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 	// Scan the PCI bus once
 	pci_scan_bus(pacc);
 
-	// Walk the DRM (Direct Rendering Management) nodes
-	struct drm_card_info card = {0};
-	uint8_t i = 0;
-	while (get_drm_card_info(&i, &card)) {
+	// Discover the set of DRM render-capable GPUs
+	get_drm_cards(drm_cards);
+	blog(LOG_DEBUG, "Number of GPUs detected: %lu", drm_cards.size());
+
+	// Iterate through drm_cards to get the device and vendor names via libpci
+	for (auto card = begin(drm_cards); card != end(drm_cards); ++card) {
 		struct pci_dev *pdev;
 		struct pci_filter pfilter;
 		char namebuf[1024];
@@ -426,7 +409,7 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 		/* Get around the 'const char*' vs 'char*'
 		 * type issue with pci_filter_parse_slot().
 		 */
-		strncpy(slot, card.dbsf.c_str(), sizeof(slot));
+		strncpy(slot, card->dbsf.c_str(), sizeof(slot));
 
 		// Validate the "slot" string according to libpci
 		pci_filter_init(pacc, &pfilter);
@@ -439,24 +422,20 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 		for (pdev = pacc->devices; pdev; pdev = pdev->next) {
 			if (pci_filter_match(&pfilter, pdev)) {
 				pci_fill_info(pdev, PCI_FILL_IDENT);
-				card.device_name =
+				card->device_name =
 					pci_lookup_name(pacc, namebuf, sizeof(namebuf),
 							PCI_LOOKUP_DEVICE | PCI_LOOKUP_CACHE | PCI_LOOKUP_NETWORK,
 							pdev->vendor_id, pdev->device_id);
-				card.vendor_name =
+				card->vendor_name =
 					pci_lookup_name(pacc, namebuf, sizeof(namebuf),
 							PCI_LOOKUP_VENDOR | PCI_LOOKUP_CACHE | PCI_LOOKUP_NETWORK,
 							pdev->vendor_id, pdev->device_id);
 				blog(LOG_DEBUG, "libpci lookup: device_name: %s, vendor_name: %s",
-				     card.device_name.c_str(), card.vendor_name.c_str());
+				     card->device_name.c_str(), card->vendor_name.c_str());
 				break;
 			}
 		}
-		drm_cards.push_back(card);
-		card = {0};
-		++i;
 	}
-	blog(LOG_DEBUG, "Number of GPUs detected: %lu", drm_cards.size());
 	pci_cleanup(pacc);
 
 	/* Iterate through drm_cards to determine a string match count
@@ -510,7 +489,6 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 		adjust_gpu_model(&gpu.model);
 
 		if (card == begin(drm_cards)) {
-
 			/* The first card in the list corresponds to the
 			 * driver version and GPU memory information obtained
 			 * previously by OpenGL calls into the GPU.
