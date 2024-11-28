@@ -13,6 +13,8 @@ extern "C" {
 #include "pci/pci.h"
 }
 
+// Anonymous namespace ensures internal linkage
+namespace {
 struct drm_card_info {
 	uint16_t vendor_id;
 	uint16_t device_id;
@@ -42,21 +44,41 @@ struct drm_card_info {
 	std::string vendor_name;
 };
 
-const std::string WHITE_SPACE = " \f\n\r\t\v";
+constexpr std::string_view WHITE_SPACE = " \f\n\r\t\v";
 
 // trim_ws() will remove leading and trailing
 // white space from the string.
-static void trim_ws(std::string &s)
+void trim_ws(std::string &s)
 {
 	// Trim leading whitespace
 	size_t pos = s.find_first_not_of(WHITE_SPACE);
-	if (pos != string::npos)
+	if (pos != std::string::npos)
 		s = s.substr(pos);
 
 	// Trim trailing whitespace
 	pos = s.find_last_not_of(WHITE_SPACE);
-	if (pos != string::npos)
+	if (pos != std::string::npos)
 		s = s.substr(0, pos + 1);
+}
+
+bool compare_match_strength(const drm_card_info &a, const drm_card_info &b)
+{
+	return a.match_count > b.match_count;
+}
+
+void adjust_gpu_model(std::string &model)
+{
+	/* Use the sub-string between the [] brackets. For example,
+	 * the NVIDIA Quadro P4000 model string from PCI ID database
+	 * is "GP104GL [Quadro P4000]", and we only want the "Quadro
+	 * P4000" sub-string.
+	 */
+	size_t first = model.find('[');
+	size_t last = model.find_last_of(']');
+	if ((last - first) > 1) {
+		std::string adjusted_model = model.substr(first + 1, last - first - 1);
+		model.assign(adjusted_model);
+	}
 }
 
 static bool get_distribution_info(string &distro, string &version)
@@ -101,10 +123,10 @@ static bool get_distribution_info(string &distro, string &version)
 	return true;
 }
 
-static bool get_cpu_name(optional<string> &proc_name)
+bool get_cpu_name(optional<std::string> &proc_name)
 {
 	ifstream file("/proc/cpuinfo");
-	string line;
+	std::string line;
 	int physical_id = -1;
 	bool found_name = false;
 
@@ -117,9 +139,9 @@ static bool get_cpu_name(optional<string> &proc_name)
 		while (getline(file, line)) {
 			if (line.compare(0, 10, "model name") == 0) {
 				size_t pos = line.find(':');
-				if (pos != string::npos && line.at(pos + 1) != '\0') {
+				if (pos != std::string::npos && line.at(pos + 1) != '\0') {
 					proc_name = line.substr(pos + 1);
-					trim_ws((string &)proc_name);
+					trim_ws((std::string &)proc_name);
 					found_name = true;
 					continue;
 				}
@@ -127,7 +149,7 @@ static bool get_cpu_name(optional<string> &proc_name)
 
 			if (line.compare(0, 11, "physical id") == 0) {
 				size_t pos = line.find(':');
-				if (pos != string::npos && line.at(pos + 1) != '\0') {
+				if (pos != std::string::npos && line.at(pos + 1) != '\0') {
 					physical_id = atoi(&line[pos + 1]);
 					if (physical_id == 0 && found_name)
 						break;
@@ -139,13 +161,10 @@ static bool get_cpu_name(optional<string> &proc_name)
 	return true;
 }
 
-static bool get_cpu_freq(uint32_t *cpu_freq)
+bool get_cpu_freq(uint32_t &cpu_freq)
 {
-	if (!cpu_freq)
-		return false;
-
 	ifstream freq_file;
-	string line;
+	std::string line;
 
 	/* Look for the sysfs tree "base_frequency" first.
 	 * Intel exports "base_frequency, AMD does not.
@@ -161,9 +180,9 @@ static bool get_cpu_freq(uint32_t *cpu_freq)
 	if (getline(freq_file, line)) {
 		trim_ws(line);
 		// Convert the CPU frequency string to an integer in MHz
-		*cpu_freq = atoi(line.c_str()) / 1000;
+		cpu_freq = atoi(line.c_str()) / 1000;
 	} else {
-		*cpu_freq = 0;
+		cpu_freq = 0;
 	}
 	freq_file.close();
 
@@ -173,7 +192,7 @@ static bool get_cpu_freq(uint32_t *cpu_freq)
 /* get_drm_cards() will find all render-capable cards
  * in /sys/class/drm and populate a vector of drm_card_info.
  */
-static void get_drm_cards(std::vector<drm_card_info> &cards)
+void get_drm_cards(std::vector<drm_card_info> &cards)
 {
 	struct drm_card_info dci;
 	char *file_str = NULL;
@@ -181,8 +200,8 @@ static void get_drm_cards(std::vector<drm_card_info> &cards)
 	int len = 0;
 	uint val = 0;
 
-	string base_path = "/sys/class/drm/";
-	string drm_path = base_path;
+	std::string base_path = "/sys/class/drm/";
+	std::string drm_path = base_path;
 	size_t base_len = base_path.length();
 	size_t node_len = 0;
 
@@ -190,7 +209,7 @@ static void get_drm_cards(std::vector<drm_card_info> &cards)
 	struct os_dirent *ent;
 
 	while ((ent = os_readdir(dir)) != NULL) {
-		string entry_name = ent->d_name;
+		std::string entry_name = ent->d_name;
 		if (ent->directory && (entry_name.find("renderD") != std::string::npos)) {
 			dci = {0};
 			drm_path.resize(base_len);
@@ -310,28 +329,6 @@ static void get_drm_cards(std::vector<drm_card_info> &cards)
 	os_closedir(dir);
 }
 
-static void adjust_gpu_model(std::string *model)
-{
-	/* Use the sub-string between the [] brackets. For example,
-	 * the NVIDIA Quadro P4000 model string from PCI ID database
-	 * is "GP104GL [Quadro P4000]", and we only want the "Quadro
-	 * P4000" sub-string.
-	 */
-	size_t first = 0;
-	size_t last = 0;
-	first = model->find('[');
-	last = model->find_last_of(']');
-	if ((last - first) > 1) {
-		std::string adjusted_model = model->substr(first + 1, last - first - 1);
-		model->assign(adjusted_model);
-	}
-}
-
-static bool compare_match_strength(const drm_card_info &a, const drm_card_info &b)
-{
-	return a.match_count > b.match_count;
-}
-
 /* system_gpu_data() returns a sorted vector of GoLiveApi::Gpu
  * objects needed to build the multitrack video request.
  *
@@ -351,7 +348,7 @@ static bool compare_match_strength(const drm_card_info &a, const drm_card_info &
  * via OpenGL calls, hence the need to match the in-use GPU with
  * the libpci scanned results and extract the PCIe information.
  */
-static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
+std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 {
 	std::vector<GoLiveApi::Gpu> adapter_info;
 	GoLiveApi::Gpu gpu;
@@ -383,7 +380,7 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 				       sregex_token_iterator());
 
 	// Remove extraneous characters from the tokens
-	const std::string EXTRA_CHARS = ",()[]{}";
+	constexpr std::string_view EXTRA_CHARS = ",()[]{}";
 	for (auto token = begin(gpu_tokens); token != end(gpu_tokens); ++token) {
 		for (unsigned int i = 0; i < EXTRA_CHARS.size(); ++i) {
 			token->erase(std::remove(token->begin(), token->end(), EXTRA_CHARS[i]), token->end());
@@ -486,7 +483,7 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 		gpu.device_id = card->device_id;
 		gpu.vendor_id = card->vendor_id;
 		gpu.model = card->device_name;
-		adjust_gpu_model(&gpu.model);
+		adjust_gpu_model(gpu.model);
 
 		if (card == begin(drm_cards)) {
 			/* The first card in the list corresponds to the
@@ -514,6 +511,7 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 
 	return adapter_info;
 }
+} // namespace
 
 void system_info(GoLiveApi::Capabilities &capabilities)
 {
@@ -531,7 +529,7 @@ void system_info(GoLiveApi::Capabilities &capabilities)
 		}
 
 		uint32_t cpu_freq;
-		if (get_cpu_freq(&cpu_freq)) {
+		if (get_cpu_freq(cpu_freq)) {
 			cpu_data.speed = cpu_freq;
 		} else {
 			cpu_data.speed = 0;
