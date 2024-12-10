@@ -81,42 +81,115 @@ void adjust_gpu_model(std::string &model)
 	}
 }
 
-static bool get_distribution_info(string &distro, string &version)
+bool get_distribution_info(std::string &distro, std::string &version)
 {
-	ifstream file("/etc/os-release");
-	string line;
+	ifstream file;
+	std::string line;
+	const std::string systemd_file = "/etc/os-release";
+	const std::string flatpak_file = "/.flatpak-info";
 
-	if (file.is_open()) {
-		while (getline(file, line)) {
-			if (line.compare(0, 4, "NAME") == 0) {
-				size_t pos = line.find('=');
-				if (pos != string::npos && line.at(pos + 1) != '\0') {
-					distro = line.substr(pos + 1);
+	distro = "";
+	version = "";
 
-					// Remove the '"' characters from the string, if any.
-					distro.erase(std::remove(distro.begin(), distro.end(), '"'), distro.end());
+	if (std::filesystem::exists(systemd_file)) {
+		/* systemd-based distributions use /etc/os-release to identify
+		 * the OS. For example, the Ubuntu 24.04.1 variant looks like:
+		 *
+		 * PRETTY_NAME="Ubuntu 24.04.1 LTS"
+		 * NAME="Ubuntu"
+		 * VERSION_ID="24.04"
+		 * VERSION="24.04.1 LTS (Noble Numbat)"
+		 * VERSION_CODENAME=noble
+		 * ID=ubuntu
+		 * ID_LIKE=debian
+		 * HOME_URL="https://www.ubuntu.com/"
+		 * SUPPORT_URL="https://help.ubuntu.com/"
+		 * BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+		 * PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+		 * UBUNTU_CODENAME=noble
+		 * LOGO=ubuntu-logo
+		 *
+		 * Parse the file looking for the NAME and VERSION_ID fields.
+		 * Note that some distributions wrap the entry in '"' characters
+		 * while others do not, so we need to remove those characters.
+		 */
+		file.open(systemd_file);
+		if (file.is_open()) {
+			while (getline(file, line)) {
+				if (line.compare(0, 4, "NAME") == 0) {
+					size_t pos = line.find('=');
+					if (pos != std::string::npos && line.at(pos + 1) != '\0') {
+						distro = line.substr(pos + 1);
 
-					trim_ws(distro);
-					continue;
+						// Remove the '"' characters from the string, if any.
+						distro.erase(std::remove(distro.begin(), distro.end(), '"'),
+							     distro.end());
+
+						trim_ws(distro);
+						continue;
+					}
+				}
+
+				if (line.compare(0, 10, "VERSION_ID") == 0) {
+					size_t pos = line.find('=');
+					if (pos != std::string::npos && line.at(pos + 1) != '\0') {
+						version = line.substr(pos + 1);
+
+						// Remove the '"' characters from the string, if any.
+						version.erase(std::remove(version.begin(), version.end(), '"'),
+							      version.end());
+
+						trim_ws(version);
+						continue;
+					}
 				}
 			}
-
-			if (line.compare(0, 10, "VERSION_ID") == 0) {
-				size_t pos = line.find('=');
-				if (pos != string::npos && line.at(pos + 1) != '\0') {
-					version = line.substr(pos + 1);
-
-					// Remove the '"' characters from the string, if any.
-					version.erase(std::remove(version.begin(), version.end(), '"'), version.end());
-
-					trim_ws(version);
-					continue;
-				}
-			}
+			file.close();
 		}
-		file.close();
+	} else if (std::filesystem::exists(flatpak_file)) {
+		/* The .flatpak-info file has a line of the form:
+		 *
+		 * runtime=runtime/org.kde.Platform/x86_64/6.6
+		 *
+		 * Parse the line into tokens to identify the name and
+		 * version, which are "org.kde.Platform" and "6.6" respectively,
+		 * in the example above.
+		 */
+		file.open(flatpak_file);
+		if (file.is_open()) {
+			while (getline(file, line)) {
+				if (line.compare(0, 16, "runtime=runtime/") == 0) {
+					size_t pos = line.find('/');
+					if (pos != string::npos && line.at(pos + 1) != '\0') {
+						line.erase(0, pos + 1);
+
+						/* Split the string into tokens with a regex
+						 * a regex of one or more '/' characters'.
+						 */
+						std::regex fp_reg("[/]+");
+						vector<std::string> fp_tokens(
+							sregex_token_iterator(line.begin(), line.end(), fp_reg, -1),
+							sregex_token_iterator());
+						if (fp_tokens.size() >= 2) {
+							auto token = begin(fp_tokens);
+							distro = "Flatpak " + *token;
+							token = next(fp_tokens.end(), -1);
+							version = *token;
+						} else {
+							distro = "Flatpak unknown";
+							version = "0";
+							blog(LOG_DEBUG,
+							     "%s: Format of 'runtime' entry unrecognized in file %s",
+							     __FUNCTION__, flatpak_file.c_str());
+						}
+						break;
+					}
+				}
+			}
+			file.close();
+		}
 	} else {
-		blog(LOG_INFO, "Distribution: Missing /etc/os-release !");
+		blog(LOG_DEBUG, "%s: Failed to find host OS or flatpak info", __FUNCTION__);
 		return false;
 	}
 
