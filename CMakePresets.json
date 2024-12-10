@@ -75,6 +75,9 @@
         "ENABLE_AJA": false,
         "ENABLE_VLC": true,
         "ENABLE_WAYLAND": true,
+        "ENABLE_ALSA":false,
+        "ENABLE_JACK": true,
+        "ENABLE_PULSEAUDIO": true,
         "ENABLE_WEBRTC": false
       }
     },
