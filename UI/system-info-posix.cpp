@@ -13,6 +13,8 @@ extern "C" {
 #include "pci/pci.h"
 }
 
+// Anonymous namespace ensures internal linkage
+namespace {
 struct drm_card_info {
 	uint16_t vendor_id;
 	uint16_t device_id;
@@ -42,69 +44,162 @@ struct drm_card_info {
 	std::string vendor_name;
 };
 
-const std::string WHITE_SPACE = " \f\n\r\t\v";
+constexpr std::string_view WHITE_SPACE = " \f\n\r\t\v";
 
 // trim_ws() will remove leading and trailing
 // white space from the string.
-static void trim_ws(std::string &s)
+void trim_ws(std::string &s)
 {
 	// Trim leading whitespace
 	size_t pos = s.find_first_not_of(WHITE_SPACE);
-	if (pos != string::npos)
+	if (pos != std::string::npos)
 		s = s.substr(pos);
 
 	// Trim trailing whitespace
 	pos = s.find_last_not_of(WHITE_SPACE);
-	if (pos != string::npos)
+	if (pos != std::string::npos)
 		s = s.substr(0, pos + 1);
 }
 
-static bool get_distribution_info(string &distro, string &version)
+bool compare_match_strength(const drm_card_info &a, const drm_card_info &b)
 {
-	ifstream file("/etc/os-release");
-	string line;
+	return a.match_count > b.match_count;
+}
 
-	if (file.is_open()) {
-		while (getline(file, line)) {
-			if (line.compare(0, 4, "NAME") == 0) {
-				size_t pos = line.find('=');
-				if (pos != string::npos && line.at(pos + 1) != '\0') {
-					distro = line.substr(pos + 1);
+void adjust_gpu_model(std::string &model)
+{
+	/* Use the sub-string between the [] brackets. For example,
+	 * the NVIDIA Quadro P4000 model string from PCI ID database
+	 * is "GP104GL [Quadro P4000]", and we only want the "Quadro
+	 * P4000" sub-string.
+	 */
+	size_t first = model.find('[');
+	size_t last = model.find_last_of(']');
+	if ((last - first) > 1) {
+		std::string adjusted_model = model.substr(first + 1, last - first - 1);
+		model.assign(adjusted_model);
+	}
+}
 
-					// Remove the '"' characters from the string, if any.
-					distro.erase(std::remove(distro.begin(), distro.end(), '"'), distro.end());
+bool get_distribution_info(std::string &distro, std::string &version)
+{
+	ifstream file;
+	std::string line;
+	const std::string systemd_file = "/etc/os-release";
+	const std::string flatpak_file = "/.flatpak-info";
 
-					trim_ws(distro);
-					continue;
+	distro = "";
+	version = "";
+
+	if (std::filesystem::exists(systemd_file)) {
+		/* systemd-based distributions use /etc/os-release to identify
+		 * the OS. For example, the Ubuntu 24.04.1 variant looks like:
+		 *
+		 * PRETTY_NAME="Ubuntu 24.04.1 LTS"
+		 * NAME="Ubuntu"
+		 * VERSION_ID="24.04"
+		 * VERSION="24.04.1 LTS (Noble Numbat)"
+		 * VERSION_CODENAME=noble
+		 * ID=ubuntu
+		 * ID_LIKE=debian
+		 * HOME_URL="https://www.ubuntu.com/"
+		 * SUPPORT_URL="https://help.ubuntu.com/"
+		 * BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+		 * PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+		 * UBUNTU_CODENAME=noble
+		 * LOGO=ubuntu-logo
+		 *
+		 * Parse the file looking for the NAME and VERSION_ID fields.
+		 * Note that some distributions wrap the entry in '"' characters
+		 * while others do not, so we need to remove those characters.
+		 */
+		file.open(systemd_file);
+		if (file.is_open()) {
+			while (getline(file, line)) {
+				if (line.compare(0, 4, "NAME") == 0) {
+					size_t pos = line.find('=');
+					if (pos != std::string::npos && line.at(pos + 1) != '\0') {
+						distro = line.substr(pos + 1);
+
+						// Remove the '"' characters from the string, if any.
+						distro.erase(std::remove(distro.begin(), distro.end(), '"'),
+							     distro.end());
+
+						trim_ws(distro);
+						continue;
+					}
+				}
+
+				if (line.compare(0, 10, "VERSION_ID") == 0) {
+					size_t pos = line.find('=');
+					if (pos != std::string::npos && line.at(pos + 1) != '\0') {
+						version = line.substr(pos + 1);
+
+						// Remove the '"' characters from the string, if any.
+						version.erase(std::remove(version.begin(), version.end(), '"'),
+							      version.end());
+
+						trim_ws(version);
+						continue;
+					}
 				}
 			}
-
-			if (line.compare(0, 10, "VERSION_ID") == 0) {
-				size_t pos = line.find('=');
-				if (pos != string::npos && line.at(pos + 1) != '\0') {
-					version = line.substr(pos + 1);
-
-					// Remove the '"' characters from the string, if any.
-					version.erase(std::remove(version.begin(), version.end(), '"'), version.end());
-
-					trim_ws(version);
-					continue;
-				}
-			}
+			file.close();
 		}
-		file.close();
+	} else if (std::filesystem::exists(flatpak_file)) {
+		/* The .flatpak-info file has a line of the form:
+		 *
+		 * runtime=runtime/org.kde.Platform/x86_64/6.6
+		 *
+		 * Parse the line into tokens to identify the name and
+		 * version, which are "org.kde.Platform" and "6.6" respectively,
+		 * in the example above.
+		 */
+		file.open(flatpak_file);
+		if (file.is_open()) {
+			while (getline(file, line)) {
+				if (line.compare(0, 16, "runtime=runtime/") == 0) {
+					size_t pos = line.find('/');
+					if (pos != string::npos && line.at(pos + 1) != '\0') {
+						line.erase(0, pos + 1);
+
+						/* Split the string into tokens with a regex
+						 * a regex of one or more '/' characters'.
+						 */
+						std::regex fp_reg("[/]+");
+						vector<std::string> fp_tokens(
+							sregex_token_iterator(line.begin(), line.end(), fp_reg, -1),
+							sregex_token_iterator());
+						if (fp_tokens.size() >= 2) {
+							auto token = begin(fp_tokens);
+							distro = "Flatpak " + *token;
+							token = next(fp_tokens.end(), -1);
+							version = *token;
+						} else {
+							distro = "Flatpak unknown";
+							version = "0";
+							blog(LOG_DEBUG,
+							     "%s: Format of 'runtime' entry unrecognized in file %s",
+							     __FUNCTION__, flatpak_file.c_str());
+						}
+						break;
+					}
+				}
+			}
+			file.close();
+		}
 	} else {
-		blog(LOG_INFO, "Distribution: Missing /etc/os-release !");
+		blog(LOG_DEBUG, "%s: Failed to find host OS or flatpak info", __FUNCTION__);
 		return false;
 	}
 
 	return true;
 }
 
-static bool get_cpu_name(optional<string> &proc_name)
+bool get_cpu_name(optional<std::string> &proc_name)
 {
 	ifstream file("/proc/cpuinfo");
-	string line;
+	std::string line;
 	int physical_id = -1;
 	bool found_name = false;
 
@@ -117,9 +212,9 @@ static bool get_cpu_name(optional<string> &proc_name)
 		while (getline(file, line)) {
 			if (line.compare(0, 10, "model name") == 0) {
 				size_t pos = line.find(':');
-				if (pos != string::npos && line.at(pos + 1) != '\0') {
+				if (pos != std::string::npos && line.at(pos + 1) != '\0') {
 					proc_name = line.substr(pos + 1);
-					trim_ws((string &)proc_name);
+					trim_ws((std::string &)proc_name);
 					found_name = true;
 					continue;
 				}
@@ -127,7 +222,7 @@ static bool get_cpu_name(optional<string> &proc_name)
 
 			if (line.compare(0, 11, "physical id") == 0) {
 				size_t pos = line.find(':');
-				if (pos != string::npos && line.at(pos + 1) != '\0') {
+				if (pos != std::string::npos && line.at(pos + 1) != '\0') {
 					physical_id = atoi(&line[pos + 1]);
 					if (physical_id == 0 && found_name)
 						break;
@@ -139,13 +234,10 @@ static bool get_cpu_name(optional<string> &proc_name)
 	return true;
 }
 
-static bool get_cpu_freq(uint32_t *cpu_freq)
+bool get_cpu_freq(uint32_t &cpu_freq)
 {
-	if (!cpu_freq)
-		return false;
-
 	ifstream freq_file;
-	string line;
+	std::string line;
 
 	/* Look for the sysfs tree "base_frequency" first.
 	 * Intel exports "base_frequency, AMD does not.
@@ -161,9 +253,9 @@ static bool get_cpu_freq(uint32_t *cpu_freq)
 	if (getline(freq_file, line)) {
 		trim_ws(line);
 		// Convert the CPU frequency string to an integer in MHz
-		*cpu_freq = atoi(line.c_str()) / 1000;
+		cpu_freq = atoi(line.c_str()) / 1000;
 	} else {
-		*cpu_freq = 0;
+		cpu_freq = 0;
 	}
 	freq_file.close();
 
@@ -173,7 +265,7 @@ static bool get_cpu_freq(uint32_t *cpu_freq)
 /* get_drm_cards() will find all render-capable cards
  * in /sys/class/drm and populate a vector of drm_card_info.
  */
-static void get_drm_cards(std::vector<drm_card_info> &cards)
+void get_drm_cards(std::vector<drm_card_info> &cards)
 {
 	struct drm_card_info dci;
 	char *file_str = NULL;
@@ -181,8 +273,8 @@ static void get_drm_cards(std::vector<drm_card_info> &cards)
 	int len = 0;
 	uint val = 0;
 
-	string base_path = "/sys/class/drm/";
-	string drm_path = base_path;
+	std::string base_path = "/sys/class/drm/";
+	std::string drm_path = base_path;
 	size_t base_len = base_path.length();
 	size_t node_len = 0;
 
@@ -190,7 +282,7 @@ static void get_drm_cards(std::vector<drm_card_info> &cards)
 	struct os_dirent *ent;
 
 	while ((ent = os_readdir(dir)) != NULL) {
-		string entry_name = ent->d_name;
+		std::string entry_name = ent->d_name;
 		if (ent->directory && (entry_name.find("renderD") != std::string::npos)) {
 			dci = {0};
 			drm_path.resize(base_len);
@@ -310,28 +402,6 @@ static void get_drm_cards(std::vector<drm_card_info> &cards)
 	os_closedir(dir);
 }
 
-static void adjust_gpu_model(std::string *model)
-{
-	/* Use the sub-string between the [] brackets. For example,
-	 * the NVIDIA Quadro P4000 model string from PCI ID database
-	 * is "GP104GL [Quadro P4000]", and we only want the "Quadro
-	 * P4000" sub-string.
-	 */
-	size_t first = 0;
-	size_t last = 0;
-	first = model->find('[');
-	last = model->find_last_of(']');
-	if ((last - first) > 1) {
-		std::string adjusted_model = model->substr(first + 1, last - first - 1);
-		model->assign(adjusted_model);
-	}
-}
-
-static bool compare_match_strength(const drm_card_info &a, const drm_card_info &b)
-{
-	return a.match_count > b.match_count;
-}
-
 /* system_gpu_data() returns a sorted vector of GoLiveApi::Gpu
  * objects needed to build the multitrack video request.
  *
@@ -351,7 +421,7 @@ static bool compare_match_strength(const drm_card_info &a, const drm_card_info &
  * via OpenGL calls, hence the need to match the in-use GPU with
  * the libpci scanned results and extract the PCIe information.
  */
-static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
+std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 {
 	std::vector<GoLiveApi::Gpu> adapter_info;
 	GoLiveApi::Gpu gpu;
@@ -383,7 +453,7 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 				       sregex_token_iterator());
 
 	// Remove extraneous characters from the tokens
-	const std::string EXTRA_CHARS = ",()[]{}";
+	constexpr std::string_view EXTRA_CHARS = ",()[]{}";
 	for (auto token = begin(gpu_tokens); token != end(gpu_tokens); ++token) {
 		for (unsigned int i = 0; i < EXTRA_CHARS.size(); ++i) {
 			token->erase(std::remove(token->begin(), token->end(), EXTRA_CHARS[i]), token->end());
@@ -486,7 +556,7 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 		gpu.device_id = card->device_id;
 		gpu.vendor_id = card->vendor_id;
 		gpu.model = card->device_name;
-		adjust_gpu_model(&gpu.model);
+		adjust_gpu_model(gpu.model);
 
 		if (card == begin(drm_cards)) {
 			/* The first card in the list corresponds to the
@@ -514,6 +584,7 @@ static std::optional<std::vector<GoLiveApi::Gpu>> system_gpu_data()
 
 	return adapter_info;
 }
+} // namespace
 
 void system_info(GoLiveApi::Capabilities &capabilities)
 {
@@ -531,7 +602,7 @@ void system_info(GoLiveApi::Capabilities &capabilities)
 		}
 
 		uint32_t cpu_freq;
-		if (get_cpu_freq(&cpu_freq)) {
+		if (get_cpu_freq(cpu_freq)) {
 			cpu_data.speed = cpu_freq;
 		} else {
 			cpu_data.speed = 0;
