@@ -36,6 +36,10 @@
             "tag": "2024-09-05",
             "commit": "45b7d2cfac0e2ac256d458c7466a925b0a94de35"
         },
+	{
+            "type": "patch",
+            "path": "../modules/patches/ffmpeg/FFmpeg-devel-v4-avcodec-vaapi_encode-add-customized-surface-alignment.diff"
+        },
         {
             "type": "shell",
             "commands": [
