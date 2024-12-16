@@ -36,6 +36,13 @@
             "tag": "2024-09-05",
             "commit": "45b7d2cfac0e2ac256d458c7466a925b0a94de35"
         },
+	{
+            "type": "patch",
+            "paths": [
+		"../modules/patches/ffmpeg/0001-lavc-vaapi_encode-Query-surface-alignment.patch",
+		"../modules/patches/ffmpeg/0002-lavc-vaapi_encode_h265-Use-surface-alignment.patch"
+            ]
+        },
         {
             "type": "shell",
             "commands": [
