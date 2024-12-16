@@ -84,9 +84,12 @@ runs:
       shell: pwsh
       run: |
         . ${env:GITHUB_ACTION_PATH}\Invoke-External.ps1
+        $version = "${{ inputs.tagName }}"
+        $version -match "(([^\-]+)(\-(rc|beta)[0-9]+)?(?<eb_suffix>\-enhanced-(.*))?)"
+        $version = $version.Replace($Matches.eb_suffix, "")
         $boufArgs = @(
-           "--config",     "${env:GITHUB_ACTION_PATH}/config.toml",
-           "--version",    "${{ inputs.tagName }}"
+           "--config",     "${env:GITHUB_ACTION_PATH}/config.toml"
+           "--version",    "${version}"
            "--commit",     "${{ steps.notes.outputs.commitHash }}"
            "--branch",     "${{ inputs.channel }}"
            "--notes-file", "${{ github.workspace }}/notes.rst"
