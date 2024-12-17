@@ -38,7 +38,7 @@
         },
 	{
             "type": "patch",
-            "path": "../modules/patches/ffmpeg/FFmpeg-devel-v4-avcodec-vaapi_encode-add-customized-surface-alignment.diff"
+            "path": "../modules/patches/ffmpeg/AMD_GPU_HEVC_query_surface_alignment.diff"
         },
         {
             "type": "shell",
