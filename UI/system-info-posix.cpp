@@ -85,13 +85,55 @@ bool get_distribution_info(std::string &distro, std::string &version)
 {
 	ifstream file;
 	std::string line;
-	const std::string systemd_file = "/etc/os-release";
 	const std::string flatpak_file = "/.flatpak-info";
+	const std::string systemd_file = "/etc/os-release";
 
 	distro = "";
 	version = "";
 
-	if (std::filesystem::exists(systemd_file)) {
+	if (std::filesystem::exists(flatpak_file)) {
+		/* The .flatpak-info file has a line of the form:
+		 *
+		 * runtime=runtime/org.kde.Platform/x86_64/6.6
+		 *
+		 * Parse the line into tokens to identify the name and
+		 * version, which are "org.kde.Platform" and "6.6" respectively,
+		 * in the example above.
+		 */
+		file.open(flatpak_file);
+		if (file.is_open()) {
+			while (getline(file, line)) {
+				if (line.compare(0, 16, "runtime=runtime/") == 0) {
+					size_t pos = line.find('/');
+					if (pos != string::npos && line.at(pos + 1) != '\0') {
+						line.erase(0, pos + 1);
+
+						/* Split the string into tokens with a regex
+						 * of one or more '/' characters'.
+						 */
+						std::regex fp_reg("[/]+");
+						vector<std::string> fp_tokens(
+							sregex_token_iterator(line.begin(), line.end(), fp_reg, -1),
+							sregex_token_iterator());
+						if (fp_tokens.size() >= 2) {
+							auto token = begin(fp_tokens);
+							distro = "Flatpak " + *token;
+							token = next(fp_tokens.end(), -1);
+							version = *token;
+						} else {
+							distro = "Flatpak unknown";
+							version = "0";
+							blog(LOG_DEBUG,
+							     "%s: Format of 'runtime' entry unrecognized in file %s",
+							     __FUNCTION__, flatpak_file.c_str());
+						}
+						break;
+					}
+				}
+			}
+			file.close();
+		}
+	} else if (std::filesystem::exists(systemd_file)) {
 		/* systemd-based distributions use /etc/os-release to identify
 		 * the OS. For example, the Ubuntu 24.04.1 variant looks like:
 		 *
@@ -141,48 +183,6 @@ bool get_distribution_info(std::string &distro, std::string &version)
 
 						trim_ws(version);
 						continue;
-					}
-				}
-			}
-			file.close();
-		}
-	} else if (std::filesystem::exists(flatpak_file)) {
-		/* The .flatpak-info file has a line of the form:
-		 *
-		 * runtime=runtime/org.kde.Platform/x86_64/6.6
-		 *
-		 * Parse the line into tokens to identify the name and
-		 * version, which are "org.kde.Platform" and "6.6" respectively,
-		 * in the example above.
-		 */
-		file.open(flatpak_file);
-		if (file.is_open()) {
-			while (getline(file, line)) {
-				if (line.compare(0, 16, "runtime=runtime/") == 0) {
-					size_t pos = line.find('/');
-					if (pos != string::npos && line.at(pos + 1) != '\0') {
-						line.erase(0, pos + 1);
-
-						/* Split the string into tokens with a regex
-						 * a regex of one or more '/' characters'.
-						 */
-						std::regex fp_reg("[/]+");
-						vector<std::string> fp_tokens(
-							sregex_token_iterator(line.begin(), line.end(), fp_reg, -1),
-							sregex_token_iterator());
-						if (fp_tokens.size() >= 2) {
-							auto token = begin(fp_tokens);
-							distro = "Flatpak " + *token;
-							token = next(fp_tokens.end(), -1);
-							version = *token;
-						} else {
-							distro = "Flatpak unknown";
-							version = "0";
-							blog(LOG_DEBUG,
-							     "%s: Format of 'runtime' entry unrecognized in file %s",
-							     __FUNCTION__, flatpak_file.c_str());
-						}
-						break;
 					}
 				}
 			}
