@@ -1360,7 +1360,7 @@ private:
 	void RefreshSceneCollectionCache();
 
 	void RefreshSceneCollections(bool refreshCache = false);
-	void ActivateSceneCollection(const OBSSceneCollection &collection);
+	void ActivateSceneCollection(const OBSSceneCollection &collection, bool remigrate = false);
 
 public:
 	inline const OBSSceneCollectionCache &GetSceneCollectionCache() const noexcept { return collections; };
