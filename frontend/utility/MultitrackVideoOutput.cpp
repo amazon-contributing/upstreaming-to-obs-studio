@@ -17,6 +17,8 @@
 
 #include <cinttypes>
 
+using json = nlohmann::json;
+
 Qt::ConnectionType BlockingConnectionTypeFor(QObject *object)
 {
 	return object->thread() == QThread::currentThread() ? Qt::DirectConnection : Qt::BlockingQueuedConnection;
@@ -480,8 +482,7 @@ void MultitrackVideoOutput::StopStreaming()
 }
 
 bool MultitrackVideoOutput::HandleIncompatibleSettings(QWidget *parent, config_t *config, obs_service_t *service,
-						       bool &useDelay, bool &enableNewSocketLoop,
-						       bool &enableDynBitrate)
+						       bool &useDelay, bool &enableNewSocketLoop)
 {
 	QString incompatible_settings;
 	QString where_to_disable;
@@ -511,8 +512,6 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(QWidget *parent, config_t
 	check_setting(enableNewSocketLoop, "Basic.Settings.Advanced.Network.EnableNewSocketLoop",
 		      "Basic.Settings.Advanced.Network");
 #endif
-	check_setting(enableDynBitrate, "Basic.Settings.Output.DynamicBitrate.Beta", "Basic.Settings.Advanced.Network");
-
 	if (incompatible_settings.isEmpty())
 		return true;
 
@@ -548,14 +547,12 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(QWidget *parent, config_t
 	if (mb.clickedButton() == this_stream || mb.clickedButton() == all_streams) {
 		useDelay = false;
 		enableNewSocketLoop = false;
-		enableDynBitrate = false;
 
 		if (mb.clickedButton() == all_streams) {
 			config_set_bool(config, "Output", "DelayEnable", false);
 #ifdef _WIN32
 			config_set_bool(config, "Output", "NewSocketLoopEnable", false);
 #endif
-			config_set_bool(config, "Output", "DynamicBitrate", false);
 		}
 
 		return true;
@@ -569,7 +566,7 @@ bool MultitrackVideoOutput::HandleIncompatibleSettings(QWidget *parent, config_t
 
 static bool create_video_encoders(const GoLiveApi::Config &go_live_config,
 				  std::shared_ptr<obs_encoder_group_t> &video_encoder_group, obs_output_t *output,
-				  obs_output_t *recording_output)
+				  obs_output_t *recording_output, json &bitrate_interpolation_array)
 {
 	DStr video_encoder_name_buffer;
 	if (go_live_config.encoder_configurations.empty()) {
@@ -593,6 +590,12 @@ static bool create_video_encoders(const GoLiveApi::Config &go_live_config,
 		obs_output_set_video_encoder2(output, encoder, i);
 		if (recording_output)
 			obs_output_set_video_encoder2(recording_output, encoder, i);
+
+		auto &data = go_live_config.encoder_configurations[i].bitrate_interpolation_points;
+		if (data.has_value())
+			bitrate_interpolation_array.push_back(*data);
+		else
+			bitrate_interpolation_array.push_back(json::array());
 	}
 
 	video_encoder_group = encoder_group;
@@ -751,8 +754,14 @@ static OBSOutputs SetupOBSOutput(QWidget *parent, const QString &multitrack_vide
 	if (dump_stream_to_file_config)
 		recording_output = create_recording_output(dump_stream_to_file_config);
 
-	if (!create_video_encoders(go_live_config, video_encoder_group, output, recording_output))
+	json bitrate_interpolation_array = json::array();
+	if (!create_video_encoders(go_live_config, video_encoder_group, output, recording_output,
+				   bitrate_interpolation_array))
 		return {nullptr, nullptr};
+
+	OBSDataAutoRelease settings = obs_output_get_settings(output);
+	obs_data_set_string(settings, "interpolation_table_data", bitrate_interpolation_array.dump().c_str());
+	obs_output_update(output, settings);
 
 	std::vector<speaker_layout> requested_speaker_layouts;
 	speaker_layout current_layout = SPEAKERS_UNKNOWN;
