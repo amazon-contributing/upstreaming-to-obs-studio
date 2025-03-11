@@ -5,16 +5,15 @@ on:
     paths-ignore:
       - '**.md'
     branches:
-      - master
-      - 'release/**'
+      - amzn-master
     tags:
-      - '*'
+      - '*-enhanced-broadcasting-*'
 permissions:
   contents: write
 jobs:
   check-format:
     name: Format 🔍
-    if: github.ref_name == 'master'
+    if: github.ref_name == 'amzn-master'
     uses: ./.github/workflows/check-format.yaml
     permissions:
       contents: read
@@ -28,10 +27,11 @@ jobs:
 
   compatibility-validation:
     name: Validate Compatibility 🕵️
-    if: github.ref_name == 'master'
+    if: github.ref_name == 'amzn-master'
     runs-on: ubuntu-24.04
     permissions:
       checks: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,10 +52,11 @@ jobs:
 
   services-validation:
     name: Validate Services 🕵️
-    if: github.ref_name == 'master'
+    if: github.ref_name == 'amzn-master'
     runs-on: ubuntu-24.04
     permissions:
       checks: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:

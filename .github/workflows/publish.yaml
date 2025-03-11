@@ -5,7 +5,7 @@ on:
     types:
       - published
     branches:
-      - master
+      - amzn-master
       - 'release/**'
 permissions:
   contents: read
@@ -87,7 +87,7 @@ jobs:
           gh extension install actions/gh-actions-cache
 
           cache_key='flatpak-builder-${{ hashFiles('build-aux/**/*.json') }}'
-          cache_ref='master'
+          cache_ref='amzn-master'
           read -r key size unit _ ref _ <<< \
             "$(gh actions-cache list -B ${cache_ref} --key "${cache_key}-x86_64" | head -1)"
 

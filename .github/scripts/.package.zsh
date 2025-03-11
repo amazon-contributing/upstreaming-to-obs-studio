@@ -113,7 +113,7 @@ package() {
   local commit_hash
 
   if [[ -d ${project_root}/.git ]] {
-    local git_description="$(git describe --tags --long)"
+    local git_description="$(git describe --tags --long --match=\*enhanced-broadcasting\*)"
     commit_version="${${git_description%-*}%-*}"
     commit_hash="${git_description##*-g}"
     commit_distance="${${git_description%-*}##*-}"
