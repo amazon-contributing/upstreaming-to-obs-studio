@@ -27,18 +27,12 @@ jobs:
           if [[ "${RUNNER_DEBUG}" ]]; then set -x; fi
 
           case "${GITHUB_EVENT_NAME}" in
-            pull_request)
+            pull_request|merge_group)
               config_data=('codesign:false' 'notarize:false' 'package:false' 'config:RelWithDebInfo')
-              if gh pr view ${{ github.event.number }} --json labels \
-                | jq -e -r '.labels[] | select(.name == "Seeking Testers")' > /dev/null; then
-                config_data[0]='codesign:true'
-                config_data[2]='package:true'
-              fi
               ;;
             push)
-              config_data=('codesign:true' 'notarize:false' 'package:true' 'config:RelWithDebInfo')
-              if [[ ${GITHUB_REF_NAME} =~ [0-9]+.[0-9]+.[0-9]+(-(rc|beta).+)? ]]; then
-                config_data[1]='notarize:true'
+              config_data=('codesign:false' 'notarize:false' 'package:true' 'config:RelWithDebInfo')
+              if [[ ${GITHUB_REF_NAME} =~ [0-9]+.[0-9]+.[0-9]+.* ]]; then
                 config_data[3]='config:Release'
               fi
               ;;
@@ -207,12 +201,20 @@ jobs:
           target: x86_64
           config: ${{ needs.check-event.outputs.config }}
 
-      - name: Package OBS Studio 📀
+      - name: Package OBS Studio (Portable) 📀
         uses: ./.github/actions/package-obs
         with:
           target: x86_64
           config: ${{ needs.check-event.outputs.config }}
-          package: ${{ fromJSON(needs.check-event.outputs.package) }}
+          package: false
+
+      - name: Package OBS Studio (DEB) 📀
+        if: ${{ fromJSON(needs.check-event.outputs.package) }}
+        uses: ./.github/actions/package-obs
+        with:
+          target: x86_64
+          config: ${{ needs.check-event.outputs.config }}
+          package: true
 
       - name: Upload Source Tarball 🗜️
         uses: actions/upload-artifact@v4
@@ -248,6 +250,8 @@ jobs:
         shell: bash
     env:
       FLATPAK_BUILD_SHARE_PATH: flatpak_app/files/share
+      TWITCH_CLIENTID: ${{ secrets.TWITCH_CLIENT_ID }}
+      TWITCH_HASH: ${{ secrets.TWITCH_HASH }}
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.6
       options: --privileged
@@ -257,33 +261,6 @@ jobs:
           submodules: recursive
           fetch-depth: 0
           set-safe-directory: ${{ env.GITHUB_WORKSPACE }}
-
-      - name: Set Up Environment 🔧
-        id: setup
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          : Set Up Environment 🔧
-          if [[ "${RUNNER_DEBUG}" ]]; then set -x; fi
-
-          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
-
-          echo '::group::Install actions/gh-actions-cache'
-          gh extension install actions/gh-actions-cache
-          echo '::endgroup::'
-
-          cache_key='flatpak-builder-${{ hashFiles('build-aux/**/*.json') }}'
-          cache_ref='master'
-          read -r key size unit _ ref _ <<< \
-            "$(gh actions-cache list -B ${cache_ref} --key "${cache_key}-x86_64" | head -1)"
-
-          if [[ "${key}" ]]; then
-            echo "cacheHit=true" >> $GITHUB_OUTPUT
-          else
-            echo "cacheHit=false" >> $GITHUB_OUTPUT
-          fi
-
-          echo "cacheKey=${cache_key}" >> $GITHUB_OUTPUT
 
       - name: Validate Flatpak manifest
         uses: ./.github/actions/flatpak-builder-lint
@@ -295,11 +272,13 @@ jobs:
         uses: flathub-infra/flatpak-github-actions/flatpak-builder@e5fa5a8fe51d76f770ad9d240e4ad5898b1c6a53
         with:
           build-bundle: ${{ fromJSON(needs.check-event.outputs.package) }}
-          bundle: obs-studio-flatpak-${{ needs.check-event.outputs.commitHash }}.flatpak
+          bundle: obs-studio-teb-flatpak-${{ needs.check-event.outputs.commitHash }}.flatpak
+          branch: teb-beta
+          upload-artifact: true
           manifest-path: ${{ github.workspace }}/build-aux/com.obsproject.Studio.json
-          cache: ${{ fromJSON(steps.setup.outputs.cacheHit) || (github.event_name == 'push' && github.ref_name == 'master')}}
-          restore-cache: ${{ fromJSON(steps.setup.outputs.cacheHit) }}
-          cache-key: ${{ steps.setup.outputs.cacheKey }}
+          cache: true
+          restore-cache: true
+          cache-key: flatpak-builder-${{ hashFiles('build-aux/**/*.json') }}
           mirror-screenshots-url: https://dl.flathub.org/media
 
       - name: Validate AppStream

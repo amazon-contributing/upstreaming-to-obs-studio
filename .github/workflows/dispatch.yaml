@@ -33,6 +33,14 @@ on:
         description: Channel to use when generating Windows update files
         type: string
         required: false
+      oldBuild:
+        description: URL to previous build to use when generating updater files
+        type: string
+        required: false
+      newBuild:
+        description: URL of new build to use when generating updater files
+        type: string
+        required: false
 permissions:
   contents: write
 jobs:
@@ -138,14 +146,13 @@ jobs:
 
   windows-patches:
     name: Create Windows Patches 🩹
-    if: github.repository_owner == 'obsproject' && inputs.job == 'patches'
+    if: inputs.job == 'patches'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/windows-patches
         with:
           tagName: ${{ inputs.ref }}
-          workflowSecret: ${{ github.token }}
           channel: ${{ inputs.channel }}
-          gcsAccessKeyId: ${{ secrets.GCS_ACCESS_KEY_ID }}
-          gcsAccessKeySecret: ${{ secrets.GCS_ACCESS_KEY_SECRET }}
+          oldBuild: ${{ inputs.oldBuild }}
+          newBuild: ${{ inputs.newBuild }}

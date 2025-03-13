@@ -89,6 +89,18 @@
       }
     },
     {
+      "name": "ubuntu-ci-teb",
+      "inherits": ["ubuntu"],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_COMPILE_WARNING_AS_ERROR": true,
+        "CMAKE_COLOR_DIAGNOSTICS": true,
+        "ENABLE_CCACHE": true,
+        "ENABLE_PORTABLE_CONFIG": true,
+        "ENABLE_RELOCATABLE": true
+      }
+    },
+    {
       "name": "windows-x64",
       "displayName": "Windows x64",
       "description": "Default Windows build (x64)",

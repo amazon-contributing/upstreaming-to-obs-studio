@@ -113,7 +113,7 @@ package() {
   local commit_hash
 
   if [[ -d ${project_root}/.git ]] {
-    local git_description="$(git describe --tags --long)"
+    local git_description="$(git describe --tags --long --match=\*enhanced-broadcasting\*)"
     commit_version="${${git_description%-*}%-*}"
     commit_hash="${git_description##*-g}"
     commit_distance="${${git_description%-*}##*-}"
@@ -233,19 +233,19 @@ package() {
       pushd ${project_root}/build_${target%%-*}/install/${config}
       XZ_OPT=-T0 tar -cvJf ${project_root}/build_${target%%-*}/${output_name}.tar.xz (bin|lib|share)
       popd
-    }
 
-    pushd ${project_root}
-    ${cmake_bin} --build build_${target%%-*} --config ${config} --target package_source ${cmake_args}
-    output_name="${output_name}-sources"
+      pushd ${project_root}
+      ${cmake_bin} --build build_${target%%-*} --config ${config} --target package_source ${cmake_args}
+      output_name="${output_name}-sources"
 
-    pushd ${project_root}/build_${target%%-*}
-    local -a files=(obs-studio-*-sources.tar.*)
-    for file (${files}) {
-      mv ${file} ${file//obs-studio-*-sources/${output_name}}
+      pushd ${project_root}/build_${target%%-*}
+      local -a files=(obs-studio-*-sources.tar.*)
+      for file (${files}) {
+        mv ${file} ${file//obs-studio-*-sources/${output_name}}
+      }
+      popd
+      popd
     }
-    popd
-    popd
 
     log_group
   }

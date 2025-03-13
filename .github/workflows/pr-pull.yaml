@@ -5,13 +5,15 @@ on:
   pull_request:
     paths-ignore:
       - '**.md'
-    branches: [master]
-    types: [ opened, synchronize, reopened ]
+    branches: [amzn-master]
+    types: [opened, synchronize, reopened]
+  merge_group:
+    types: [checks_requested]
 permissions:
   contents: read
-concurrency:
-  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
-  cancel-in-progress: true
+#concurrency:
+#  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+#  cancel-in-progress: true
 jobs:
   check-format:
     name: Format 🔍
@@ -28,9 +30,10 @@ jobs:
 
   compatibility-validation:
     name: Validate Compatibility 🕵️
-    if: github.base_ref == 'master'
+    if: github.base_ref == 'master' || github.base_ref == 'amzn-master'
     runs-on: ubuntu-24.04
     permissions:
+      contents: read
       checks: write
     steps:
       - uses: actions/checkout@v4
@@ -50,9 +53,10 @@ jobs:
 
   services-validation:
     name: Validate Services 🕵️
-    if: github.base_ref == 'master'
+    if: github.base_ref == 'master' || github.base_ref == 'amzn-master'
     runs-on: ubuntu-24.04
     permissions:
+      contents: read
       checks: write
     steps:
       - uses: actions/checkout@v4
