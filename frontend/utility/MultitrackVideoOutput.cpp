@@ -224,7 +224,8 @@ static bool encoder_available(const char *type)
 }
 
 static OBSEncoderAutoRelease create_video_encoder(DStr &name_buffer, size_t encoder_index,
-						  const GoLiveApi::VideoEncoderConfiguration &encoder_config)
+						  const GoLiveApi::VideoEncoderConfiguration &encoder_config,
+						  const OBSCanvasAutoRelease &canvas)
 {
 	auto encoder_type = encoder_config.type.c_str();
 	if (!encoder_available(encoder_type)) {
@@ -294,10 +295,10 @@ static OBSEncoderAutoRelease create_video_encoder(DStr &name_buffer, size_t enco
 		throw MultitrackVideoError::warning(
 			QTStr("FailedToStartStream.FailedToCreateVideoEncoder").arg(name_buffer->array, encoder_type));
 	}
-	obs_encoder_set_video(video_encoder, obs_get_video());
+	obs_encoder_set_video(video_encoder, obs_canvas_get_video(canvas));
 
 	obs_video_info ovi;
-	if (!obs_get_video_info(&ovi)) {
+	if (!obs_canvas_get_video_info(canvas, &ovi)) {
 		blog(LOG_WARNING, "Failed to get obs_video_info while creating encoder %zu", encoder_index);
 		throw MultitrackVideoError::warning(
 			QTStr("FailedToStartStream.FailedToGetOBSVideoInfo").arg(name_buffer->array, encoder_type));
@@ -331,18 +332,17 @@ static OBSOutputs SetupOBSOutput(QWidget *parent, const QString &multitrack_vide
 				 std::vector<OBSEncoderAutoRelease> &audio_encoders,
 				 std::shared_ptr<obs_encoder_group_t> &video_encoder_group,
 				 const char *audio_encoder_id, size_t main_audio_mixer,
-				 std::optional<size_t> vod_track_mixer);
+				 std::optional<size_t> vod_track_mixer,
+				 const std::vector<OBSCanvasAutoRelease> &canvases);
 static void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self, obs_output_t *output, OBSSignal &start,
 				OBSSignal &stop);
 
-void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *service_name, obs_service_t *service,
-					     const std::optional<std::string> &rtmp_url, const QString &stream_key,
-					     const char *audio_encoder_id,
-					     std::optional<uint32_t> maximum_aggregate_bitrate,
-					     std::optional<uint32_t> maximum_video_tracks,
-					     std::optional<std::string> custom_config,
-					     obs_data_t *dump_stream_to_file_config, size_t main_audio_mixer,
-					     std::optional<size_t> vod_track_mixer, std::optional<bool> use_rtmps)
+void MultitrackVideoOutput::PrepareStreaming(
+	QWidget *parent, const char *service_name, obs_service_t *service, const std::optional<std::string> &rtmp_url,
+	const QString &stream_key, const char *audio_encoder_id, std::optional<uint32_t> maximum_aggregate_bitrate,
+	std::optional<uint32_t> maximum_video_tracks, std::optional<std::string> custom_config,
+	obs_data_t *dump_stream_to_file_config, size_t main_audio_mixer, std::optional<size_t> vod_track_mixer,
+	std::optional<bool> use_rtmps, std::optional<QString> extra_canvases)
 {
 	{
 		const std::lock_guard<std::mutex> current_lock{current_mutex};
@@ -368,6 +368,27 @@ void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *servic
 
 	auto auto_config_url_data = auto_config_url.toUtf8();
 
+	std::vector<OBSCanvasAutoRelease> canvases;
+
+	canvases.emplace_back(obs_get_main_canvas());
+	if (extra_canvases) {
+		for (const auto &uuid : extra_canvases->split(',')) {
+			obs_canvas_t *canvas = obs_get_canvas_by_uuid(uuid.toUtf8().constData());
+			if (!canvas) {
+				throw MultitrackVideoError::critical(QTStr("FailedToStartStream.MissingCanvas"));
+			}
+			canvases.emplace_back(canvas);
+		}
+	}
+
+	std::string canvasNames;
+	for (const auto &canvas : canvases) {
+		if (!canvasNames.empty())
+			canvasNames += ", ";
+
+		canvasNames += obs_canvas_get_name(canvas);
+	}
+
 	DStr vod_track_info_storage;
 	if (vod_track_mixer.has_value())
 		dstr_printf(vod_track_info_storage, "Yes (mixer: %zu)", vod_track_mixer.value());
@@ -381,13 +402,14 @@ void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *servic
 	     "    max aggregate bitrate: %s (%" PRIu32 ")\n"
 	     "    max video tracks:      %s (%" PRIu32 ")\n"
 	     "    custom rtmp url:       %s ('%s')\n"
-	     "    vod track:             %s",
+	     "    vod track:             %s\n"
+	     "    canvases:              %s",
 	     is_custom_config ? "Yes" : "No", !auto_config_url.isEmpty() ? auto_config_url_data.constData() : "(null)",
 	     service_name, maximum_aggregate_bitrate.has_value() ? "Set" : "Auto",
 	     maximum_aggregate_bitrate.value_or(0), maximum_video_tracks.has_value() ? "Set" : "Auto",
 	     maximum_video_tracks.value_or(0), rtmp_url.has_value() ? "Yes" : "No",
 	     rtmp_url.has_value() ? rtmp_url->c_str() : "",
-	     vod_track_info_storage->array ? vod_track_info_storage->array : "No");
+	     vod_track_info_storage->array ? vod_track_info_storage->array : "No", canvasNames.c_str());
 
 	const bool custom_config_only = auto_config_url.isEmpty() && MultitrackVideoDeveloperModeEnabled() &&
 					custom_config.has_value() &&
@@ -395,7 +417,7 @@ void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *servic
 
 	if (!custom_config_only) {
 		auto go_live_post = constructGoLivePost(stream_key, maximum_aggregate_bitrate, maximum_video_tracks,
-							vod_track_mixer.has_value());
+							vod_track_mixer.has_value(), canvases);
 
 		go_live_config = DownloadGoLiveConfig(parent, auto_config_url, go_live_post, multitrack_video_name);
 	}
@@ -438,7 +460,7 @@ void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *servic
 	std::shared_ptr<obs_encoder_group_t> video_encoder_group;
 	auto outputs = SetupOBSOutput(parent, multitrack_video_name, dump_stream_to_file_config, output_config,
 				      audio_encoders, video_encoder_group, audio_encoder_id, main_audio_mixer,
-				      vod_track_mixer);
+				      vod_track_mixer, canvases);
 	auto output = std::move(outputs.output);
 	auto recording_output = std::move(outputs.recording_output);
 	if (!output)
@@ -470,6 +492,11 @@ void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *servic
 			recording_audio_encoders.emplace_back(obs_encoder_get_ref(encoder));
 		}
 
+		std::vector<OBSCanvasAutoRelease> recording_canvases(canvases.size());
+		for (const auto &canvas : canvases) {
+			recording_canvases.emplace_back(obs_canvas_get_ref(canvas));
+		}
+
 		{
 			const std::lock_guard current_stream_dump_lock{current_stream_dump_mutex};
 			current_stream_dump.emplace(OBSOutputObjects{
@@ -479,6 +506,7 @@ void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *servic
 				nullptr,
 				std::move(start_recording),
 				std::move(stop_recording),
+				std::move(recording_canvases),
 			});
 		}
 	}
@@ -491,6 +519,7 @@ void MultitrackVideoOutput::PrepareStreaming(QWidget *parent, const char *servic
 		std::move(multitrack_video_service),
 		std::move(start_streaming),
 		std::move(stop_streaming),
+		std::move(canvases),
 	});
 }
 
@@ -542,7 +571,8 @@ void MultitrackVideoOutput::StopStreaming()
 
 static bool create_video_encoders(const GoLiveApi::Config &go_live_config,
 				  std::shared_ptr<obs_encoder_group_t> &video_encoder_group, obs_output_t *output,
-				  obs_output_t *recording_output, json &bitrate_interpolation_array)
+				  obs_output_t *recording_output, json &bitrate_interpolation_array,
+				  const std::vector<OBSCanvasAutoRelease> &canvases)
 {
 	DStr video_encoder_name_buffer;
 	if (go_live_config.encoder_configurations.empty()) {
@@ -554,9 +584,17 @@ static bool create_video_encoders(const GoLiveApi::Config &go_live_config,
 	if (!encoder_group)
 		return false;
 
+	auto max_canvas_idx = canvases.size() - 1;
+
 	for (size_t i = 0; i < go_live_config.encoder_configurations.size(); i++) {
-		auto encoder =
-			create_video_encoder(video_encoder_name_buffer, i, go_live_config.encoder_configurations[i]);
+		auto &config = go_live_config.encoder_configurations[i];
+		if (config.canvas_index > max_canvas_idx) {
+			blog(LOG_ERROR, "MultitrackVideoOutput: Invalid canvas index: %u", config.canvas_index);
+			throw MultitrackVideoError::warning(QTStr("FailedToStartStream.MissingEncoderConfigs"));
+		}
+
+		auto &canvas = canvases[config.canvas_index];
+		auto encoder = create_video_encoder(video_encoder_name_buffer, i, config, canvas);
 		if (!encoder)
 			return false;
 
@@ -723,7 +761,8 @@ static OBSOutputs SetupOBSOutput(QWidget *parent, const QString &multitrack_vide
 				 std::vector<OBSEncoderAutoRelease> &audio_encoders,
 				 std::shared_ptr<obs_encoder_group_t> &video_encoder_group,
 				 const char *audio_encoder_id, size_t main_audio_mixer,
-				 std::optional<size_t> vod_track_mixer)
+				 std::optional<size_t> vod_track_mixer,
+				 const std::vector<OBSCanvasAutoRelease> &canvases)
 {
 	auto output = create_output();
 	OBSOutputAutoRelease recording_output;
@@ -732,7 +771,7 @@ static OBSOutputs SetupOBSOutput(QWidget *parent, const QString &multitrack_vide
 
 	json bitrate_interpolation_array = json::array();
 	if (!create_video_encoders(go_live_config, video_encoder_group, output, recording_output,
-				   bitrate_interpolation_array))
+				   bitrate_interpolation_array, canvases))
 		return {nullptr, nullptr};
 
 	OBSDataAutoRelease settings = obs_output_get_settings(output);
