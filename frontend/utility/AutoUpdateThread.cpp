@@ -18,15 +18,15 @@
 /* ------------------------------------------------------------------------ */
 
 #ifndef WIN_MANIFEST_URL
-#define WIN_MANIFEST_URL "https://obsproject.com/update_studio/manifest.json"
+#define WIN_MANIFEST_URL "https://d50yg09cghihd.cloudfront.net/updater/manifest.json"
 #endif
 
 #ifndef WIN_MANIFEST_BASE_URL
-#define WIN_MANIFEST_BASE_URL "https://obsproject.com/update_studio/"
+#define WIN_MANIFEST_BASE_URL "https://d50yg09cghihd.cloudfront.net/updater/"
 #endif
 
 #ifndef WIN_BRANCHES_URL
-#define WIN_BRANCHES_URL "https://obsproject.com/update_studio/branches.json"
+#define WIN_BRANCHES_URL "https://d50yg09cghihd.cloudfront.net/updater/branches.json"
 #endif
 
 #ifndef WIN_DEFAULT_BRANCH
@@ -34,7 +34,7 @@
 #endif
 
 #ifndef WIN_UPDATER_URL
-#define WIN_UPDATER_URL "https://obsproject.com/update_studio/updater.exe"
+#define WIN_UPDATER_URL "https://d50yg09cghihd.cloudfront.net/updater/updater.exe"
 #endif
 
 /* ------------------------------------------------------------------------ */

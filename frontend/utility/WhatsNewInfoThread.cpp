@@ -236,15 +236,6 @@ bool FetchAndVerifyFile(const char *name, const char *file, const char *url, std
 	}
 
 	/* ----------------------------------- *
-	 * verify file signature               */
-
-	if (responseCode == 200) {
-		success = CheckDataSignature(name, data, signature);
-		if (!success)
-			throw strprintf("Invalid %s signature", name);
-	}
-
-	/* ----------------------------------- *
 	 * write or load file                  */
 
 	if (responseCode == 200) {
