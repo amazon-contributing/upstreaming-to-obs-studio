@@ -197,6 +197,8 @@ EXPORT char *os_generate_uuid(void);
 
 EXPORT
 struct timespec *os_nstime_to_timespec(uint64_t timestamp, struct timespec *storage);
+EXPORT char *os_hash_sha256(void *data, size_t data_size);
+EXPORT char *os_hash_file_sha256(const char *path);
 
 /* clang-format off */
 #ifdef __APPLE__

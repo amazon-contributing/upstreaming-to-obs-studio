@@ -9,6 +9,7 @@
 #include <bpm.h>
 #include <util/dstr.hpp>
 #include <libavformat/avformat.h>
+#include <utility/RemoteTextThread.hpp>
 
 #include <QPushButton>
 #include <QMessageBox>
@@ -336,6 +337,89 @@ static OBSOutputs SetupOBSOutput(QWidget *parent, const QString &multitrack_vide
 				 const std::vector<OBSCanvasAutoRelease> &canvases);
 static void SetupSignalHandlers(bool recording, MultitrackVideoOutput *self, obs_output_t *output, OBSSignal &start,
 				OBSSignal &stop);
+
+struct ModuleHash {
+	std::string Algorithm;
+	std::string Hash;
+	std::string Path;
+
+	NLOHMANN_DEFINE_TYPE_INTRUSIVE(ModuleHash, Algorithm, Hash, Path)
+};
+
+struct HashMismatch {
+	const char *file_name;
+	const char *current_hash;
+	std::string expected_hash;
+};
+
+std::optional<std::vector<HashMismatch>> check_plugin_hash_mismatches(const char *text)
+{
+	using json = nlohmann::json;
+
+	std::vector<HashMismatch> mismatches;
+
+	try {
+		auto data = json::parse(text);
+
+		auto &hashes = data["/hashes"_json_pointer];
+		std::optional<json::exception> exception;
+
+		auto callback = [&](obs_module_t *module) {
+			if (exception.has_value())
+				return;
+
+			auto file_name = obs_get_module_file_name(module);
+			if (!file_name)
+				return;
+
+			auto hash = obs_get_module_hash_sha256(module);
+			if (!hash)
+				return;
+
+			auto file_name_length = strlen(file_name);
+
+			for (auto &entry : hashes)
+				try {
+					auto module_hash = entry.template get<ModuleHash>();
+
+					if (qstrnicmp(module_hash.Algorithm.c_str(), "SHA256", 7) != 0)
+						continue;
+
+					if (module_hash.Path.size() < file_name_length)
+						continue;
+
+					auto potential_file_name_offset = module_hash.Path.size() - file_name_length;
+
+					auto potential_file_name_start =
+						module_hash.Path.c_str() + potential_file_name_offset;
+					if (qstrnicmp(potential_file_name_start, file_name, file_name_length) != 0)
+						continue;
+
+					if (qstrnicmp(module_hash.Hash.c_str(), hash, module_hash.Hash.size()) == 0)
+						return;
+
+					mismatches.push_back({file_name, hash, module_hash.Hash});
+					return;
+				} catch (json::exception e) {
+					exception.emplace(std::move(e));
+				}
+		};
+		using callback_t = decltype(callback);
+
+		obs_enum_modules([](void *context,
+				    obs_module_t *module) { (*static_cast<callback_t *>(context))(module); },
+				 &callback);
+
+		if (exception)
+			throw *exception;
+	} catch (const json::exception &exception) {
+		blog(LOG_ERROR, "check_plugin_hash_mismatches: Error while processing plugin integrity json (%d): %s",
+		     exception.id, exception.what());
+		return std::nullopt;
+	}
+
+	return {mismatches};
+}
 
 void MultitrackVideoOutput::PrepareStreaming(
 	QWidget *parent, const char *service_name, obs_service_t *service, const std::optional<std::string> &rtmp_url,

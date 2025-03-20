@@ -69,7 +69,7 @@ set_source_files_properties(
 
 target_link_libraries(
   libobs
-  PRIVATE Avrt Dwmapi Dxgi winmm Rpcrt4 OBS::obfuscate OBS::winhandle OBS::COMutils
+  PRIVATE Avrt Bcrypt Dwmapi Dxgi winmm Rpcrt4 OBS::obfuscate OBS::winhandle OBS::COMutils
   PUBLIC OBS::w32-pthreads
 )
 
