@@ -516,7 +516,7 @@ void OBSBasic::on_scenes_customContextMenuRequested(const QPoint &pos)
 	QMenu popup(this);
 	QMenu order(QTStr("Basic.MainMenu.Edit.Order"), this);
 
-	popup.addAction(QTStr("Add"), this, &OBSBasic::on_actionAddScene_triggered);
+	popup.addAction(QTStr("AddScene") + "...", this, &OBSBasic::on_actionAddScene_triggered);
 
 	if (item) {
 		QAction *copyFilters = new QAction(QTStr("Copy.Filters"), this);
@@ -546,13 +546,14 @@ void OBSBasic::on_scenes_customContextMenuRequested(const QPoint &pos)
 		popup.addSeparator();
 
 		delete sceneProjectorMenu;
-		sceneProjectorMenu = new QMenu(QTStr("SceneProjector"));
+		sceneProjectorMenu = new QMenu(QTStr("Projector.Open.Scene"));
 		AddProjectorMenuMonitors(sceneProjectorMenu, this, &OBSBasic::OpenSceneProjector);
+		sceneProjectorMenu->addSeparator();
+		sceneProjectorMenu->addAction(QTStr("Projector.Window"), this, &OBSBasic::OpenSceneWindow);
+
 		popup.addMenu(sceneProjectorMenu);
+		popup.addSeparator();
 
-		QAction *sceneWindow = popup.addAction(QTStr("SceneWindow"), this, &OBSBasic::OpenSceneWindow);
-
-		popup.addAction(sceneWindow);
 		popup.addAction(QTStr("Screenshot.Scene"), this, &OBSBasic::ScreenshotScene);
 		popup.addSeparator();
 		popup.addAction(QTStr("Filters"), this, &OBSBasic::OpenSceneFilters);
