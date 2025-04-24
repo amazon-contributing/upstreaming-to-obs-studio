@@ -2028,6 +2028,14 @@ obs_scene_t *obs_scene_duplicate(obs_scene_t *scene, const char *name, enum obs_
 				 : create_id(canvas, scene->source->info.id, name);
 	obs_canvas_release(canvas);
 
+	new_scene->is_group = scene->is_group;
+	new_scene->custom_size = scene->custom_size;
+	new_scene->cx = scene->cx;
+	new_scene->cy = scene->cy;
+	new_scene->absolute_coordinates = scene->absolute_coordinates;
+	new_scene->last_width = scene->last_width;
+	new_scene->last_height = scene->last_height;
+
 	obs_source_copy_filters(new_scene->source, scene->source);
 
 	obs_data_apply(new_scene->source->private_settings, scene->source->private_settings);

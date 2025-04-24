@@ -423,7 +423,7 @@ void obs_canvas_set_channel(obs_canvas_t *canvas, uint32_t channel, obs_source_t
 		signal_handler_signal(obs->signals, "channel_change", &params);
 
 	/* For some reason the original implementation allows overriding the source from the callback,
-	 * so just in case support that here as well. (This isn't used anywhere in OBS itself.) */
+	 * so just in case support that here as well. This isn't used anywhere in OBS itself. */
 	calldata_get_ptr(&params, "source", &source);
 	view->channels[channel] = source;
 
@@ -527,7 +527,7 @@ void obs_canvas_move_scene(obs_scene_t *scene, obs_canvas_t *dst)
 
 void obs_canvas_remove(obs_canvas_t *canvas)
 {
-	/* Do not allow removing the main canvas, or canvasses already marked as removed. */
+	/* Do not allow removing the main canvas, or canvases already marked as removed. */
 	if (canvas->flags & (REMOVED | MAIN))
 		return;
 

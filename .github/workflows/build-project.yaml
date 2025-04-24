@@ -262,6 +262,29 @@ jobs:
           fetch-depth: 0
           set-safe-directory: ${{ env.GITHUB_WORKSPACE }}
 
+      - name: Set Up Environment 🔧
+        id: setup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          : Set Up Environment 🔧
+          if [[ "${RUNNER_DEBUG}" ]]; then set -x; fi
+
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+          cache_key='flatpak-builder-${{ hashFiles('build-aux/**/*.json') }}'
+          cache_ref='master'
+          read -r id key size unit created accessed <<< \
+            "$(gh cache list --ref "refs/heads/${cache_ref}" --key "${cache_key}-x86_64" | head -1)"
+
+          if [[ "${key}" ]]; then
+            echo "cacheHit=true" >> $GITHUB_OUTPUT
+          else
+            echo "cacheHit=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "cacheKey=${cache_key}" >> $GITHUB_OUTPUT
+
       - name: Validate Flatpak manifest
         uses: ./.github/actions/flatpak-builder-lint
         with:
@@ -269,7 +292,7 @@ jobs:
           path: build-aux/com.obsproject.Studio.json
 
       - name: Build Flatpak Manifest 🧾
-        uses: flathub-infra/flatpak-github-actions/flatpak-builder@42d281a5cf2ad1d0882a66af700a62cdad7686c6
+        uses: flatpak/flatpak-github-actions/flatpak-builder@10a3c29f0162516f0f68006be14c92f34bd4fa6c
         with:
           build-bundle: ${{ fromJSON(needs.check-event.outputs.package) }}
           bundle: obs-studio-teb-flatpak-${{ needs.check-event.outputs.commitHash }}.flatpak

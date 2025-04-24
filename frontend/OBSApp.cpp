@@ -296,6 +296,9 @@ void OBSApp::InitUserConfigDefaults()
 	config_set_default_bool(userConfig, "BasicWindow", "MultiviewDrawAreas", true);
 
 	config_set_default_bool(userConfig, "BasicWindow", "MediaControlsCountdownTimer", true);
+
+	config_set_default_int(userConfig, "Appearance", "FontScale", 10);
+	config_set_default_int(userConfig, "Appearance", "Density", 1);
 }
 
 static bool do_mkdir(const char *path)
@@ -928,12 +931,16 @@ void OBSApp::AppInit()
 	config_set_default_string(userConfig, "Basic", "SceneCollectionFile", Str("Untitled"));
 	config_set_default_bool(userConfig, "Basic", "ConfigOnNewProfile", true);
 
-	if (!config_has_user_value(userConfig, "Basic", "Profile")) {
+	const std::string_view profileName{config_get_string(userConfig, "Basic", "Profile")};
+
+	if (profileName.empty()) {
 		config_set_string(userConfig, "Basic", "Profile", Str("Untitled"));
 		config_set_string(userConfig, "Basic", "ProfileDir", Str("Untitled"));
 	}
 
-	if (!config_has_user_value(userConfig, "Basic", "SceneCollection")) {
+	const std::string_view sceneCollectionName{config_get_string(userConfig, "Basic", "SceneCollection")};
+
+	if (sceneCollectionName.empty()) {
 		config_set_string(userConfig, "Basic", "SceneCollection", Str("Untitled"));
 		config_set_string(userConfig, "Basic", "SceneCollectionFile", Str("Untitled"));
 	}
