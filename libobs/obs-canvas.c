@@ -318,6 +318,13 @@ bool obs_canvas_reset_video_internal(obs_canvas_t *canvas, struct obs_video_info
 
 void obs_canvas_insert_source(obs_canvas_t *canvas, obs_source_t *source)
 {
+	/* Private sources may use a canvas as size reference, but not actually be added to it. */
+	if (source->context.private) {
+		obs_canvas_remove_source(source);
+		source->canvas = obs_canvas_get_weak_canvas(canvas);
+		return;
+	}
+
 	if (canvas->flags & SCENE_REF && obs_source_is_scene(source))
 		obs_source_get_ref(source);
 	if (source->canvas)
@@ -350,6 +357,12 @@ static bool remove_groups_enum_cb(void *param, obs_source_t *scene_source)
 
 void obs_canvas_remove_source(obs_source_t *source)
 {
+	if (source->context.private) {
+		obs_weak_canvas_release(source->canvas);
+		source->canvas = NULL;
+		return;
+	}
+
 	obs_canvas_t *canvas = obs_weak_canvas_get_canvas(source->canvas);
 	if (canvas) {
 		obs_weak_canvas_release(source->canvas);

@@ -237,13 +237,10 @@ static void obs_source_init_finalize(struct obs_source *source, obs_canvas_t *ca
 		pthread_mutex_unlock(&obs->data.audio_sources_mutex);
 	}
 
-	if (!source->context.private) {
-		if (requires_canvas(source)) {
-			obs_canvas_insert_source(canvas, source);
-		} else {
-			obs_context_data_insert_name(&source->context, &obs->data.sources_mutex,
-						     &obs->data.public_sources);
-		}
+	if (requires_canvas(source)) {
+		obs_canvas_insert_source(canvas, source);
+	} else if (!source->context.private) {
+		obs_context_data_insert_name(&source->context, &obs->data.sources_mutex, &obs->data.public_sources);
 	}
 	obs_context_data_insert_uuid(&source->context, &obs->data.sources_mutex, &obs->data.sources);
 }
@@ -423,6 +420,12 @@ obs_source_t *obs_source_create_canvas(obs_canvas_t *canvas, const char *id, con
 				       obs_data_t *hotkey_data)
 {
 	return obs_source_create_internal(id, name, NULL, settings, hotkey_data, false, LIBOBS_API_VER, canvas);
+}
+
+obs_source_t *obs_source_create_canvas_private(obs_canvas_t *canvas, const char *id, const char *name,
+					       obs_data_t *settings)
+{
+	return obs_source_create_internal(id, name, NULL, settings, NULL, true, LIBOBS_API_VER, canvas);
 }
 
 obs_source_t *obs_source_create_set_last_ver(obs_canvas_t *canvas, const char *id, const char *name, const char *uuid,
@@ -639,13 +642,11 @@ void obs_source_destroy(struct obs_source *source)
 		obs_source_filter_remove(source, source->filters.array[0]);
 
 	obs_context_data_remove_uuid(&source->context, &obs->data.sources_mutex, &obs->data.sources);
-	if (!source->context.private) {
-		if (requires_canvas(source)) {
-			obs_canvas_remove_source(source);
-		} else {
-			obs_context_data_remove_name(&source->context, &obs->data.sources_mutex,
-						     &obs->data.public_sources);
-		}
+	if (requires_canvas(source)) {
+		obs_canvas_remove_source(source);
+	} else if (!source->context.private) {
+
+		obs_context_data_remove_name(&source->context, &obs->data.sources_mutex, &obs->data.public_sources);
 	}
 
 	source_profiler_remove_source(source);
@@ -4144,7 +4145,7 @@ void obs_source_set_name(obs_source_t *source, const char *name)
 		return;
 
 	if (!name || !*name || !source->context.name || strcmp(name, source->context.name) != 0) {
-		if (requires_canvas(source)) {
+		if (requires_canvas(source) && !source->context.private) {
 			obs_canvas_rename_source(source, name);
 		} else {
 			struct calldata data;
@@ -5872,5 +5873,5 @@ uint64_t obs_source_get_last_async_ts(const obs_source_t *source)
 
 obs_canvas_t *obs_source_get_canvas(const obs_source_t *source)
 {
-	return obs_weak_canvas_get_canvas(source->canvas);
+	return source->context.private ? NULL : obs_weak_canvas_get_canvas(source->canvas);
 }
