@@ -331,7 +331,7 @@ void OBSStudioAPI::obs_frontend_add_tools_menu_item(const char *name, obs_fronte
 
 void *OBSStudioAPI::obs_frontend_add_dock(void *dock)
 {
-	QDockWidget *d = reinterpret_cast<QDockWidget *>(dock);
+	QDockWidget *d = static_cast<QDockWidget *>(dock);
 
 	QString name = d->objectName();
 	if (name.isEmpty() || main->IsDockObjectNameUsed(name)) {
@@ -387,7 +387,7 @@ bool OBSStudioAPI::obs_frontend_add_custom_qdock(const char *id, void *dock)
 		return false;
 	}
 
-	QDockWidget *d = reinterpret_cast<QDockWidget *>(dock);
+	QDockWidget *d = static_cast<QDockWidget *>(dock);
 	d->setObjectName(QT_UTF8(id));
 
 	main->AddCustomDockWidget(d);
@@ -689,24 +689,24 @@ void OBSStudioAPI::obs_frontend_add_undo_redo_action(const char *name, const und
 		[redo](const std::string &data) { redo(data.c_str()); }, undo_data, redo_data, repeatable);
 }
 
+void OBSStudioAPI::obs_frontend_get_canvases(obs_frontend_canvas_list *canvas_list)
+{
+	for (const auto &canvas : main->canvases) {
+		obs_canvas_t *ref = obs_canvas_get_ref(canvas);
+		if (ref)
+			da_push_back(canvas_list->canvases, &ref);
+	}
+}
+
 obs_canvas_t *OBSStudioAPI::obs_frontend_add_canvas(const char *name, obs_video_info *ovi, int flags)
 {
-	auto canvas = main->AddCanvas(std::string(name), ovi, flags);
+	auto &canvas = main->AddCanvas(std::string(name), ovi, flags);
 	return obs_canvas_get_ref(canvas);
 }
 
 bool OBSStudioAPI::obs_frontend_remove_canvas(obs_canvas_t *canvas)
 {
 	return main->RemoveCanvas(canvas);
-}
-
-void OBSStudioAPI::obs_frontend_get_canvases(obs_frontend_canvas_list *canvas_list)
-{
-	for (auto &fc : main->canvases) {
-		obs_canvas_t *canvas = obs_canvas_get_ref(fc.canvas);
-		if (canvas)
-			da_push_back(canvas_list->canvases, &canvas);
-	}
 }
 
 void OBSStudioAPI::on_load(obs_data_t *settings)

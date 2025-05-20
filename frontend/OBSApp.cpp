@@ -26,6 +26,9 @@
 
 #if !defined(_WIN32) && !defined(__APPLE__)
 #include <obs-nix-platform.h>
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
+#include <qpa/qplatformnativeinterface.h>
+#endif
 #endif
 #include <qt-wrappers.hpp>
 
@@ -37,9 +40,6 @@
 #include <QSessionManager>
 #else
 #include <QSocketNotifier>
-#endif
-#if !defined(_WIN32) && !defined(__APPLE__)
-#include <qpa/qplatformnativeinterface.h>
 #endif
 
 #ifdef _WIN32
@@ -434,7 +434,7 @@ bool OBSApp::InitGlobalConfig()
 
 	uint32_t lastVersion = config_get_int(appConfig, "General", "LastVersion");
 
-	if (lastVersion < MAKE_SEMANTIC_VERSION(31, 0, 0)) {
+	if (lastVersion && lastVersion < MAKE_SEMANTIC_VERSION(31, 0, 0)) {
 		bool migratedUserSettings = config_get_bool(appConfig, "General", "Pre31Migrated");
 
 		if (!migratedUserSettings) {
@@ -448,19 +448,34 @@ bool OBSApp::InitGlobalConfig()
 	InitGlobalConfigDefaults();
 	InitGlobalLocationDefaults();
 
+	std::filesystem::path defaultUserConfigLocation =
+		std::filesystem::u8path(config_get_default_string(appConfig, "Locations", "Configuration"));
+	std::filesystem::path defaultUserScenesLocation =
+		std::filesystem::u8path(config_get_default_string(appConfig, "Locations", "SceneCollections"));
+	std::filesystem::path defaultUserProfilesLocation =
+		std::filesystem::u8path(config_get_default_string(appConfig, "Locations", "Profiles"));
+
 	if (IsPortableMode()) {
-		userConfigLocation =
-			std::filesystem::u8path(config_get_default_string(appConfig, "Locations", "Configuration"));
-		userScenesLocation =
-			std::filesystem::u8path(config_get_default_string(appConfig, "Locations", "SceneCollections"));
-		userProfilesLocation =
-			std::filesystem::u8path(config_get_default_string(appConfig, "Locations", "Profiles"));
+		userConfigLocation = std::move(defaultUserConfigLocation);
+		userScenesLocation = std::move(defaultUserScenesLocation);
+		userProfilesLocation = std::move(defaultUserProfilesLocation);
 	} else {
-		userConfigLocation =
+		std::filesystem::path currentUserConfigLocation =
 			std::filesystem::u8path(config_get_string(appConfig, "Locations", "Configuration"));
-		userScenesLocation =
+		std::filesystem::path currentUserScenesLocation =
 			std::filesystem::u8path(config_get_string(appConfig, "Locations", "SceneCollections"));
-		userProfilesLocation = std::filesystem::u8path(config_get_string(appConfig, "Locations", "Profiles"));
+		std::filesystem::path currentUserProfilesLocation =
+			std::filesystem::u8path(config_get_string(appConfig, "Locations", "Profiles"));
+
+		userConfigLocation = (std::filesystem::exists(currentUserConfigLocation))
+					     ? std::move(currentUserConfigLocation)
+					     : std::move(defaultUserConfigLocation);
+		userScenesLocation = (std::filesystem::exists(currentUserScenesLocation))
+					     ? std::move(currentUserScenesLocation)
+					     : std::move(defaultUserScenesLocation);
+		userProfilesLocation = (std::filesystem::exists(currentUserProfilesLocation))
+					       ? std::move(currentUserProfilesLocation)
+					       : std::move(defaultUserProfilesLocation);
 	}
 
 	bool userConfigResult = InitUserConfig(userConfigLocation, lastVersion);
@@ -1033,20 +1048,36 @@ bool OBSApp::OBSInit()
 
 #if !defined(_WIN32) && !defined(__APPLE__)
 	if (QApplication::platformName() == "xcb") {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+		auto native = qGuiApp->nativeInterface<QNativeInterface::QX11Application>();
+
+		obs_set_nix_platform_display(native->display());
+#endif
+
 		obs_set_nix_platform(OBS_NIX_PLATFORM_X11_EGL);
+
 		blog(LOG_INFO, "Using EGL/X11");
 	}
 
 #ifdef ENABLE_WAYLAND
 	if (QApplication::platformName().contains("wayland")) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+		auto native = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+
+		obs_set_nix_platform_display(native->display());
+#endif
+
 		obs_set_nix_platform(OBS_NIX_PLATFORM_WAYLAND);
 		setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
+
 		blog(LOG_INFO, "Platform: Wayland");
 	}
 #endif
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
 	QPlatformNativeInterface *native = QGuiApplication::platformNativeInterface();
 	obs_set_nix_platform_display(native->nativeResourceForIntegration("display"));
+#endif
 #endif
 
 #ifdef __APPLE__
@@ -1104,12 +1135,7 @@ string OBSApp::GetVersionString(bool platform) const
 {
 	stringstream ver;
 
-#ifdef HAVE_OBSCONFIG_H
 	ver << obs_get_version_string();
-#else
-	ver << LIBOBS_API_MAJOR_VER << "." << LIBOBS_API_MINOR_VER << "." << LIBOBS_API_PATCH_VER;
-
-#endif
 
 	if (platform) {
 		ver << " (";

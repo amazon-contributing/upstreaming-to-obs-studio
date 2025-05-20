@@ -172,17 +172,16 @@ void OBSBasicSettings::LoadStream1Settings()
 
 	ui->multitrackVideoAdditionalCanvas->clear();
 	ui->multitrackVideoAdditionalCanvas->addItem(QTStr("None"));
-	for (const auto &fc : main->GetCanvases()) {
-		if (obs_canvas_get_flags(fc.canvas) & EPHEMERAL)
+	for (const auto &canvas : main->GetCanvases()) {
+		if (obs_canvas_get_flags(canvas) & EPHEMERAL)
 			continue;
 
-		ui->multitrackVideoAdditionalCanvas->addItem(obs_canvas_get_name(fc.canvas),
-							     obs_canvas_get_uuid(fc.canvas));
+		ui->multitrackVideoAdditionalCanvas->addItem(obs_canvas_get_name(canvas), obs_canvas_get_uuid(canvas));
 	}
 
-	if (config_has_user_value(main->Config(), "Stream1", "MultitrackExtraCanvases")) {
+	if (config_has_user_value(main->Config(), "Stream1", "MultitrackExtraCanvas")) {
 		/* Currently we only support one canvas, so the value will just be one UUID. */
-		const std::string_view uuid = config_get_string(main->Config(), "Stream1", "MultitrackExtraCanvases");
+		const std::string_view uuid = config_get_string(main->Config(), "Stream1", "MultitrackExtraCanvas");
 		if (!uuid.empty()) {
 			int idx = ui->multitrackVideoAdditionalCanvas->findData(uuid.data());
 			ui->multitrackVideoAdditionalCanvas->setCurrentIndex(idx);
@@ -354,7 +353,7 @@ void OBSBasicSettings::SaveStream1Settings()
 	SaveCheckBox(ui->multitrackVideoStreamDumpEnable, "Stream1", "MultitrackVideoStreamDumpEnabled");
 	SaveCheckBox(ui->multitrackVideoConfigOverrideEnable, "Stream1", "MultitrackVideoConfigOverrideEnabled");
 	SaveText(ui->multitrackVideoConfigOverride, "Stream1", "MultitrackVideoConfigOverride");
-	SaveComboData(ui->multitrackVideoAdditionalCanvas, "Stream1", "MultitrackExtraCanvases");
+	SaveComboData(ui->multitrackVideoAdditionalCanvas, "Stream1", "MultitrackExtraCanvas");
 
 	if (oldMultitrackVideoSetting != ui->enableMultitrackVideo->isChecked())
 		main->ResetOutputs();
