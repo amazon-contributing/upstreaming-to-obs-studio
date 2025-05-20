@@ -29,6 +29,9 @@ static const char *hevc_main = "Main";
 static const char *hevc_main10 = "Main 10";
 static const char *av1_main = "Main";
 
+// Maximum reconnect attempts with an invalid key error before giving up (roughly 30 seconds with default start value)
+static constexpr uint8_t MAX_RECONNECT_ATTEMPTS = 5;
+
 Qt::ConnectionType BlockingConnectionTypeFor(QObject *object)
 {
 	return object->thread() == QThread::currentThread() ? Qt::DirectConnection : Qt::BlockingQueuedConnection;
@@ -426,7 +429,7 @@ void MultitrackVideoOutput::PrepareStreaming(
 	const QString &stream_key, const char *audio_encoder_id, std::optional<uint32_t> maximum_aggregate_bitrate,
 	std::optional<uint32_t> maximum_video_tracks, std::optional<std::string> custom_config,
 	obs_data_t *dump_stream_to_file_config, size_t main_audio_mixer, std::optional<size_t> vod_track_mixer,
-	std::optional<bool> use_rtmps, std::optional<QString> extra_canvases)
+	std::optional<bool> use_rtmps, std::optional<QString> extra_canvas)
 {
 	{
 		const std::lock_guard<std::mutex> current_lock{current_mutex};
@@ -455,14 +458,12 @@ void MultitrackVideoOutput::PrepareStreaming(
 	std::vector<OBSCanvasAutoRelease> canvases;
 
 	canvases.emplace_back(obs_get_main_canvas());
-	if (extra_canvases) {
-		for (const auto &uuid : extra_canvases->split(',')) {
-			obs_canvas_t *canvas = obs_get_canvas_by_uuid(uuid.toUtf8().constData());
-			if (!canvas) {
-				throw MultitrackVideoError::critical(QTStr("FailedToStartStream.MissingCanvas"));
-			}
-			canvases.emplace_back(canvas);
+	if (extra_canvas) {
+		obs_canvas_t *canvas = obs_get_canvas_by_uuid(extra_canvas->toUtf8().constData());
+		if (!canvas) {
+			throw MultitrackVideoError::critical(QTStr("FailedToStartStream.MissingCanvas"));
 		}
+		canvases.emplace_back(canvas);
 	}
 
 	std::string canvasNames;
@@ -562,10 +563,11 @@ void MultitrackVideoOutput::PrepareStreaming(
 	obs_output_add_packet_callback(output, bpm_inject, NULL);
 
 	// Set callback to prevent reconnection attempts once the stream key has become invalid
-	static auto reconnect_cb = [](void *, obs_output_t *, int code) -> bool {
-		return code != OBS_OUTPUT_INVALID_STREAM;
+	static auto reconnect_cb = [](void *param, obs_output_t *, int code) -> bool {
+		auto _this = static_cast<MultitrackVideoOutput *>(param);
+		return code != OBS_OUTPUT_INVALID_STREAM || (_this->reconnect_attempts++ < MAX_RECONNECT_ATTEMPTS);
 	};
-	obs_output_set_reconnect_callback(output, reconnect_cb, nullptr);
+	obs_output_set_reconnect_callback(output, reconnect_cb, this);
 
 	OBSSignal start_streaming;
 	OBSSignal stop_streaming;
@@ -680,7 +682,7 @@ static bool create_video_encoders(const GoLiveApi::Config &go_live_config,
 		auto &config = go_live_config.encoder_configurations[i];
 		if (config.canvas_index > max_canvas_idx) {
 			blog(LOG_ERROR, "MultitrackVideoOutput: Invalid canvas index: %u", config.canvas_index);
-			throw MultitrackVideoError::warning(QTStr("FailedToStartStream.MissingEncoderConfigs"));
+			throw MultitrackVideoError::warning(QTStr("FailedToStartStream.InvalidEncoderConfig"));
 		}
 
 		auto &canvas = canvases[config.canvas_index];
@@ -918,6 +920,7 @@ void StreamStartHandler(void *arg, calldata_t *)
 {
 	auto self = static_cast<MultitrackVideoOutput *>(arg);
 	self->restart_on_error = true;
+	self->reconnect_attempts = 0;
 }
 
 void StreamStopHandler(void *arg, calldata_t *data)

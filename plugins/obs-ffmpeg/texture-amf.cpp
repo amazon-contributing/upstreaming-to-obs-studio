@@ -75,7 +75,7 @@ static uint64_t amf_version = 0;
 /* ================================================================================================================= */
 /* The structure and tables below are used to determine the appropriate minimum encoding level for the codecs. AMF
  * defaults to the highest level for each codec (AVC, HEVC, AV1), and some client devices will reject playback if the
- * codec level is higher than its decode abilities, which make sense.
+ * codec level is higher than its decode abilities.
  */
 
 struct codec_level_entry {

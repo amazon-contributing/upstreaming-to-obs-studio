@@ -15,33 +15,37 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ******************************************************************************/
 
-#include "OBSBasic.hpp"
+#pragma once
 
-void OBSBasic::CanvasRemoved(void *data, calldata_t *params)
-{
-	obs_canvas_t *canvas = static_cast<obs_canvas_t *>(calldata_ptr(params, "canvas"));
-	QMetaObject::invokeMethod(static_cast<OBSBasic *>(data), "RemoveCanvas", Q_ARG(OBSCanvas, OBSCanvas(canvas)));
-}
+#include <optional>
+#include <vector>
 
-const OBS::Canvas &OBSBasic::AddCanvas(const std::string &name, obs_video_info *ovi, int flags)
-{
-	OBSCanvas canvas = obs_canvas_create(name.c_str(), ovi, flags);
-	auto &it = canvases.emplace_back(canvas);
-	OnEvent(OBS_FRONTEND_EVENT_CANVAS_ADDED);
-	return it;
-}
+#include "obs.h"
+#include "obs.hpp"
 
-bool OBSBasic::RemoveCanvas(obs_canvas_t *canvas)
-{
-	if (!canvas)
-		return false;
+namespace OBS {
+class Canvas {
 
-	auto canvas_it = std::find(std::begin(canvases), std::end(canvases), canvas);
-	if (canvas_it != std::end(canvases)) {
-		canvases.erase(canvas_it);
-		OnEvent(OBS_FRONTEND_EVENT_CANVAS_REMOVED);
-		return true;
-	}
+public:
+	Canvas(obs_canvas_t *canvas);
+	Canvas(Canvas &&other) noexcept;
 
-	return false;
-}
+	~Canvas() noexcept;
+
+	// No default or copy/move constructors
+	Canvas() = delete;
+	Canvas(Canvas &other) = delete;
+
+	Canvas &operator=(Canvas &&other) noexcept;
+
+	operator obs_canvas_t *() const { return canvas; }
+
+	[[nodiscard]] std::optional<OBSDataAutoRelease> Save() const;
+	static std::optional<Canvas> Load(obs_data_t *data);
+	static std::vector<Canvas> LoadCanvases(obs_data_array_t *canvases);
+	static OBSDataArrayAutoRelease SaveCanvases(const std::vector<Canvas> &canvases);
+
+private:
+	obs_canvas_t *canvas = nullptr;
+};
+} // namespace OBS

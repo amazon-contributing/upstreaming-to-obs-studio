@@ -253,8 +253,7 @@ struct VideoEncoderConfiguration {
 	uint32_t canvas_index;
 
 	NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(VideoEncoderConfiguration, type, width, height, framerate,
-						    gpu_scale_type, colorspace, range, format,
-						    bitrate_interpolation_points, settings, canvas_index)
+						    gpu_scale_type, colorspace, range, format, settings, canvas_index)
 };
 
 struct AudioEncoderConfiguration {

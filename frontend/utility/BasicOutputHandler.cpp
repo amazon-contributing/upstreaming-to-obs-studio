@@ -457,10 +457,10 @@ std::shared_future<void> BasicOutputHandler::SetupMultitrackVideo(obs_service_t 
 		custom_config = DeserializeConfigText(
 			config_get_string(main->Config(), "Stream1", "MultitrackVideoConfigOverride"));
 
-	std::optional<QString> extraCanvasUUIDs;
-	const char *uuids = config_get_string(main->Config(), "Stream1", "MultitrackExtraCanvases");
-	if (uuids && *uuids) {
-		extraCanvasUUIDs = uuids;
+	std::optional<QString> extraCanvasUUID;
+	const char *uuid = config_get_string(main->Config(), "Stream1", "MultitrackExtraCanvas");
+	if (uuid && *uuid) {
+		extraCanvasUUID = uuid;
 	}
 
 	OBSDataAutoRelease settings = obs_service_get_settings(service);
@@ -539,7 +539,7 @@ std::shared_future<void> BasicOutputHandler::SetupMultitrackVideo(obs_service_t 
 							  audio_encoder_id.c_str(), maximum_aggregate_bitrate,
 							  maximum_video_tracks, custom_config, stream_dump_config,
 							  main_audio_mixer, vod_track_mixer, use_rtmps,
-							  extraCanvasUUIDs);
+							  extraCanvasUUID);
 		} catch (const MultitrackVideoError &error_) {
 			error.emplace(error_);
 		}
