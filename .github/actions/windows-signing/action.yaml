@@ -75,10 +75,9 @@ runs:
         Invoke-External msiexec /i $msiPath /qn /norestart
 
     - name: Install rclone
-      if: inputs.architecture == 'x64'
       shell: pwsh
       run: |
-        choco install rclone --version=1.64.2 -y --no-progress
+        choco install rclone --version=1.69.3 -y --no-progress
     
     - name: 'Authenticate to Google Cloud'
       uses: 'google-github-actions/auth@5a50e581162a13f4baa8916d01180d2acbc04363'
@@ -86,22 +85,14 @@ runs:
         workload_identity_provider: ${{ inputs.gcpWorkloadIdentityProvider }}
         service_account: ${{ inputs.gcpServiceAccountName }}
 
-    - name: Ensure previous build directory exists
-      if: inputs.architecture != 'x64'
-      shell: pwsh
-      run: |
-        . ${env:GITHUB_ACTION_PATH}\Ensure-Location.ps1
-        Ensure-Location "${{ github.workspace }}/old_builds"
-
     - name: Download Previous Build
-      if: inputs.architecture == 'x64'
       shell: pwsh
       env:
         RCLONE_GCS_ENV_AUTH: 'true'
       run: |
         . ${env:GITHUB_ACTION_PATH}\Ensure-Location.ps1
         Ensure-Location "${{ github.workspace }}/old_builds"
-        rclone copy --transfers 100 ":gcs:obs-latest/${{ inputs.channel }}" .
+        rclone copy --transfers 100 ":gcs:obs-latest/${{ inputs.architecture }}/${{ inputs.channel }}" .
 
     - name: Sign Game Capture with RSA cert
       shell: pwsh
@@ -135,20 +126,18 @@ runs:
         Invoke-External "${{ github.workspace }}\bouf\bin\bouf.exe" @boufArgs
 
     - name: Sync Latest Build
-      if: inputs.architecture == 'x64'
       shell: pwsh
       env:
         RCLONE_INCLUDE: '**/${{ inputs.version }}/**'
         RCLONE_GCS_ENV_AUTH: 'true'
         RCLONE_GCS_BUCKET_POLICY_ONLY: 'true'
       run: |
-        rclone sync --delete-excluded --transfers 100 "${{ github.workspace }}/old_builds" ":gcs:obs-latest/${{ inputs.channel }}"
+        rclone sync --delete-excluded --transfers 100 "${{ github.workspace }}/old_builds" ":gcs:obs-latest/${{ inputs.architecture }}/${{ inputs.channel }}"
 
     - name: Upload Build to Archive
-      if: inputs.architecture == 'x64'
       shell: pwsh
       env:
         RCLONE_GCS_ENV_AUTH: 'true'
         RCLONE_GCS_BUCKET_POLICY_ONLY: 'true'
       run: |
-        rclone copy --transfers 100 "${{ github.workspace }}/old_builds" ":gcs:obs-builds"
+        rclone copy --transfers 100 "${{ github.workspace }}/old_builds" ":gcs:obs-builds/${{ inputs.architecture }}"

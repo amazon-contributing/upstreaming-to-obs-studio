@@ -2166,6 +2166,7 @@ static bool amf_av1_update_data(amf_base *enc, int rc, int64_t bitrate, int64_t 
 		set_av1_property(enc, QVBR_QUALITY_LEVEL, qp / 4);
 		set_av1_property(enc, Q_INDEX_INTRA, qp);
 		set_av1_property(enc, Q_INDEX_INTER, qp);
+		set_av1_property(enc, Q_INDEX_INTER_B, qp);
 	}
 	return pipeline_flush;
 }
