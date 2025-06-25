@@ -102,7 +102,7 @@
     --border_highlight: "transparent";
 
     /* OS Fixes */
-    --os_mac_font_base_value: 12;
+    --os_mac_font_base_value: calc(1.2 * var(--obsFontScale));
 
     --font_base: calc(1pt * var(--font_base_value));
     --font_small: max(7pt, calc(0.8pt * var(--font_base_value)));
@@ -128,6 +128,7 @@
     --padding_container: max(4px, var(--padding_base));
     --padding_wide: min(calc(12px + max(var(--padding_base_value), 4)), 24px);
     --padding_menu: calc(4px + calc(2 * var(--padding_base_value)));
+    --padding_menubar: max(6px, calc(2px + calc(1.25 * var(--padding_base_value))));
 
     --padding_base_border: calc(var(--padding_base) + 1px);
 
@@ -193,6 +194,9 @@
     --tab_border_hover: var(--button_border_hover);
     --tab_border_focus: var(--button_border_focus);
     --tab_border_selected: var(--primary);
+
+    --tab_padding_base: calc(5px + var(--padding_base));
+    --tab_padding_large: calc(9px + var(--padding_base));
 
     --preview_scale_width: calc(calc(var(--input_text_padding) * 3.5) * calc(var(--font_base_value) / 10));
 
@@ -497,7 +501,7 @@ QMenu::right-arrow {
 /* Top Menu Bar Items */
 QMenuBar::item {
     background-color: transparent;
-    padding: var(--padding_large) var(--padding_xlarge);
+    padding: var(--padding_large) var(--padding_menubar);
 }
 
 QMenuBar::item:selected {
@@ -925,7 +929,7 @@ QTabBar::tab {
     background: var(--tab_bg);
     color: var(--text);
     border: none;
-    padding: 8px 12px;
+    padding: var(--tab_padding_base) var(--tab_padding_large);
     min-width: 50px;
     margin: 1px 0px;
     margin-right: 2px;
