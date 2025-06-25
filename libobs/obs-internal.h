@@ -1166,6 +1166,7 @@ struct obs_output {
 	os_event_t *stopping_event;
 	pthread_mutex_t interleaved_mutex;
 	DARRAY(struct encoder_packet) interleaved_packets;
+	int64_t max_interleaved_buffer_duration;
 	int stop_code;
 
 	int reconnect_retry_sec;
