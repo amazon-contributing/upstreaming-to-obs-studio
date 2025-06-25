@@ -1656,6 +1656,16 @@ static inline bool send_interleaved(struct obs_output *output)
 	if (!has_higher_opposing_ts(output, &out))
 		return false;
 
+	if (output->interleaved_packets.num > 1) {
+		struct encoder_packet *last = &output->interleaved_packets.array[output->interleaved_packets.num - 1];
+		int64_t delta = (last->dts_usec - out.dts_usec) / 1000;
+		if (delta > output->max_interleaved_buffer_duration) {
+			blog(LOG_INFO, "Interleave buffer increased to %" PRId64 " ms (%zu packets).", delta,
+			     output->interleaved_packets.num);
+			output->max_interleaved_buffer_duration = delta;
+		}
+	}
+
 	da_erase(output->interleaved_packets, 0);
 
 	if (out.type == OBS_ENCODER_VIDEO) {
