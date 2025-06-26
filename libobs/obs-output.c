@@ -228,8 +228,10 @@ fail:
 
 static inline void free_packets(struct obs_output *output)
 {
-	for (size_t i = 0; i < output->interleaved_packets.num; i++)
+	for (size_t i = 0; i < output->interleaved_packets.num; i++) {
 		obs_encoder_packet_release(output->interleaved_packets.array + i);
+		output->pkts_in--;
+	}
 	da_free(output->interleaved_packets);
 }
 
@@ -298,6 +300,9 @@ void obs_output_destroy(obs_output_t *output)
 			da_free(output->encoder_packet_times[i]);
 
 		da_free(output->pkt_callbacks);
+
+		deque_free(&output->in_pkt_ts);
+		deque_free(&output->out_pkt_ts);
 
 		clear_raw_audio_buffers(output);
 
@@ -1706,6 +1711,10 @@ static inline void send_interleaved(struct obs_output *output)
 		}
 	}
 
+	uint64_t sent_ts = os_gettime_ns();
+	deque_push_back(&output->out_pkt_ts, &sent_ts, sizeof(uint64_t));
+	output->pkts_out++;
+
 	/* Iterate the registered packet callback(s) and invoke
 	 * each one. The caption track logic further above should
 	 * eventually migrate to the packet callback mechanism.
@@ -1838,6 +1847,7 @@ static void discard_to_idx(struct obs_output *output, size_t idx)
 			da_pop_front(output->encoder_packet_times[packet->track_idx]);
 		}
 		obs_encoder_packet_release(packet);
+		output->pkts_in--;
 	}
 
 	da_erase_range(output->interleaved_packets, 0, idx);
@@ -2165,6 +2175,57 @@ static inline size_t count_streamable_frames(struct obs_output *output)
 	return eligible;
 }
 
+static inline void purge_old_timestamps(struct deque *deque, uint64_t min_ts)
+{
+	while (deque->size) {
+		uint64_t *ts = deque_data(deque, 0);
+		if (*ts >= min_ts)
+			break;
+
+		deque_pop_front(deque, NULL, sizeof(uint64_t));
+	}
+}
+
+#ifndef max
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+#endif
+
+static void calculate_pkt_rates(struct obs_output *output)
+{
+	uint64_t now = os_gettime_ns();
+	uint64_t then = now - 1000000000ULL; // One second ago
+
+	/* Remove old data. */
+	purge_old_timestamps(&output->in_pkt_ts, then);
+	purge_old_timestamps(&output->out_pkt_ts, then);
+
+	size_t pkts_in = output->in_pkt_ts.size / sizeof(uint64_t);
+	size_t pkts_out = output->out_pkt_ts.size / sizeof(uint64_t);
+
+	/* Avoid divide by zero if output stalled */
+	if (pkts_out == 0)
+		pkts_out = 1;
+
+	float ratio = (float)pkts_in / (float)pkts_out;
+	size_t multiplier = max((size_t)(ceilf(ratio)), 1);
+
+	size_t pkt_delta = output->pkts_in - output->pkts_out;
+	size_t streamable = count_streamable_frames(output);
+
+	/* Update every second */
+	if (now - output->last_msg >= 100000000ULL) {
+		struct encoder_packet *first = &output->interleaved_packets.array[0];
+		struct encoder_packet *last = &output->interleaved_packets.array[output->interleaved_packets.num - 1];
+		int64_t delta = (last->dts_usec - first->dts_usec) / 1000;
+
+		blog(LOG_INFO,
+		     "[%s] input: %zu pkt/s, output: %zu pkt/s, ratio: %f, mul: %zu, delta: %zu, streamable: %zu, buffer: %" PRId64
+		     " ms",
+		     __FUNCTION__, pkts_in, pkts_out, ratio, multiplier, pkt_delta, streamable, delta);
+		output->last_msg = now;
+	}
+}
+
 static void interleave_packets(void *data, struct encoder_packet *packet, struct encoder_packet_time *packet_time)
 {
 	struct obs_output *output = data;
@@ -2176,6 +2237,7 @@ static void interleave_packets(void *data, struct encoder_packet *packet, struct
 	if (!active(output))
 		return;
 
+	uint64_t recv_ts = os_gettime_ns();
 	packet->track_idx = get_encoder_index(output, packet);
 
 	pthread_mutex_lock(&output->interleaved_mutex);
@@ -2215,6 +2277,8 @@ static void interleave_packets(void *data, struct encoder_packet *packet, struct
 	else
 		check_received(output, packet);
 
+	deque_push_back(&output->in_pkt_ts, &recv_ts, sizeof(uint64_t));
+	output->pkts_in++;
 	insert_interleaved_packet(output, &out);
 
 	received_video = true;
@@ -2246,6 +2310,8 @@ static void interleave_packets(void *data, struct encoder_packet *packet, struct
 				if (--streamable > output->interleaver_max_batch_size)
 					send_interleaved(output);
 			}
+
+			calculate_pkt_rates(output);
 		}
 	}
 

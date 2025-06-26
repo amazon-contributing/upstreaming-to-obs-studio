@@ -1167,6 +1167,11 @@ struct obs_output {
 	DARRAY(struct encoder_packet) interleaved_packets;
 	size_t interleaver_max_batch_size;
 	int stop_code;
+	struct deque in_pkt_ts;
+	struct deque out_pkt_ts;
+	uint64_t last_msg;
+	size_t pkts_in;
+	size_t pkts_out;
 
 	int reconnect_retry_sec;
 	int reconnect_retry_max;
