@@ -1644,7 +1644,7 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 	return avc || hevc || av1;
 }
 
-static inline bool send_interleaved(struct obs_output *output)
+static inline void send_interleaved(struct obs_output *output)
 {
 	struct encoder_packet out = output->interleaved_packets.array[0];
 	struct encoder_packet_time ept_local = {0};
@@ -1654,7 +1654,7 @@ static inline bool send_interleaved(struct obs_output *output)
 	 * opposing type of a higher timestamp in the interleave buffer.
 	 * this ensures that the timestamps are monotonic */
 	if (!has_higher_opposing_ts(output, &out))
-		return false;
+		return;
 
 	if (output->interleaved_packets.num > 1) {
 		struct encoder_packet *last = &output->interleaved_packets.array[output->interleaved_packets.num - 1];
@@ -1737,8 +1737,6 @@ static inline bool send_interleaved(struct obs_output *output)
 
 	output->info.encoded_packet(output->context.data, &out);
 	obs_encoder_packet_release(&out);
-
-	return true;
 }
 
 static inline void set_higher_ts(struct obs_output *output, struct encoder_packet *packet)
@@ -2224,7 +2222,7 @@ static void interleave_packets(void *data, struct encoder_packet *packet, struct
 	}
 
 	/* when both video and audio have been received, we're ready
-	 * to start sending out packets. */
+	 * to start sending out packets (one at a time) */
 	if (output->received_audio && received_video) {
 		if (!was_started) {
 			if (prune_interleaved_packets(output)) {
@@ -2237,11 +2235,7 @@ static void interleave_packets(void *data, struct encoder_packet *packet, struct
 		} else {
 			set_higher_ts(output, &out);
 
-			/* Send all eligible packets. */
-			while (output->interleaved_packets.num) {
-				if (!send_interleaved(output))
-					break;
-			}
+			send_interleaved(output);
 		}
 	}
 
