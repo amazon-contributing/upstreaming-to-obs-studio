@@ -1644,17 +1644,11 @@ static bool add_caption(struct obs_output *output, struct encoder_packet *out)
 	return avc || hevc || av1;
 }
 
-static inline bool send_interleaved(struct obs_output *output)
+static inline void send_interleaved(struct obs_output *output)
 {
 	struct encoder_packet out = output->interleaved_packets.array[0];
 	struct encoder_packet_time ept_local = {0};
 	bool found_ept = false;
-
-	/* do not send an interleaved packet if there's no packet of the
-	 * opposing type of a higher timestamp in the interleave buffer.
-	 * this ensures that the timestamps are monotonic */
-	if (!has_higher_opposing_ts(output, &out))
-		return false;
 
 	if (output->interleaved_packets.num > 1) {
 		struct encoder_packet *last = &output->interleaved_packets.array[output->interleaved_packets.num - 1];
@@ -1737,8 +1731,6 @@ static inline bool send_interleaved(struct obs_output *output)
 
 	output->info.encoded_packet(output->context.data, &out);
 	obs_encoder_packet_release(&out);
-
-	return true;
 }
 
 static inline void set_higher_ts(struct obs_output *output, struct encoder_packet *packet)
@@ -2165,6 +2157,24 @@ static void apply_ept_offsets(struct obs_output *output)
 	}
 }
 
+static inline size_t count_streamable_frames(struct obs_output *output)
+{
+	size_t eligible = 0;
+
+	for (size_t idx = 0; idx < output->interleaved_packets.num; idx++) {
+		struct encoder_packet *pkt = &output->interleaved_packets.array[idx];
+
+		/* Only count an interleaved packet as streamable if there's are packets of the opposing type and of a
+		 * higher timestamp in the interleave buffer. This ensures that the timestamps are monotonic. */
+		if (!has_higher_opposing_ts(output, pkt))
+			break;
+
+		eligible++;
+	}
+
+	return eligible;
+}
+
 static void interleave_packets(void *data, struct encoder_packet *packet, struct encoder_packet_time *packet_time)
 {
 	struct obs_output *output = data;
@@ -2224,7 +2234,7 @@ static void interleave_packets(void *data, struct encoder_packet *packet, struct
 	}
 
 	/* when both video and audio have been received, we're ready
-	 * to start sending out packets. */
+	 * to start sending out packets (one at a time) */
 	if (output->received_audio && received_video) {
 		if (!was_started) {
 			if (prune_interleaved_packets(output)) {
@@ -2237,10 +2247,14 @@ static void interleave_packets(void *data, struct encoder_packet *packet, struct
 		} else {
 			set_higher_ts(output, &out);
 
-			/* Send all eligible packets. */
-			while (output->interleaved_packets.num) {
-				if (!send_interleaved(output))
-					break;
+			size_t streamable = count_streamable_frames(output);
+			if (streamable) {
+				send_interleaved(output);
+
+				/* If we have more eligible packets queued than we normally should have,
+				 * send one additional packet per packet until we're back below the limit. */
+				if (--streamable > output->interleaver_max_batch_size)
+					send_interleaved(output);
 			}
 		}
 	}
@@ -2650,6 +2664,51 @@ static void reset_raw_output(obs_output_t *output)
 	pause_reset(&output->pause);
 }
 
+static void calculate_batch_size(struct obs_output *output)
+{
+	struct obs_video_info ovi;
+	obs_get_video_info(&ovi);
+	DARRAY(uint64_t) intervals;
+	da_init(intervals);
+
+	uint64_t interval = 0;
+
+	/* Step 1: Calculate the largest interval between packets of any encoder. */
+	for (size_t i = 0; i < MAX_OUTPUT_VIDEO_ENCODERS; i++) {
+		if (!output->video_encoders[i])
+			continue;
+
+		uint32_t den = ovi.fps_den * obs_encoder_get_frame_rate_divisor(output->video_encoders[i]);
+		uint64_t encoder_interval = util_mul_div64(1000000000ULL, den, ovi.fps_num);
+		da_push_back(intervals, &encoder_interval);
+
+		interval = encoder_interval > interval ? encoder_interval : interval;
+	}
+
+	for (size_t i = 0; i < MAX_OUTPUT_AUDIO_ENCODERS; i++) {
+		if (!output->audio_encoders[i])
+			continue;
+
+		uint32_t sample_rate = obs_encoder_get_sample_rate(output->audio_encoders[i]);
+		size_t frame_size = obs_encoder_get_frame_size(output->audio_encoders[i]);
+		uint64_t encoder_interval = util_mul_div64(1000000000ULL, frame_size, sample_rate);
+		da_push_back(intervals, &encoder_interval);
+
+		interval = encoder_interval > interval ? encoder_interval : interval;
+	}
+
+	/* Step 2: Calculate how many packets would fit into that interval given each encoder's packet rate. */
+	for (size_t i = 0; i < intervals.num; i++) {
+		uint64_t num = (interval * 2) / intervals.array[i];
+		output->interleaver_max_batch_size += num;
+	}
+
+	blog(LOG_DEBUG, "Maximum interleaver batch size for '%s' calculated to be %zu packets",
+	     obs_output_get_name(output), output->interleaver_max_batch_size);
+
+	da_free(intervals);
+}
+
 bool obs_output_begin_data_capture(obs_output_t *output, uint32_t flags)
 {
 	UNUSED_PARAMETER(flags);
@@ -2675,6 +2734,8 @@ bool obs_output_begin_data_capture(obs_output_t *output, uint32_t flags)
 
 	os_atomic_set_bool(&output->data_active, true);
 	hook_data_capture(output);
+
+	calculate_batch_size(output);
 
 	if (flag_service(output))
 		obs_service_activate(output->service);
