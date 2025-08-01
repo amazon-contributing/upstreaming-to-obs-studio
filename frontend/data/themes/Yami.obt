@@ -139,6 +139,7 @@
     --volume_slider_label: calc(var(--volume_slider_box) * 2);
 
     --scrollbar_size: 12px;
+    --settings_scrollbar_size: calc(var(--scrollbar_size) + 9px);
     --scrollbar_handle: var(--grey4);
     
     --scrollbar_bg: var(--grey6);
@@ -457,7 +458,10 @@ QListWidget QWidget {
     border: 1px solid var(--bg_base);
 }
 
-* {
+QCheckBox,
+QGroupBox,
+QMenuBar,
+QRadioButton {
     spacing: var(--spacing_small);
 }
 
@@ -471,6 +475,19 @@ QToolTip {
     background-color: var(--bg_base);
     color: var(--text);
     border: none;
+}
+
+QProgressBar {
+    text-align: center;
+    border-radius: 4px;
+    border-top: 2px solid transparent;
+}
+
+QProgressBar::chunk {
+    background: var(--blue3);
+    border-top: 1px solid var(--blue2);
+    border-bottom: 2px solid var(--blue4);
+    border-radius: var(--border_radius_small);
 }
 
 /* Context Menu */
@@ -618,10 +635,12 @@ QListWidget QLineEdit:focus {
 
 OBSBasicSettings QScrollBar:vertical {
     width: var(--scrollbar_size);
+    width: var(--settings_scrollbar_size);
+    margin-left: 9px;
 }
 
 OBSBasicSettings QScrollBar:horizontal {
-    height: var(--scrollbar_size);
+    height: var(--settings_scrollbar_size);
 }
 
 /* Settings properties view */
@@ -718,6 +737,11 @@ QDockWidget::float-button:pressed {
 
 QAbstractScrollArea {
     border-radius: var(--border_radius);
+}
+
+/* ScrollAreaContents */
+QScrollArea > QWidget > QWidget {
+    background: transparent;
 }
 
 /* Qt enforces a padding inside its status bar, so we

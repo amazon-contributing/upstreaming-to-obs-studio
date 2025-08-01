@@ -26,6 +26,7 @@
 
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
+#include <glib/gstdio.h>
 
 #include <fcntl.h>
 #include <glad/glad.h>
@@ -143,6 +144,7 @@ struct _obs_pipewire_stream {
 		int release_syncobj_fd;
 		uint64_t acquire_point;
 		uint64_t release_point;
+		bool release_point_will_signal;
 		bool set;
 	} sync;
 };
@@ -765,15 +767,28 @@ static void process_video_sync(obs_pipewire_stream *obs_pw_stream)
 		}
 
 #if PW_CHECK_VERSION(1, 2, 0)
+		if (obs_pw_stream->sync.release_syncobj_fd != -1) {
+			if (!obs_pw_stream->sync.release_point_will_signal) {
+				gs_sync_signal_syncobj_timeline_point(obs_pw_stream->sync.release_syncobj_fd,
+								      obs_pw_stream->sync.release_point);
+				obs_pw_stream->sync.release_point_will_signal = true;
+			}
+		}
+
+		g_clear_fd(&obs_pw_stream->sync.acquire_syncobj_fd, NULL);
+		g_clear_fd(&obs_pw_stream->sync.release_syncobj_fd, NULL);
+
 		if (synctimeline && (buffer->n_datas == (planes + 2))) {
 			assert(buffer->datas[planes].type == SPA_DATA_SyncObj);
 			assert(buffer->datas[planes + 1].type == SPA_DATA_SyncObj);
 
-			obs_pw_stream->sync.acquire_syncobj_fd = buffer->datas[planes].fd;
+			obs_pw_stream->sync.acquire_syncobj_fd = fcntl(buffer->datas[planes].fd, F_DUPFD_CLOEXEC, 5);
 			obs_pw_stream->sync.acquire_point = synctimeline->acquire_point;
 
-			obs_pw_stream->sync.release_syncobj_fd = buffer->datas[planes + 1].fd;
+			obs_pw_stream->sync.release_syncobj_fd =
+				fcntl(buffer->datas[planes + 1].fd, F_DUPFD_CLOEXEC, 5);
 			obs_pw_stream->sync.release_point = synctimeline->release_point;
+			obs_pw_stream->sync.release_point_will_signal = false;
 
 			obs_pw_stream->sync.set = true;
 		} else {
@@ -791,10 +806,11 @@ static void process_video_sync(obs_pipewire_stream *obs_pw_stream)
 		g_clear_pointer(&obs_pw_stream->texture, gs_texture_destroy);
 
 		use_modifiers = obs_pw_stream->format.info.raw.modifier != DRM_FORMAT_MOD_INVALID;
-		obs_pw_stream->texture = gs_texture_create_from_dmabuf(
-			obs_pw_stream->format.info.raw.size.width, obs_pw_stream->format.info.raw.size.height,
-			obs_pw_video_format.drm_format, obs_pw_video_format.gs_format, planes, fds, strides, offsets,
-			use_modifiers ? modifiers : NULL);
+		obs_pw_stream->texture = gs_texture_create_from_dmabuf(obs_pw_stream->format.info.raw.size.width,
+								       obs_pw_stream->format.info.raw.size.height,
+								       obs_pw_video_format.drm_format, GS_BGRX, planes,
+								       fds, strides, offsets,
+								       use_modifiers ? modifiers : NULL);
 
 		if (obs_pw_stream->texture == NULL) {
 			remove_modifier_from_format(obs_pw_stream, obs_pw_stream->format.info.raw.format,
@@ -1179,6 +1195,8 @@ obs_pipewire_stream *obs_pipewire_connect_stream(obs_pipewire *obs_pw, obs_sourc
 	obs_pw_stream->cursor.visible = connect_info->screencast.cursor_visible;
 	obs_pw_stream->framerate.set = connect_info->video.framerate != NULL;
 	obs_pw_stream->resolution.set = connect_info->video.resolution != NULL;
+	obs_pw_stream->sync.acquire_syncobj_fd = -1;
+	obs_pw_stream->sync.release_syncobj_fd = -1;
 
 	if (obs_pw_stream->framerate.set)
 		obs_pw_stream->framerate.fraction = *connect_info->video.framerate;
@@ -1309,20 +1327,10 @@ void obs_pipewire_stream_video_render(obs_pipewire_stream *obs_pw_stream, gs_eff
 		gs_sync_destroy(acquire_sync);
 	}
 
-	effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
-	gs_technique_t *tech = gs_effect_get_technique(effect, "DrawSrgbDecompress");
-	gs_technique_begin(tech);
-	gs_technique_begin_pass(tech, 0);
-
-	const bool linear_srgb = gs_get_linear_srgb();
-	const bool previous = gs_framebuffer_srgb_enabled();
-	gs_enable_framebuffer_srgb(linear_srgb);
-
+	/* FIXME: Use obs_pw_stream->format.info.raw colorimetry info to handle
+	 * textures in their corresponding color space */
 	image = gs_effect_get_param_by_name(effect, "image");
-	if (linear_srgb)
-		gs_effect_set_texture_srgb(image, obs_pw_stream->texture);
-	else
-		gs_effect_set_texture(image, obs_pw_stream->texture);
+	gs_effect_set_texture(image, obs_pw_stream->texture);
 
 	rotated = push_rotation(obs_pw_stream);
 
@@ -1356,10 +1364,7 @@ void obs_pipewire_stream_video_render(obs_pipewire_stream *obs_pw_stream, gs_eff
 		gs_matrix_push();
 		gs_matrix_translate3f(cursor_x, cursor_y, 0.0f);
 
-		if (linear_srgb)
-			gs_effect_set_texture_srgb(image, obs_pw_stream->cursor.texture);
-		else
-			gs_effect_set_texture(image, obs_pw_stream->cursor.texture);
+		gs_effect_set_texture(image, obs_pw_stream->cursor.texture);
 		gs_draw_sprite(obs_pw_stream->texture, 0, obs_pw_stream->cursor.width, obs_pw_stream->cursor.height);
 
 		gs_matrix_pop();
@@ -1367,16 +1372,12 @@ void obs_pipewire_stream_video_render(obs_pipewire_stream *obs_pw_stream, gs_eff
 
 	gs_blend_state_pop();
 
-	gs_enable_framebuffer_srgb(previous);
-
-	gs_technique_end_pass(tech);
-	gs_technique_end(tech);
-
 	if (obs_pw_stream->sync.set) {
 		gs_sync_t *release_sync = gs_sync_create();
 		gs_sync_export_syncobj_timeline_point(release_sync, obs_pw_stream->sync.release_syncobj_fd,
 						      obs_pw_stream->sync.release_point);
 		gs_sync_destroy(release_sync);
+		obs_pw_stream->sync.release_point_will_signal = true;
 	}
 }
 
@@ -1408,6 +1409,9 @@ void obs_pipewire_stream_destroy(obs_pipewire_stream *obs_pw_stream)
 		pw_stream_disconnect(obs_pw_stream->stream);
 	g_clear_pointer(&obs_pw_stream->stream, pw_stream_destroy);
 	pw_thread_loop_unlock(obs_pw_stream->obs_pw->thread_loop);
+
+	g_clear_fd(&obs_pw_stream->sync.acquire_syncobj_fd, NULL);
+	g_clear_fd(&obs_pw_stream->sync.release_syncobj_fd, NULL);
 
 	clear_format_info(obs_pw_stream);
 	bfree(obs_pw_stream);
