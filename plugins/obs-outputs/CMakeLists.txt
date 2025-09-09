@@ -14,6 +14,10 @@ if(NOT TARGET OBS::opts-parser)
   add_subdirectory("${CMAKE_SOURCE_DIR}/shared/opts-parser" "${CMAKE_BINARY_DIR}/shared/opts-parser")
 endif()
 
+if(NOT TARGET OBS::bpm)
+  add_subdirectory("${CMAKE_SOURCE_DIR}/shared/bpm" bpm)
+endif()
+
 add_library(obs-outputs MODULE)
 add_library(OBS::outputs ALIAS obs-outputs)
 
@@ -74,6 +78,7 @@ target_link_libraries(
     OBS::libobs
     OBS::happy-eyeballs
     OBS::opts-parser
+    OBS::bpm
     MbedTLS::mbedtls
     ZLIB::ZLIB
     jansson::jansson

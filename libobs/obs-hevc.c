@@ -62,7 +62,7 @@ static int compute_hevc_keyframe_priority(const uint8_t *nal_start, bool *is_key
 	case OBS_HEVC_NAL_CRA_NUT:
 	case OBS_HEVC_NAL_RSV_IRAP_VCL22:
 	case OBS_HEVC_NAL_RSV_IRAP_VCL23:
-		/* intra random access point (IRAP) picture are treated as keyframes and are non-disposable. */
+		/* intra random access point (IRAP) picture, keyframe and highest priority */
 		*is_keyframe = true;
 		new_priority = OBS_NAL_PRIORITY_HIGHEST;
 		break;

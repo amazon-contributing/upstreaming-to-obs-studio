@@ -18,9 +18,9 @@
 
 #include <string>
 #include <optional>
+#include <unordered_set>
 
 #include <obs.h>
-#include <unordered_set>
 
 #include <nlohmann/json.hpp>
 
@@ -95,7 +95,7 @@ using json = nlohmann::json;
 struct Client {
 	string name = "obs-studio";
 	string version;
-	std::unordered_set<std::string_view> supported_codecs;
+	std::unordered_set<std::string> supported_codecs;
 
 	NLOHMANN_DEFINE_TYPE_INTRUSIVE(Client, name, version, supported_codecs)
 };

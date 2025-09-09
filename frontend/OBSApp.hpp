@@ -28,6 +28,7 @@
 #include <QApplication>
 #include <QPalette>
 #include <QPointer>
+#include <QUuid>
 
 #include <deque>
 #include <functional>
@@ -41,6 +42,14 @@ Q_DECLARE_METATYPE(VoidFunc)
 class QFileSystemWatcher;
 class QSocketNotifier;
 
+namespace OBS {
+class CrashHandler;
+
+enum class LogFileType { NoType, CurrentAppLog, LastAppLog, CrashLog };
+enum class LogFileState { NoState, New, Uploaded };
+class PluginManager;
+} // namespace OBS
+
 struct UpdateBranch {
 	QString name;
 	QString display_name;
@@ -53,6 +62,9 @@ class OBSApp : public QApplication {
 	Q_OBJECT
 
 private:
+	QUuid appLaunchUUID_;
+	std::unique_ptr<OBS::CrashHandler> crashHandler_;
+
 	std::string locale;
 
 	ConfigFile appConfig;
@@ -72,6 +84,8 @@ private:
 	bool enableHotkeysOutOfFocus = true;
 
 	std::deque<obs_frontend_translate_ui_cb> translatorHooks;
+
+	std::unique_ptr<OBS::PluginManager> pluginManager_;
 
 	bool UpdatePre22MultiviewLayout(const char *layout);
 
@@ -94,6 +108,7 @@ private:
 	OBSTheme *currentTheme = nullptr;
 	QHash<QString, OBSTheme> themes;
 	QPointer<QFileSystemWatcher> themeWatcher;
+	std::unique_ptr<QStyle> invisibleCursorStyle;
 
 	void FindThemes();
 
@@ -108,13 +123,16 @@ private slots:
 #endif
 
 private slots:
+	void addLogLine(int logLevel, const QString &message);
 	void themeFileChanged(const QString &);
+	void applicationShutdown() noexcept;
 
 public:
 	OBSApp(int &argc, char **argv, profiler_name_store_t *store);
 	~OBSApp();
 
 	void AppInit();
+	void checkForUncleanShutdown();
 	bool OBSInit();
 
 	void UpdateHotkeyFocusSetting(bool reset = true);
@@ -129,6 +147,7 @@ public:
 	std::filesystem::path userConfigLocation;
 	std::filesystem::path userScenesLocation;
 	std::filesystem::path userProfilesLocation;
+	std::filesystem::path userPluginManagerSettingsLocation;
 
 	inline const char *GetLocale() const { return locale.c_str(); }
 
@@ -137,6 +156,7 @@ public:
 	OBSTheme *GetTheme(const QString &name);
 	bool SetTheme(const QString &name);
 	bool IsThemeDark() const { return currentTheme ? currentTheme->isDark : false; }
+	QStyle *GetInvisibleCursorStyle();
 
 	void SetBranchData(const std::string &data);
 	std::vector<UpdateBranch> GetBranches();
@@ -152,7 +172,12 @@ public:
 	const char *GetLastLog() const;
 	const char *GetCurrentLog() const;
 
-	const char *GetLastCrashLog() const;
+	void openCrashLogDirectory() const;
+	void uploadLastAppLog() const;
+	void uploadCurrentAppLog() const;
+	void uploadLastCrashLog();
+
+	OBS::LogFileState getLogFileState(OBS::LogFileType type) const;
 
 	std::string GetVersionString(bool platform = true) const;
 	bool IsPortableMode();
@@ -189,12 +214,21 @@ public:
 	static void SigIntSignalHandler(int);
 #endif
 
+	void loadAppModules(struct obs_module_failure_info &mfi);
+
+	// Plugin Manager Accessors
+	void pluginManagerOpenDialog();
+
 public slots:
 	void Exec(VoidFunc func);
 	void ProcessSigInt();
 
 signals:
+	void logLineAdded(int logLevel, const QString &message);
 	void StyleChanged();
+
+	void logUploadFinished(OBS::LogFileType, const QString &fileUrl);
+	void logUploadFailed(OBS::LogFileType, const QString &errorMessage);
 };
 
 int GetAppConfigPath(char *path, size_t size, const char *name);

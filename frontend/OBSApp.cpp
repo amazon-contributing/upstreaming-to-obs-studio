@@ -18,7 +18,11 @@
 #include "OBSApp.hpp"
 
 #include <components/Multiview.hpp>
+#include <dialogs/LogUploadDialog.hpp>
+#include <plugin-manager/PluginManager.hpp>
+#include <utility/CrashHandler.hpp>
 #include <utility/OBSEventFilter.hpp>
+#include <utility/OBSProxyStyle.hpp>
 #if defined(_WIN32) || defined(ENABLE_SPARKLE_UPDATER)
 #include <utility/models/branches.hpp>
 #endif
@@ -32,6 +36,8 @@
 #endif
 #include <qt-wrappers.hpp>
 
+#include <QCheckBox>
+#include <QDesktopServices>
 #if defined(_WIN32) || defined(ENABLE_SPARKLE_UPDATER)
 #include <QFile>
 #endif
@@ -41,6 +47,8 @@
 #else
 #include <QSocketNotifier>
 #endif
+
+#include <chrono>
 
 #ifdef _WIN32
 #include <sstream>
@@ -61,13 +69,12 @@ string lastCrashLogFile;
 
 extern bool portable_mode;
 extern bool safe_mode;
+extern bool multi;
 extern bool disable_3p_plugins;
 extern bool opt_disable_updater;
 extern bool opt_disable_missing_files_check;
 extern string opt_starting_collection;
 extern string opt_starting_profile;
-
-extern QPointer<OBSLogViewer> obsLogViewer;
 
 #ifndef _WIN32
 int OBSApp::sigintFd[2];
@@ -78,6 +85,66 @@ int OBSApp::sigintFd[2];
 extern "C" __declspec(dllexport) DWORD NvOptimusEnablement = 1;
 extern "C" __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 #endif
+
+namespace {
+
+typedef struct UncleanLaunchAction {
+	bool useSafeMode = false;
+	bool sendCrashReport = false;
+} UncleanLaunchAction;
+
+UncleanLaunchAction handleUncleanShutdown(bool enableCrashUpload)
+{
+	UncleanLaunchAction launchAction;
+
+	blog(LOG_WARNING, "Crash or unclean shutdown detected");
+
+	QMessageBox crashWarning;
+
+	crashWarning.setIcon(QMessageBox::Warning);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+	crashWarning.setOption(QMessageBox::Option::DontUseNativeDialog);
+#endif
+	crashWarning.setWindowTitle(QTStr("CrashHandling.Dialog.Title"));
+	crashWarning.setText(QTStr("CrashHandling.Labels.Text"));
+
+	if (enableCrashUpload) {
+		crashWarning.setInformativeText(QTStr("CrashHandling.Labels.PrivacyNotice"));
+
+		QCheckBox *sendCrashReportCheckbox = new QCheckBox(QTStr("CrashHandling.Checkbox.SendReport"));
+		crashWarning.setCheckBox(sendCrashReportCheckbox);
+	}
+
+	QPushButton *launchSafeButton =
+		crashWarning.addButton(QTStr("CrashHandling.Buttons.LaunchSafe"), QMessageBox::AcceptRole);
+	QPushButton *launchNormalButton =
+		crashWarning.addButton(QTStr("CrashHandling.Buttons.LaunchNormal"), QMessageBox::RejectRole);
+
+	crashWarning.setDefaultButton(launchNormalButton);
+
+	crashWarning.exec();
+
+	bool useSafeMode = crashWarning.clickedButton() == launchSafeButton;
+
+	if (useSafeMode) {
+		launchAction.useSafeMode = true;
+
+		blog(LOG_INFO, "[Safe Mode] Safe mode launch selected, loading third-party plugins is disabled");
+	} else {
+		blog(LOG_WARNING, "[Safe Mode] Normal launch selected, loading third-party plugins is enabled");
+	}
+
+	bool sendCrashReport = (enableCrashUpload) ? crashWarning.checkBox()->isChecked() : false;
+
+	if (sendCrashReport) {
+		launchAction.sendCrashReport = true;
+
+		blog(LOG_INFO, "User selected to send crash report");
+	}
+
+	return launchAction;
+}
+} // namespace
 
 QObject *CreateShortcutFilter()
 {
@@ -225,7 +292,12 @@ bool OBSApp::InitGlobalConfigDefaults()
 #if _WIN32
 	config_set_default_string(appConfig, "Video", "Renderer", "Direct3D 11");
 #else
+#if defined(__APPLE__) && defined(__aarch64__)
+	// TODO: Change this value to "Metal" once the renderer has reached production quality
 	config_set_default_string(appConfig, "Video", "Renderer", "OpenGL");
+#else
+	config_set_default_string(appConfig, "Video", "Renderer", "OpenGL");
+#endif
 #endif
 
 #ifdef _WIN32
@@ -257,6 +329,7 @@ bool OBSApp::InitGlobalLocationDefaults()
 	config_set_default_string(appConfig, "Locations", "Configuration", path);
 	config_set_default_string(appConfig, "Locations", "SceneCollections", path);
 	config_set_default_string(appConfig, "Locations", "Profiles", path);
+	config_set_default_string(appConfig, "Locations", "PluginManagerSettings", path);
 
 	return true;
 }
@@ -356,6 +429,7 @@ static bool MakeUserDirs()
 
 constexpr std::string_view OBSProfileSubDirectory = "obs-studio/basic/profiles";
 constexpr std::string_view OBSScenesSubDirectory = "obs-studio/basic/scenes";
+constexpr std::string_view OBSPluginManagerSubDirectory = "obs-studio/plugin_manager";
 
 static bool MakeUserProfileDirs()
 {
@@ -363,6 +437,8 @@ static bool MakeUserProfileDirs()
 		App()->userProfilesLocation / std::filesystem::u8path(OBSProfileSubDirectory);
 	const std::filesystem::path userScenesPath =
 		App()->userScenesLocation / std::filesystem::u8path(OBSScenesSubDirectory);
+	const std::filesystem::path userPluginManagerPath =
+		App()->userPluginManagerSettingsLocation / std::filesystem::u8path(OBSPluginManagerSubDirectory);
 
 	if (!std::filesystem::exists(userProfilePath)) {
 		try {
@@ -380,6 +456,16 @@ static bool MakeUserProfileDirs()
 		} catch (const std::filesystem::filesystem_error &error) {
 			blog(LOG_ERROR, "Failed to create user scene collection directory '%s'\n%s",
 			     userScenesPath.u8string().c_str(), error.what());
+			return false;
+		}
+	}
+
+	if (!std::filesystem::exists(userPluginManagerPath)) {
+		try {
+			std::filesystem::create_directories(userPluginManagerPath);
+		} catch (const std::filesystem::filesystem_error &error) {
+			blog(LOG_ERROR, "Failed to create user plugin manager directory '%s'\n%s",
+			     userPluginManagerPath.u8string().c_str(), error.what());
 			return false;
 		}
 	}
@@ -456,11 +542,14 @@ bool OBSApp::InitGlobalConfig()
 		std::filesystem::u8path(config_get_default_string(appConfig, "Locations", "SceneCollections"));
 	std::filesystem::path defaultUserProfilesLocation =
 		std::filesystem::u8path(config_get_default_string(appConfig, "Locations", "Profiles"));
+	std::filesystem::path defaultPluginManagerLocation =
+		std::filesystem::u8path(config_get_default_string(appConfig, "Locations", "PluginManagerSettings"));
 
 	if (IsPortableMode()) {
 		userConfigLocation = std::move(defaultUserConfigLocation);
 		userScenesLocation = std::move(defaultUserScenesLocation);
 		userProfilesLocation = std::move(defaultUserProfilesLocation);
+		userPluginManagerSettingsLocation = std::move(defaultPluginManagerLocation);
 	} else {
 		std::filesystem::path currentUserConfigLocation =
 			std::filesystem::u8path(config_get_string(appConfig, "Locations", "Configuration"));
@@ -468,6 +557,8 @@ bool OBSApp::InitGlobalConfig()
 			std::filesystem::u8path(config_get_string(appConfig, "Locations", "SceneCollections"));
 		std::filesystem::path currentUserProfilesLocation =
 			std::filesystem::u8path(config_get_string(appConfig, "Locations", "Profiles"));
+		std::filesystem::path currentUserPluginManagerLocation =
+			std::filesystem::u8path(config_get_string(appConfig, "Locations", "PluginManagerSettings"));
 
 		userConfigLocation = (std::filesystem::exists(currentUserConfigLocation))
 					     ? std::move(currentUserConfigLocation)
@@ -478,6 +569,9 @@ bool OBSApp::InitGlobalConfig()
 		userProfilesLocation = (std::filesystem::exists(currentUserProfilesLocation))
 					       ? std::move(currentUserProfilesLocation)
 					       : std::move(defaultUserProfilesLocation);
+		userPluginManagerSettingsLocation = (std::filesystem::exists(currentUserPluginManagerLocation))
+							    ? std::move(currentUserPluginManagerLocation)
+							    : std::move(defaultPluginManagerLocation);
 	}
 
 	bool userConfigResult = InitUserConfig(userConfigLocation, lastVersion);
@@ -771,7 +865,8 @@ std::vector<UpdateBranch> OBSApp::GetBranches()
 
 OBSApp::OBSApp(int &argc, char **argv, profiler_name_store_t *store)
 	: QApplication(argc, argv),
-	  profilerNameStore(store)
+	  profilerNameStore(store),
+	  appLaunchUUID_(QUuid::createUuid())
 {
 	/* fix float handling */
 #if defined(Q_OS_UNIX)
@@ -787,6 +882,11 @@ OBSApp::OBSApp(int &argc, char **argv, profiler_name_store_t *store)
 #else
 	connect(qApp, &QGuiApplication::commitDataRequest, this, &OBSApp::commitData);
 #endif
+	if (multi) {
+		crashHandler_ = std::make_unique<OBS::CrashHandler>();
+	} else {
+		crashHandler_ = std::make_unique<OBS::CrashHandler>(appLaunchUUID_);
+	}
 
 	sleepInhibitor = os_inhibit_sleep_create("OBS Video/audio");
 
@@ -795,33 +895,15 @@ OBSApp::OBSApp(int &argc, char **argv, profiler_name_store_t *store)
 #endif
 
 	setDesktopFileName("com.obsproject.Studio");
+	pluginManager_ = std::make_unique<OBS::PluginManager>();
 }
 
 OBSApp::~OBSApp()
 {
-#ifdef _WIN32
-	bool disableAudioDucking = config_get_bool(appConfig, "Audio", "DisableAudioDucking");
-	if (disableAudioDucking)
-		DisableAudioDucking(false);
-#else
-	delete snInt;
-	close(sigintFd[0]);
-	close(sigintFd[1]);
-#endif
-
-#ifdef __APPLE__
-	bool vsyncDisabled = config_get_bool(appConfig, "Video", "DisableOSXVSync");
-	bool resetVSync = config_get_bool(appConfig, "Video", "ResetOSXVSyncOnExit");
-	if (vsyncDisabled && resetVSync)
-		EnableOSXVSync(true);
-#endif
-
-	os_inhibit_sleep_set_active(sleepInhibitor, false);
-	os_inhibit_sleep_destroy(sleepInhibitor);
-
-	if (libobs_initialized)
-		obs_shutdown();
-}
+	if (libobs_initialized) {
+		applicationShutdown();
+	}
+};
 
 static void move_basic_to_profiles(void)
 {
@@ -982,11 +1064,35 @@ void OBSApp::AppInit()
 		throw "Failed to create profile directories";
 }
 
+void OBSApp::checkForUncleanShutdown()
+{
+	bool hasUncleanShutdown = crashHandler_->hasUncleanShutdown();
+	bool hasNewCrashLog = crashHandler_->hasNewCrashLog();
+
+	if (hasUncleanShutdown) {
+		UncleanLaunchAction launchAction = handleUncleanShutdown(hasNewCrashLog);
+
+		safe_mode = launchAction.useSafeMode;
+
+		if (launchAction.sendCrashReport) {
+			crashHandler_->uploadLastCrashLog();
+		}
+	}
+}
+
 const char *OBSApp::GetRenderModule() const
 {
+#if defined(_WIN32)
 	const char *renderer = config_get_string(appConfig, "Video", "Renderer");
 
 	return (astrcmpi(renderer, "Direct3D 11") == 0) ? DL_D3D11 : DL_OPENGL;
+#elif defined(__APPLE__) && defined(__aarch64__)
+	const char *renderer = config_get_string(appConfig, "Video", "Renderer");
+
+	return (astrcmpi(renderer, "Metal") == 0) ? DL_METAL : DL_OPENGL;
+#else
+	return DL_OPENGL;
+#endif
 }
 
 static bool StartupOBS(const char *locale, profiler_name_store_t *store)
@@ -1130,6 +1236,15 @@ bool OBSApp::OBSInit()
 	connect(this, &QGuiApplication::applicationStateChanged,
 		[this](Qt::ApplicationState state) { ResetHotkeyState(state == Qt::ApplicationActive); });
 	ResetHotkeyState(applicationState() == Qt::ApplicationActive);
+
+	connect(crashHandler_.get(), &OBS::CrashHandler::crashLogUploadFailed, this,
+		[this](const QString &errorMessage) {
+			emit this->logUploadFailed(OBS::LogFileType::CrashLog, errorMessage);
+		});
+
+	connect(crashHandler_.get(), &OBS::CrashHandler::crashLogUploadFinished, this,
+		[this](const QString &fileUrl) { emit this->logUploadFinished(OBS::LogFileType::CrashLog, fileUrl); });
+
 	return true;
 }
 
@@ -1208,9 +1323,53 @@ const char *OBSApp::GetCurrentLog() const
 	return currentLogFile.c_str();
 }
 
-const char *OBSApp::GetLastCrashLog() const
+void OBSApp::openCrashLogDirectory() const
 {
-	return lastCrashLogFile.c_str();
+	std::filesystem::path crashLogDirectory = crashHandler_->getCrashLogDirectory();
+
+	if (crashLogDirectory.empty()) {
+		return;
+	}
+
+	QString crashLogDirectoryString = QString::fromStdString(crashLogDirectory.u8string());
+
+	QUrl crashLogDirectoryURL = QUrl::fromLocalFile(crashLogDirectoryString);
+	QDesktopServices::openUrl(crashLogDirectoryURL);
+}
+
+void OBSApp::uploadLastAppLog() const
+{
+	OBSBasic *basicWindow = static_cast<OBSBasic *>(GetMainWindow());
+
+	basicWindow->UploadLog("obs-studio/logs", GetLastLog(), OBS::LogFileType::LastAppLog);
+}
+
+void OBSApp::uploadCurrentAppLog() const
+{
+	OBSBasic *basicWindow = static_cast<OBSBasic *>(GetMainWindow());
+
+	basicWindow->UploadLog("obs-studio/logs", GetCurrentLog(), OBS::LogFileType::CurrentAppLog);
+}
+
+void OBSApp::uploadLastCrashLog()
+{
+	crashHandler_->uploadLastCrashLog();
+}
+
+OBS::LogFileState OBSApp::getLogFileState(OBS::LogFileType type) const
+{
+	switch (type) {
+	case OBS::LogFileType::CrashLog: {
+		bool hasNewCrashLog = crashHandler_->hasNewCrashLog();
+
+		return (hasNewCrashLog) ? OBS::LogFileState::New : OBS::LogFileState::Uploaded;
+	}
+	case OBS::LogFileType::CurrentAppLog:
+	case OBS::LogFileType::LastAppLog:
+		return OBS::LogFileState::New;
+	default:
+		return OBS::LogFileState::NoState;
+	}
 }
 
 bool OBSApp::TranslateString(const char *lookupVal, const char **out) const
@@ -1221,6 +1380,14 @@ bool OBSApp::TranslateString(const char *lookupVal, const char **out) const
 	}
 
 	return text_lookup_getstr(App()->GetTextLookup(), lookupVal, out);
+}
+
+QStyle *OBSApp::GetInvisibleCursorStyle()
+{
+	if (!invisibleCursorStyle) {
+		invisibleCursorStyle = std::make_unique<OBSInvisibleCursorProxyStyle>();
+	}
+	return invisibleCursorStyle.get();
 }
 
 // Global handler to receive all QEvent::Show events so we can apply
@@ -1374,11 +1541,9 @@ string GetFormatString(const char *format, const char *prefix, const char *suffi
 string GetFormatExt(const char *container)
 {
 	string ext = container;
-	if (ext == "fragmented_mp4")
+	if (ext == "fragmented_mp4" || ext == "hybrid_mp4")
 		ext = "mp4";
-	if (ext == "hybrid_mp4")
-		ext = "mp4";
-	else if (ext == "fragmented_mov")
+	else if (ext == "fragmented_mov" || ext == "hybrid_mov")
 		ext = "mov";
 	else if (ext == "hls")
 		ext = "m3u8";
@@ -1608,3 +1773,53 @@ void OBSApp::commitData(QSessionManager &manager)
 	}
 }
 #endif
+
+void OBSApp::applicationShutdown() noexcept
+{
+#ifdef _WIN32
+	bool disableAudioDucking = config_get_bool(appConfig, "Audio", "DisableAudioDucking");
+	if (disableAudioDucking)
+		DisableAudioDucking(false);
+#else
+	delete snInt;
+	close(sigintFd[0]);
+	close(sigintFd[1]);
+#endif
+
+#ifdef __APPLE__
+	bool vsyncDisabled = config_get_bool(appConfig, "Video", "DisableOSXVSync");
+	bool resetVSync = config_get_bool(appConfig, "Video", "ResetOSXVSyncOnExit");
+	if (vsyncDisabled && resetVSync)
+		EnableOSXVSync(true);
+#endif
+
+	os_inhibit_sleep_set_active(sleepInhibitor, false);
+	os_inhibit_sleep_destroy(sleepInhibitor);
+
+	if (libobs_initialized) {
+		obs_shutdown();
+		libobs_initialized = false;
+	}
+}
+
+void OBSApp::addLogLine(int logLevel, const QString &message)
+{
+	emit logLineAdded(logLevel, message);
+}
+
+void OBSApp::loadAppModules(struct obs_module_failure_info &mfi)
+{
+	pluginManager_->preLoad();
+	blog(LOG_INFO, "---------------------------------");
+	obs_load_all_modules2(&mfi);
+	blog(LOG_INFO, "---------------------------------");
+	obs_log_loaded_modules();
+	blog(LOG_INFO, "---------------------------------");
+	obs_post_load_modules();
+	pluginManager_->postLoad();
+}
+
+void OBSApp::pluginManagerOpenDialog()
+{
+	pluginManager_->open();
+}
