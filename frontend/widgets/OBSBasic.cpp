@@ -571,17 +571,9 @@ OBSBasic::OBSBasic(QWidget *parent) : OBSMainWindow(parent), undo_s(ui), ui(new 
 static const double scaled_vals[] = {1.0, 1.25, (1.0 / 0.75), 1.5, (1.0 / 0.6), 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 0.0};
 
 #ifdef __APPLE__ // macOS
-#if OBS_RELEASE_CANDIDATE == 0 && OBS_BETA == 0
-#define DEFAULT_CONTAINER "fragmented_mov"
-#else
 #define DEFAULT_CONTAINER "hybrid_mov"
-#endif
 #else // Windows/Linux
-#if OBS_RELEASE_CANDIDATE == 0 && OBS_BETA == 0
-#define DEFAULT_CONTAINER "mkv"
-#else
 #define DEFAULT_CONTAINER "hybrid_mp4"
-#endif
 #endif
 
 bool OBSBasic::InitBasicConfigDefaults()
@@ -727,7 +719,7 @@ bool OBSBasic::InitBasicConfigDefaults()
 
 	config_set_default_string(activeConfiguration, "SimpleOutput", "FilePath", GetDefaultVideoSavePath().c_str());
 	config_set_default_string(activeConfiguration, "SimpleOutput", "RecFormat2", DEFAULT_CONTAINER);
-	config_set_default_uint(activeConfiguration, "SimpleOutput", "VBitrate", 2500);
+	config_set_default_uint(activeConfiguration, "SimpleOutput", "VBitrate", 6000);
 	config_set_default_uint(activeConfiguration, "SimpleOutput", "ABitrate", 160);
 	config_set_default_bool(activeConfiguration, "SimpleOutput", "UseAdvanced", false);
 	config_set_default_string(activeConfiguration, "SimpleOutput", "Preset", "veryfast");
@@ -759,7 +751,7 @@ bool OBSBasic::InitBasicConfigDefaults()
 	config_set_default_bool(activeConfiguration, "AdvOut", "FFOutputToFile", true);
 	config_set_default_string(activeConfiguration, "AdvOut", "FFFilePath", GetDefaultVideoSavePath().c_str());
 	config_set_default_string(activeConfiguration, "AdvOut", "FFExtension", "mp4");
-	config_set_default_uint(activeConfiguration, "AdvOut", "FFVBitrate", 2500);
+	config_set_default_uint(activeConfiguration, "AdvOut", "FFVBitrate", 6000);
 	config_set_default_uint(activeConfiguration, "AdvOut", "FFVGOPSize", 250);
 	config_set_default_bool(activeConfiguration, "AdvOut", "FFUseRescale", false);
 	config_set_default_bool(activeConfiguration, "AdvOut", "FFIgnoreCompat", false);
