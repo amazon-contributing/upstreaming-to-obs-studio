@@ -1503,6 +1503,8 @@ static inline enum obs_scale_type GetScaleType(ConfigFile &activeConfiguration)
 		return OBS_SCALE_LANCZOS;
 	else if (astrcmpi(scaleTypeStr, "area") == 0)
 		return OBS_SCALE_AREA;
+	else if (astrcmpi(scaleTypeStr, "blerp") == 0)
+		return OBS_SCALE_BLERP;
 	else
 		return OBS_SCALE_BICUBIC;
 }

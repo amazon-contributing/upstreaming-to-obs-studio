@@ -788,6 +788,7 @@ OBSBasicSettings::OBSBasicSettings(QWidget *parent)
 	addScaleFilter("Basic.Settings.Video.DownscaleFilter.Area", OBS_SCALE_AREA);
 	addScaleFilter("Basic.Settings.Video.DownscaleFilter.Bicubic", OBS_SCALE_BICUBIC);
 	addScaleFilter("Basic.Settings.Video.DownscaleFilter.Lanczos", OBS_SCALE_LANCZOS);
+	addScaleFilter("Basic.Settings.Video.DownscaleFilter.Blerp", OBS_SCALE_BLERP);
 
 	auto connectScaleFilter = [&](QComboBox *filter, QComboBox *res) -> void {
 		connect(filter, &QComboBox::currentIndexChanged, this,
@@ -1562,6 +1563,7 @@ void OBSBasicSettings::LoadDownscaleFilters()
 		ui->downscaleFilter->addItem(QTStr("Basic.Settings.Video.DownscaleFilter.Area"), QT_UTF8("area"));
 		ui->downscaleFilter->addItem(QTStr("Basic.Settings.Video.DownscaleFilter.Bicubic"), QT_UTF8("bicubic"));
 		ui->downscaleFilter->addItem(QTStr("Basic.Settings.Video.DownscaleFilter.Lanczos"), QT_UTF8("lanczos"));
+		ui->downscaleFilter->addItem(QTStr("Basic.Settings.Video.DownscaleFilter.Blerp"), QT_UTF8("blerp"));
 
 		if (downscaleFilter == "bilinear")
 			ui->downscaleFilter->setCurrentIndex(0);
@@ -1569,6 +1571,8 @@ void OBSBasicSettings::LoadDownscaleFilters()
 			ui->downscaleFilter->setCurrentIndex(3);
 		else if (downscaleFilter == "area")
 			ui->downscaleFilter->setCurrentIndex(1);
+		else if (downscaleFilter == "blerp")
+			ui->downscaleFilter->setCurrentIndex(4);
 		else
 			ui->downscaleFilter->setCurrentIndex(2);
 	}

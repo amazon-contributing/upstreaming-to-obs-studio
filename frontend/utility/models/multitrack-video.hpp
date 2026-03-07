@@ -55,6 +55,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(obs_scale_type, {
 						     {OBS_SCALE_BILINEAR, "OBS_SCALE_BILINEAR"},
 						     {OBS_SCALE_LANCZOS, "OBS_SCALE_LANCZOS"},
 						     {OBS_SCALE_AREA, "OBS_SCALE_AREA"},
+						     {OBS_SCALE_BLERP, "OBS_SCALE_BLERP"},
 					     })
 
 NLOHMANN_JSON_SERIALIZE_ENUM(video_colorspace, {
