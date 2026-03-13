@@ -19,11 +19,11 @@
 
 #include "OBSBasic.hpp"
 #include "ui-config.h"
+
 #include "ColorSelect.hpp"
 #include "OBSBasicControls.hpp"
 #include "OBSBasicStats.hpp"
 #include "plugin-manager/PluginManager.hpp"
-#include "VolControl.hpp"
 
 #include <obs-module.h>
 
@@ -44,6 +44,7 @@
 #if defined(_WIN32) || defined(WHATSNEW_ENABLED)
 #include <utility/WhatsNewInfoThread.hpp>
 #endif
+#include <widgets/AudioMixer.hpp>
 #include <widgets/OBSProjector.hpp>
 
 #include <OBSStudioAPI.hpp>
@@ -285,7 +286,6 @@ OBSBasic::OBSBasic(QWidget *parent) : OBSMainWindow(parent), undo_s(ui), ui(new 
 	controlsDock->setWindowTitle(QTStr("Basic.Main.Controls"));
 	/* Parenting is done there so controls will be deleted alongside controlsDock */
 	controlsDock->setWidget(controls);
-	addDockWidget(Qt::BottomDockWidgetArea, controlsDock);
 
 	connect(controls, &OBSBasicControls::StreamButtonClicked, this, &OBSBasic::StreamActionTriggered);
 
@@ -342,6 +342,17 @@ OBSBasic::OBSBasic(QWidget *parent) : OBSMainWindow(parent), undo_s(ui), ui(new 
 	connect(ui->transitionDuration, &QSpinBox::valueChanged, this,
 		[this](int value) { SetTransitionDuration(value); });
 
+	/* Main window default layout */
+	setDockCornersVertical(true);
+
+	/* Scenes and Sources dock on left
+	 * This specific arrangement can't be set up in Qt Designer */
+	addDockWidget(Qt::LeftDockWidgetArea, ui->scenesDock);
+	splitDockWidget(ui->scenesDock, ui->sourcesDock, Qt::Vertical);
+	int sideDockWidth = std::min(width() * 30 / 100, 320);
+	resizeDocks({ui->scenesDock, ui->sourcesDock}, {sideDockWidth, sideDockWidth}, Qt::Horizontal);
+	addDockWidget(Qt::BottomDockWidgetArea, controlsDock);
+
 	startingDockLayout = saveState();
 
 	statsDock = new OBSDock();
@@ -389,8 +400,8 @@ OBSBasic::OBSBasic(QWidget *parent) : OBSMainWindow(parent), undo_s(ui), ui(new 
 	};
 	dpi = devicePixelRatioF();
 
-	connect(windowHandle(), &QWindow::screenChanged, displayResize);
-	connect(ui->preview, &OBSQTDisplay::DisplayResized, displayResize);
+	connect(windowHandle(), &QWindow::screenChanged, this, displayResize);
+	connect(ui->preview, &OBSQTDisplay::DisplayResized, this, displayResize);
 
 	/* TODO: Move these into window-basic-preview */
 	/* Preview Scaling label */
@@ -467,7 +478,7 @@ OBSBasic::OBSBasic(QWidget *parent) : OBSMainWindow(parent), undo_s(ui), ui(new 
 	ui->actionCheckForUpdates->setMenuRole(QAction::AboutQtRole);
 	ui->action_Settings->setMenuRole(QAction::PreferencesRole);
 	ui->actionShowMacPermissions->setMenuRole(QAction::ApplicationSpecificRole);
-	ui->actionE_xit->setMenuRole(QAction::QuitRole);
+	delete ui->actionE_xit;
 #else
 	renameScene->setShortcut({Qt::Key_F2});
 	renameSource->setShortcut({Qt::Key_F2});
@@ -486,7 +497,8 @@ OBSBasic::OBSBasic(QWidget *parent) : OBSMainWindow(parent), undo_s(ui), ui(new 
 		nudge->setShortcut(seq);
 		nudge->setShortcutContext(Qt::WidgetShortcut);
 		ui->preview->addAction(nudge);
-		connect(nudge, &QAction::triggered, [this, distance, direction]() { Nudge(distance, direction); });
+		connect(nudge, &QAction::triggered, this,
+			[this, distance, direction]() { Nudge(distance, direction); });
 	};
 
 	addNudge(Qt::Key_Up, MoveDir::Up, 1);
@@ -555,10 +567,13 @@ OBSBasic::OBSBasic(QWidget *parent) : OBSMainWindow(parent), undo_s(ui), ui(new 
 	ui->previewDisabledWidget->setContextMenuPolicy(Qt::CustomContextMenu);
 	connect(ui->enablePreviewButton, &QPushButton::clicked, this, &OBSBasic::TogglePreview);
 
-	connect(ui->scenes, &SceneTree::scenesReordered, []() { OBSProjector::UpdateMultiviewProjectors(); });
+	connect(ui->scenes, &SceneTree::scenesReordered, ui->scenes,
+		[]() { OBSProjector::UpdateMultiviewProjectors(); });
 
 	connect(App(), &OBSApp::StyleChanged, this, [this]() { OnEvent(OBS_FRONTEND_EVENT_THEME_CHANGED); });
+#ifndef __APPLE__
 	connect(App(), &OBSApp::aboutToQuit, this, &OBSBasic::closeWindow);
+#endif
 
 	QActionGroup *actionGroup = new QActionGroup(this);
 	actionGroup->addAction(ui->actionSceneListMode);
@@ -900,15 +915,9 @@ void OBSBasic::InitOBSCallbacks()
 {
 	ProfileScope("OBSBasic::InitOBSCallbacks");
 
-	signalHandlers.reserve(signalHandlers.size() + 10);
+	signalHandlers.reserve(signalHandlers.size() + 6);
 	signalHandlers.emplace_back(obs_get_signal_handler(), "source_create", OBSBasic::SourceCreated, this);
 	signalHandlers.emplace_back(obs_get_signal_handler(), "source_remove", OBSBasic::SourceRemoved, this);
-	signalHandlers.emplace_back(obs_get_signal_handler(), "source_activate", OBSBasic::SourceActivated, this);
-	signalHandlers.emplace_back(obs_get_signal_handler(), "source_deactivate", OBSBasic::SourceDeactivated, this);
-	signalHandlers.emplace_back(obs_get_signal_handler(), "source_audio_activate", OBSBasic::SourceAudioActivated,
-				    this);
-	signalHandlers.emplace_back(obs_get_signal_handler(), "source_audio_deactivate",
-				    OBSBasic::SourceAudioDeactivated, this);
 	signalHandlers.emplace_back(obs_get_signal_handler(), "source_rename", OBSBasic::SourceRenamed, this);
 	signalHandlers.emplace_back(
 		obs_get_signal_handler(), "source_filter_add",
@@ -1022,7 +1031,7 @@ void OBSBasic::OBSInit()
 
 	/* Modules can access frontend information (i.e. profile and scene collection data) during their initialization, and some modules (e.g. obs-websockets) are known to use the filesystem location of the current profile in their own code.
 
-     Thus the profile and scene collection discovery needs to happen before any access to that information (but after intializing global settings) to ensure legacy code gets valid path information.
+     Thus the profile and scene collection discovery needs to happen before any access to that information (but after initializing global settings) to ensure legacy code gets valid path information.
      */
 	RefreshSceneCollections(true);
 
@@ -1135,7 +1144,7 @@ void OBSBasic::OBSInit()
 			ResizePreview(ovi.base_width, ovi.base_height);
 	};
 
-	connect(ui->preview, &OBSQTDisplay::DisplayCreated, addDisplay);
+	connect(ui->preview, &OBSQTDisplay::DisplayCreated, this, addDisplay);
 
 	/* Show the main window, unless the tray icon isn't available
 	 * or neither the setting nor flag for starting minimized is set. */
@@ -1173,6 +1182,13 @@ void OBSBasic::OBSInit()
 	if (!hideWindowOnStart)
 		show();
 #endif
+
+	// Set up Audio Mixer dock
+	AudioMixer *audioMixer = new AudioMixer(this);
+	ui->mixerDock->setWidget(audioMixer);
+	ui->mixerDock->setContextMenuPolicy(Qt::CustomContextMenu);
+
+	connect(ui->mixerDock, &QDockWidget::customContextMenuRequested, audioMixer, &AudioMixer::showMixerContextMenu);
 
 	/* setup stats dock */
 	OBSBasicStats *statsDlg = new OBSBasicStats(statsDock, false);
@@ -1230,10 +1246,8 @@ void OBSBasic::OBSInit()
 	ui->lockDocks->blockSignals(false);
 
 	bool sideDocks = config_get_bool(App()->GetUserConfig(), "BasicWindow", "SideDocks");
-	on_sideDocks_toggled(sideDocks);
-	ui->sideDocks->blockSignals(true);
 	ui->sideDocks->setChecked(sideDocks);
-	ui->sideDocks->blockSignals(false);
+	setDockCornersVertical(sideDocks);
 
 	SystemTray(true);
 
@@ -1264,7 +1278,7 @@ void OBSBasic::OBSInit()
 #endif
 	TimedCheckForUpdates();
 
-	ToggleMixerLayout(config_get_bool(App()->GetUserConfig(), "BasicWindow", "VerticalVolControl"));
+	emit userSettingChanged("BasicWindow", "VerticalVolumeControl");
 
 	if (config_get_bool(activeConfiguration, "General", "OpenStatsOnStartup"))
 		on_stats_triggered();
@@ -1382,7 +1396,9 @@ void OBSBasic::applicationShutdown() noexcept
 {
 	/* clear out UI event queue */
 	QApplication::sendPostedEvents(nullptr);
+#ifndef __APPLE_
 	QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+#endif
 
 	if (updateCheckThread && updateCheckThread->isRunning())
 		updateCheckThread->wait();
@@ -1391,8 +1407,6 @@ void OBSBasic::applicationShutdown() noexcept
 		patronJsonThread->wait();
 
 	delete screenshotData;
-	delete previewProjector;
-	delete studioProgramProjector;
 	delete previewProjectorSource;
 	delete previewProjectorMain;
 	delete sourceProjector;
@@ -1405,7 +1419,6 @@ void OBSBasic::applicationShutdown() noexcept
 	delete deinterlaceMenu;
 	delete perSceneTransitionMenu;
 	delete shortcutFilter;
-	delete trayMenu;
 	delete programOptions;
 	delete program;
 
@@ -1465,6 +1478,14 @@ void OBSBasic::applicationShutdown() noexcept
 #endif
 
 	handledShutdown = true;
+}
+
+void OBSBasic::toggleMixerLayout()
+{
+	bool vertical = config_get_bool(App()->GetUserConfig(), "BasicWindow", "VerticalVolumeControl");
+	config_set_bool(App()->GetUserConfig(), "BasicWindow", "VerticalVolumeControl", !vertical);
+
+	emit userSettingChanged("BasicWindow", "VerticalVolumeControl");
 }
 
 static inline int AttemptToResetVideo(struct obs_video_info *ovi)
@@ -1953,6 +1974,13 @@ void OBSBasic::closeWindow()
 
 #ifdef BROWSER_AVAILABLE
 	ClearExtraBrowserDocks();
+
+#ifdef YOUTUBE_ENABLED
+	if (youtubeAppDock) {
+		RemoveDockWidget(youtubeAppDock->objectName());
+		youtubeAppDock = nullptr;
+	}
+#endif
 #endif
 
 	OnEvent(OBS_FRONTEND_EVENT_SCRIPTING_SHUTDOWN);
@@ -1970,11 +1998,16 @@ void OBSBasic::closeWindow()
 	api = nullptr;
 
 	applicationShutdown();
+
+#ifndef __APPLE__
 	deleteLater();
 
 	emit mainWindowClosed();
 
 	QMetaObject::invokeMethod(App(), "quit", Qt::QueuedConnection);
+#else
+	QMetaObject::invokeMethod(App(), "quit", Qt::QueuedConnection);
+#endif
 }
 
 void OBSBasic::UpdateEditMenu()
@@ -2025,7 +2058,7 @@ void OBSBasic::UpdateEditMenu()
 	ui->actionCopyTransform->setEnabled(canTransformSingle);
 	ui->actionPasteTransform->setEnabled(canTransformMultiple && hasCopiedTransform && videoCount > 0);
 	ui->actionCopyFilters->setEnabled(filter_count > 0);
-	ui->actionPasteFilters->setEnabled(!obs_weak_source_expired(copyFiltersSource) && totalCount > 0);
+	ui->actionPasteFilters->setEnabled(!obs_weak_source_expired(copyFiltersSource()) && totalCount > 0);
 	ui->actionPasteRef->setEnabled(!!clipboard.size());
 	ui->actionPasteDup->setEnabled(allowPastingDuplicate);
 
