@@ -45,13 +45,14 @@ GoLiveApi::PostData constructGoLivePost(QString streamKey, const std::optional<u
 	if (obs_get_video_info(&ovi))
 		preferences.composition_gpu_index = ovi.adapter;
 
+	// The FPS set on a canvas's obs_video_info is not used and may be wrong,
+	// so we have to use the main obs_video_info instead of the canvas-specific one.
+	const media_frames_per_second fps{ovi.fps_num, ovi.fps_den};
+
 	for (const auto &canvas : canvases) {
 		if (obs_canvas_get_video_info(canvas, &ovi)) {
-			preferences.canvases.emplace_back(GoLiveApi::Canvas{ovi.output_width,
-									    ovi.output_height,
-									    ovi.base_width,
-									    ovi.base_height,
-									    {ovi.fps_num, ovi.fps_den}});
+			preferences.canvases.emplace_back(GoLiveApi::Canvas{ovi.output_width, ovi.output_height,
+									    ovi.base_width, ovi.base_height, fps});
 		}
 	}
 

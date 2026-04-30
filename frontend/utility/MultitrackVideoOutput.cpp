@@ -300,12 +300,20 @@ static OBSEncoderAutoRelease create_video_encoder(DStr &name_buffer, size_t enco
 
 	obs_video_info ovi;
 	if (!obs_canvas_get_video_info(canvas, &ovi)) {
-		blog(LOG_WARNING, "Failed to get obs_video_info while creating encoder %zu", encoder_index);
+		blog(LOG_WARNING, "Failed to get obs_video_info from canvas %s while creating encoder %zu",
+		     obs_canvas_get_name(canvas), encoder_index);
 		throw MultitrackVideoError::warning(
 			QTStr("FailedToStartStream.FailedToGetOBSVideoInfo").arg(name_buffer->array, encoder_type));
 	}
 
 	adjust_video_encoder_scaling(ovi, video_encoder, encoder_config, encoder_index);
+
+	// FPS on canvases is unused/ignored, so get the main one instead
+	if (!obs_get_video_info(&ovi)) {
+		blog(LOG_WARNING, "Failed to get obs_video_info while creating encoder %zu", encoder_index);
+		throw MultitrackVideoError::warning(
+			QTStr("FailedToStartStream.FailedToGetOBSVideoInfo").arg(name_buffer->array, encoder_type));
+	}
 	adjust_encoder_frame_rate_divisor(ovi, video_encoder, encoder_config, encoder_index);
 
 	return video_encoder;
